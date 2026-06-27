@@ -1,0 +1,35 @@
+{
+  "name": "xfproxyapi-management",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.17.1",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "package": "node scripts/package-panel.mjs",
+    "verify": "pnpm build && pnpm package"
+  },
+  "dependencies": {
+    "@radix-ui/react-scroll-area": "^1.2.12",
+    "@radix-ui/react-separator": "^1.1.10",
+    "@radix-ui/react-slot": "^1.3.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.21.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.1",
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "tailwindcss": "^4.3.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0",
+    "yazl": "^3.3.1"
+  }
+}

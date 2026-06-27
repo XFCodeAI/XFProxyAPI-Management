@@ -1,0 +1,74 @@
+name: Panel
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+jobs:
+  build:
+    name: Build panel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Package
+        run: pnpm package
+
+      - name: Verify package layout
+        run: |
+          unzip -l management-panel.zip
+          unzip -l management-panel.zip | grep -q "index.html"
+          unzip -l management-panel.zip | grep -q "assets/"
+          unzip -l management-panel.zip | grep -q "xf.png"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: management-panel
+          path: management-panel.zip
+          if-no-files-found: error
+
+  upload-release:
+    name: Upload release asset
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: management-panel
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG_NAME" management-panel.zip --clobber
