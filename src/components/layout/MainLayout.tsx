@@ -821,7 +821,7 @@ export function MainLayout() {
           >
             <TooltipElement label={showSidebarLabels ? undefined : fullBrandName}>
               <div className="sidebar-brand">
-                <img src={INLINE_LOGO_JPEG} alt="CPAMC logo" className="sidebar-brand-logo" />
+                <img src={INLINE_LOGO_JPEG} alt="XFProxyAPI logo" className="sidebar-brand-logo" />
                 {showSidebarLabels && <span className="sidebar-brand-title">{abbrBrandName}</span>}
               </div>
             </TooltipElement>
