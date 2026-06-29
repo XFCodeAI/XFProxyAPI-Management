@@ -1,0 +1,347 @@
+@use '../styles/mixins.scss' as *;
+
+.container {
+  display: flex;
+  width: min(100%, 1200px);
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 auto;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  @include mobile {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.pageTitle {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.2;
+
+  @include mobile {
+    font-size: 24px;
+  }
+}
+
+.queryCard,
+.listCard {
+  overflow: hidden;
+}
+
+.queryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 16px;
+  align-items: stretch;
+
+  @media (max-width: 860px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.queryInputs {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.secretInput {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+}
+
+.queryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.queryResult {
+  position: relative;
+  display: flex;
+  min-height: 104px;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--secondary);
+}
+
+.queryCountdown {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.queryCountdownWarning {
+  color: var(--destructive);
+}
+
+.queryCodeRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.queryCode {
+  color: var(--primary);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 32px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.queryEmpty {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.listHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -16px -16px 0;
+  padding: 0 12px 0 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+
+  @include mobile {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 0 12px 12px;
+  }
+}
+
+.tabs {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--foreground);
+    background: var(--accent);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.tabActive {
+  border-bottom-color: var(--primary);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.listActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  @include mobile {
+    padding-left: 6px;
+  }
+}
+
+.tableWrap {
+  max-height: min(62vh, 620px);
+  overflow: auto;
+  margin: 0 -16px -16px;
+}
+
+.table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: middle;
+    font-size: 13px;
+  }
+
+  th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--secondary);
+    color: var(--muted-foreground);
+    font-weight: 650;
+  }
+
+  tbody tr:hover td {
+    background: color-mix(in srgb, var(--accent) 58%, transparent);
+  }
+}
+
+.sortHeader {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sortButton,
+.iconButton {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.dangerIconButton {
+  color: var(--destructive);
+}
+
+.accountCell,
+.secretCell,
+.codeCell,
+.actionsCell,
+.editRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.accountCell span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.secretCell {
+  color: var(--muted-foreground);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+
+  span {
+    max-width: 280px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: text;
+  }
+}
+
+.codeCell {
+  flex-wrap: nowrap;
+}
+
+.codeText {
+  display: inline-flex;
+  width: 78px;
+  color: var(--primary);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeBadge {
+  display: inline-flex;
+  min-width: 38px;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeBadgeWarning {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+
+.invalidText,
+.timeCell {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.editRow input {
+  min-width: 120px;
+  width: 100%;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+
+  &:focus {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+  }
+}
+
+.stateCell {
+  height: 180px;
+  color: var(--muted-foreground);
+  text-align: center !important;
+}
+
+.emptyCell {
+  padding: 20px !important;
+}
+
+.hiddenInput {
+  display: none;
+}

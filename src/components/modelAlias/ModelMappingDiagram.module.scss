@@ -1,0 +1,329 @@
+@use '../../styles/variables' as *;
+
+.scrollContainer {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tapHint {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  padding: 0 4px;
+  margin-bottom: 8px;
+}
+
+.container {
+  display: inline-flex;
+  position: relative;
+  min-width: 100%;
+  min-height: 300px;
+  justify-content: space-between;
+  padding: 20px 0;
+  user-select: none;
+
+  @media (max-width: 768px) {
+    // Give mobile extra horizontal room to reduce line overlap; users can swipe to scroll.
+    min-width: max(100%, 960px);
+    padding: 12px 0;
+  }
+}
+
+// SVG layer for connection lines (behind columns so links are visible)
+.connections {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+
+  path {
+    fill: none;
+    stroke-width: 2;
+  }
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 2;
+  flex: 0 0 auto;
+
+  &.providers {
+    align-items: flex-end;
+    min-width: 140px;
+  }
+
+  &.sources {
+    align-items: flex-start;
+    min-width: 200px;
+  }
+
+  &.aliases {
+    align-items: flex-start;
+    min-width: 200px;
+  }
+}
+
+.columnHeader {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+.item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 280px;
+  position: relative;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    outline-color 0.15s ease;
+  box-shadow: var(--shadow);
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--primary) 34%, var(--border));
+    background: var(--accent);
+    z-index: 10;
+  }
+
+  &.dropTarget {
+    background-color: var(--accent);
+    border-color: var(--primary);
+    border-width: 2px;
+  }
+
+  &.selected {
+    border-color: var(--primary);
+    background-color: var(--accent);
+    outline: 2px solid color-mix(in srgb, var(--ring) 24%, transparent);
+  }
+}
+
+// Mindmap-style provider branch (root node)
+.providerItem {
+  border-left: 3px solid transparent;
+  padding-left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .providerLabel {
+    font-weight: 600;
+    font-size: 13px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .collapseBtn {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: var(--secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--secondary-foreground);
+    transition:
+      background-color 0.15s,
+      color 0.15s;
+
+    &:hover {
+      background: var(--accent);
+      color: var(--accent-foreground);
+    }
+  }
+
+  .chevronDown,
+  .chevronRight {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-style: solid;
+  }
+
+  .chevronDown {
+    border-width: 5px 4px 0 4px;
+    border-color: currentColor transparent transparent transparent;
+  }
+
+  .chevronRight {
+    border-width: 4px 0 4px 5px;
+    border-color: transparent transparent transparent currentColor;
+  }
+}
+
+.providerGroup {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.sourceItem,
+.aliasItem {
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &.dragging {
+    opacity: 0.5;
+    border-style: dashed;
+  }
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  margin-top: -3px;
+  flex-shrink: 0;
+
+  &.dotLeft {
+    left: -3px;
+    background: var(--muted-foreground);
+  }
+}
+
+.sourceItem .dot {
+  right: -3px;
+}
+
+.providerBadge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  margin-right: 8px;
+  font-weight: 500;
+}
+
+.itemName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemCount {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-left: 8px;
+  background: var(--secondary);
+  padding: 1px 6px;
+  border-radius: var(--radius-md);
+}
+
+.settingsEmpty {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  text-align: center;
+  padding: $spacing-lg 0;
+}
+
+.settingsList {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.settingsRow {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) auto;
+  gap: $spacing-md;
+  align-items: center;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+}
+
+.settingsNames {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+  font-size: 13px;
+  color: var(--foreground);
+  min-width: 0;
+}
+
+.settingsSource,
+.settingsAlias {
+  min-width: 0;
+  max-width: min(220px, 100%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settingsArrow {
+  color: var(--muted-foreground);
+  flex: 0 0 auto;
+}
+
+.settingsActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+.settingsLabel {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.settingsDelete {
+  border: 0;
+  background: transparent;
+  color: var(--destructive);
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--destructive) 8%, transparent);
+  }
+}

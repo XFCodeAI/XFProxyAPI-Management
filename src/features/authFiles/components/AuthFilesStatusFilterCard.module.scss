@@ -1,0 +1,241 @@
+.card {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  color: var(--card-foreground);
+  padding: 12px 14px;
+  user-select: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.headerLeft {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.labelText {
+  min-width: 0;
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.statusText {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.statusTextActive {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: color-mix(in srgb, var(--primary) 10%, var(--secondary));
+  color: var(--foreground);
+}
+
+.scaleLabels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.trackWrapper {
+  --thumb-size: 22px;
+  --thumb-half: calc(var(--thumb-size) / 2);
+  --track-inset: var(--thumb-half);
+
+  position: relative;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  isolation: isolate;
+}
+
+.trackWrapper:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 24%, transparent);
+}
+
+.trackWrapperActive {
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--input));
+}
+
+.trackBg {
+  position: absolute;
+  inset: 0;
+  background: var(--muted);
+  z-index: 0;
+}
+
+.dotsLayer {
+  position: absolute;
+  inset: 0 var(--track-inset);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.dot {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted-foreground) 48%, transparent);
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 0.2s ease,
+    background-color 0.2s ease;
+  z-index: 6;
+}
+
+.trackWrapperActive .dot {
+  background: color-mix(in srgb, var(--primary) 52%, var(--muted-foreground));
+  opacity: 0.5;
+}
+
+.trackWrapperFull .dot {
+  opacity: 0;
+}
+
+.slider {
+  position: absolute;
+  inset: 0 var(--track-inset);
+  width: auto;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  z-index: 5;
+}
+
+.slider:disabled {
+  cursor: not-allowed;
+}
+
+.slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.slider::-webkit-slider-thumb {
+  width: var(--thumb-size);
+  height: var(--thumb-size);
+  border: 0;
+  opacity: 0;
+  background: transparent;
+  cursor: grab;
+  -webkit-appearance: none;
+}
+
+.slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+
+.slider::-moz-range-thumb {
+  width: var(--thumb-size);
+  height: var(--thumb-size);
+  border: 0;
+  opacity: 0;
+  background: transparent;
+  cursor: grab;
+}
+
+.slider::-moz-range-thumb:active {
+  cursor: grabbing;
+}
+
+.slider::-moz-range-track {
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.thumbLayer {
+  position: absolute;
+  inset: 0 var(--track-inset);
+  pointer-events: none;
+  z-index: 7;
+}
+
+.thumb {
+  position: absolute;
+  top: 50%;
+  width: var(--thumb-size);
+  height: var(--thumb-size);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  box-shadow: var(--shadow-sm);
+  transform: translate(-50%, -50%);
+  transition:
+    left 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.15s ease;
+}
+
+.trackWrapperDragging .thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 22%, transparent);
+  transform: translate(-50%, -50%) scale(0.96);
+}
+
+@media (max-width: 768px) {
+  .card {
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+  }
+
+  .header {
+    margin-bottom: 8px;
+  }
+
+  .headerLeft {
+    gap: 7px;
+    font-size: 13px;
+  }
+
+  .statusText,
+  .scaleLabels {
+    font-size: 11px;
+  }
+
+  .trackWrapper {
+    --thumb-size: 20px;
+
+    height: 26px;
+  }
+}

@@ -1,0 +1,603 @@
+@use '../../styles/variables' as *;
+@use '../../styles/mixins' as *;
+
+// ─── Page Container ─────────────────────────────────────
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+  width: 100%;
+}
+
+// ─── Header ─────────────────────────────────────────────
+
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.description {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+// ─── Status Bar ─────────────────────────────────────────
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  flex-wrap: wrap;
+}
+
+.statusPill {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  background: color-mix(in srgb, var(--background) 56%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.statusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.statusDotOn {
+  background: var(--primary);
+}
+
+.statusDotOff {
+  background: var(--muted-foreground);
+}
+
+.statusLabel {
+  color: var(--muted-foreground);
+}
+
+.statusValue {
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.statusPathValue {
+  display: block;
+  min-width: 0;
+  max-width: min(360px, 58vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusDivider {
+  width: 1px;
+  height: 20px;
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+  flex-shrink: 0;
+
+  @include mobile {
+    display: none;
+  }
+}
+
+// ─── Toolbar ────────────────────────────────────────────
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+
+  button > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  @include mobile {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.toolbarSearch {
+  flex: 1;
+  max-width: 480px;
+
+  @include mobile {
+    max-width: none;
+  }
+}
+
+.toolbarSearchInput {
+  padding-right: 36px;
+}
+
+// ─── Plugin List ────────────────────────────────────────
+
+.pluginList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--border) 30%, transparent);
+}
+
+// ─── Plugin Row ─────────────────────────────────────────
+
+.pluginRow {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: $spacing-md;
+  padding: $spacing-md $spacing-lg;
+  background: var(--background);
+  transition: background-color 150ms ease;
+
+  &:hover {
+    background: var(--accent);
+  }
+
+  @include mobile {
+    grid-template-columns: 36px 1fr;
+    grid-template-rows: auto auto;
+    gap: $spacing-sm;
+    padding: $spacing-md;
+  }
+}
+
+.logoBox {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  @include mobile {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-lg);
+  }
+}
+
+.pluginInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pluginName {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  min-width: 0;
+
+  h2 {
+    min-width: 0;
+    margin: 0;
+    color: var(--foreground);
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1.3;
+    @include text-ellipsis;
+  }
+}
+
+.pluginId {
+  color: var(--muted-foreground);
+  font-family: $font-mono;
+  font-size: 12px;
+  @include text-ellipsis;
+}
+
+.pluginMeta {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.metaItem {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+
+  strong {
+    color: var(--muted-foreground);
+    font-weight: 600;
+  }
+}
+
+.metaPath {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metaDot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
+  flex-shrink: 0;
+}
+
+// ─── Badges ─────────────────────────────────────────────
+
+.badgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.badge,
+.badgeSuccess,
+.badgeWarning,
+.badgeMuted {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border-radius: var(--radius-md);
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.badge {
+  background: color-mix(in srgb, var(--muted) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  color: var(--muted-foreground);
+}
+
+.badgeSuccess {
+  background: color-mix(in srgb, var(--primary) 10%, var(--secondary));
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border));
+  color: var(--foreground);
+}
+
+.badgeWarning {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  color: var(--secondary-foreground);
+}
+
+.badgeMuted {
+  background: color-mix(in srgb, var(--muted) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  color: var(--muted-foreground);
+}
+
+// ─── Row Actions ────────────────────────────────────────
+
+.rowActions {
+  display: flex;
+  min-width: 0;
+  max-width: min(560px, 48vw);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  flex-shrink: 0;
+
+  button > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  @include mobile {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    max-width: none;
+  }
+}
+
+.iconLink {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+
+  &:hover {
+    border-color: var(--primary);
+    background: var(--accent);
+    color: var(--primary);
+  }
+}
+
+.iconLink {
+  width: 30px;
+  flex: 0 0 auto;
+}
+
+// ─── Skeleton ───────────────────────────────────────────
+
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  padding: $spacing-md $spacing-lg;
+  background: var(--background);
+}
+
+.skeletonAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  animation: skeletonPulse 1.35s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.skeletonText {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.skeletonLine {
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  animation: skeletonPulse 1.35s ease-in-out infinite;
+
+  &:first-child {
+    width: 45%;
+  }
+
+  &:last-child {
+    width: 70%;
+    height: 10px;
+  }
+}
+
+// ─── Sheet Config Form ──────────────────────────────────
+
+.sheetFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+}
+
+.configForm {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+}
+
+.formSection {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+
+  h3 {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 16px;
+    font-weight: 700;
+  }
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  min-height: 52px;
+  padding: $spacing-md;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--muted) 72%, transparent);
+}
+
+.fieldText {
+  min-width: 0;
+}
+
+.fieldLabel {
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.fieldDescription {
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  label {
+    color: var(--foreground);
+    font-size: 14px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+}
+
+.textarea {
+  min-height: 148px;
+  font-family: $font-mono;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.arrayEditor {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.arrayItemRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.arrayActions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.iconButton {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+
+  > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.emptyConfig {
+  padding: $spacing-md;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+
+// ─── Animation ──────────────────────────────────────────
+
+@keyframes skeletonPulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+// ─── Mobile Overrides ───────────────────────────────────
+
+@include mobile {
+  .page {
+    gap: $spacing-md;
+  }
+
+  .pageHeader {
+    gap: 0;
+  }
+
+  .title {
+    font-size: 24px;
+    line-height: 1.2;
+  }
+
+  .description {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .statusBar {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .statusPill {
+    gap: 5px;
+    padding: 4px 8px;
+    font-size: 11.5px;
+  }
+
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .toolbarSearch {
+    grid-column: 1 / -1;
+  }
+
+  .toolbar button {
+    width: 100%;
+  }
+
+  .sheetFooter {
+    flex-direction: column-reverse;
+
+    button {
+      width: 100%;
+    }
+  }
+
+  .arrayItemRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}

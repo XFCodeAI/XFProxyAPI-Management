@@ -1,0 +1,94 @@
+.root {
+  position: relative;
+}
+
+.inputShell {
+  position: relative;
+  min-width: 0;
+}
+
+.inputWithToggle {
+  padding-right: 44px;
+}
+
+.toggleButton {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  padding: 0 4px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+
+  &:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+
+  &:disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  z-index: 1000;
+  max-height: 208px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 4px;
+  box-shadow: var(--shadow-lg);
+}
+
+.option {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: default;
+  outline: none;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+
+  &:hover,
+  &.optionHighlighted {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+}
+
+.optionValue {
+  font-weight: 500;
+}
+
+.optionLabel {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}

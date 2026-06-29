@@ -1,0 +1,98 @@
+@use '../../../styles/mixins' as *;
+@use '../../../styles/variables' as *;
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.statusBlocks {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 92px;
+  position: relative;
+}
+
+.statusBlockWrapper {
+  flex: 1;
+  min-width: 4px;
+  position: relative;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.statusBlock {
+  width: 100%;
+  height: 6px;
+  border-radius: 2px;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
+
+  .statusBlockWrapper:hover &,
+  .statusBlockWrapper.statusBlockActive & {
+    transform: scaleY(1.8);
+    opacity: 0.9;
+  }
+}
+
+.statusBlockIdle {
+  background-color: var(--border);
+}
+
+.tooltipTime {
+  color: var(--muted-foreground);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.tooltipStats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tooltipSuccess {
+  color: var(--primary);
+}
+
+.tooltipFailure {
+  color: var(--destructive);
+}
+
+.tooltipRate {
+  color: var(--muted-foreground);
+  margin-left: 2px;
+}
+
+.statusRate {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.statusRateHigh {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+}
+
+.statusRateMedium {
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+}
+
+.statusRateLow {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 10%, var(--card));
+}

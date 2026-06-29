@@ -1,0 +1,105 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  outline: none;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    color 150ms ease;
+
+  &:hover:not(:disabled) {
+    background: var(--accent);
+  }
+
+  &:focus-visible {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 24%, transparent);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  &[data-placeholder] {
+    color: var(--muted-foreground);
+  }
+
+  svg {
+    flex: 0 0 auto;
+  }
+}
+
+.md {
+  height: 40px;
+  min-width: 144px;
+}
+
+.sm {
+  height: 32px;
+  min-width: 112px;
+  font-size: 12px;
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+.content {
+  z-index: 2010;
+  max-height: 240px;
+  min-width: var(--radix-select-trigger-width);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-lg);
+}
+
+.viewport {
+  padding: 4px;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px 8px 32px;
+  font-size: 14px;
+  line-height: 1.35;
+  outline: none;
+  cursor: default;
+
+  &[data-highlighted] {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+
+  &[data-disabled] {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+}
+
+.indicator {
+  position: absolute;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+}

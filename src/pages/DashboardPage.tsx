@@ -1,0 +1,312 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { ArrowRight } from 'lucide-react';
+import { IconKey, IconBot, IconFileText, IconSatellite } from '@/components/ui/icons';
+import { useAuthStore, useConfigStore, useModelsStore } from '@/stores';
+import { authFilesApi } from '@/services/api';
+import { useApiKeysForModels } from '@/hooks/useApiKeysForModels';
+import { formatDateValue } from '@/utils/format';
+import styles from './DashboardPage.module.scss';
+
+interface OverviewStat {
+  label: string;
+  value: number | string;
+  icon: React.ReactNode;
+  path: string;
+  loading?: boolean;
+  sublabel?: string;
+}
+
+type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
+
+function getTimeOfDay(): TimeOfDay {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 17) return 'afternoon';
+  if (hour >= 17 && hour < 21) return 'evening';
+  return 'night';
+}
+
+export function DashboardPage() {
+  const { t, i18n } = useTranslation();
+  const connectionStatus = useAuthStore((state) => state.connectionStatus);
+  const serverVersion = useAuthStore((state) => state.serverVersion);
+  const serverBuildDate = useAuthStore((state) => state.serverBuildDate);
+  const apiBase = useAuthStore((state) => state.apiBase);
+  const config = useConfigStore((state) => state.config);
+  const fetchConfig = useConfigStore((state) => state.fetchConfig);
+
+  const models = useModelsStore((state) => state.models);
+  const modelsLoading = useModelsStore((state) => state.loading);
+  const fetchModelsFromStore = useModelsStore((state) => state.fetchModels);
+
+  const [authFilesCount, setAuthFilesCount] = useState<number | null>(null);
+  const [authFilesLoading, setAuthFilesLoading] = useState(false);
+
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(getTimeOfDay);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTimeOfDay(getTimeOfDay());
+      setCurrentTime(new Date());
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const resolveApiKeysForModels = useApiKeysForModels();
+
+  const fetchModels = useCallback(async () => {
+    if (connectionStatus !== 'connected' || !apiBase) {
+      return;
+    }
+
+    try {
+      const apiKeys = await resolveApiKeysForModels();
+      const primaryKey = apiKeys[0];
+      await fetchModelsFromStore(apiBase, primaryKey);
+    } catch {
+      // Ignore model fetch errors on dashboard
+    }
+  }, [connectionStatus, apiBase, resolveApiKeysForModels, fetchModelsFromStore]);
+
+  useEffect(() => {
+    if (connectionStatus !== 'connected') {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAuthFiles = async () => {
+      setAuthFilesLoading(true);
+      try {
+        const res = await authFilesApi.list();
+        if (!cancelled) setAuthFilesCount(res.files.length);
+      } catch {
+        if (!cancelled) setAuthFilesCount(null);
+      } finally {
+        setAuthFilesLoading(false);
+      }
+    };
+
+    fetchConfig().catch(() => undefined);
+    fetchModels();
+    void loadAuthFiles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionStatus, fetchConfig, fetchModels]);
+
+  const configLoading = !config;
+  const providerStats = config
+    ? {
+        gemini: config.geminiApiKeys?.length ?? 0,
+        codex: config.codexApiKeys?.length ?? 0,
+        claude: config.claudeApiKeys?.length ?? 0,
+        vertex: config.vertexApiKeys?.length ?? 0,
+        openai: config.openaiCompatibility?.length ?? 0,
+      }
+    : null;
+  const totalProviderKeys = providerStats
+    ? Object.values(providerStats).reduce((sum, count) => sum + count, 0)
+    : 0;
+  const overviewStats: OverviewStat[] = [
+    {
+      label: t('dashboard.management_keys'),
+      value: config ? (config.apiKeys?.length ?? 0) : '-',
+      icon: <IconKey size={24} />,
+      path: '/config',
+      loading: configLoading,
+      sublabel: t('nav.config_management'),
+    },
+    {
+      label: t('nav.ai_providers'),
+      value: providerStats ? totalProviderKeys : '-',
+      icon: <IconBot size={24} />,
+      path: '/ai-providers',
+      loading: configLoading,
+      sublabel: providerStats
+        ? t('dashboard.provider_keys_detail', {
+            gemini: providerStats.gemini,
+            codex: providerStats.codex,
+            claude: providerStats.claude,
+            vertex: providerStats.vertex,
+            openai: providerStats.openai,
+          })
+        : undefined,
+    },
+    {
+      label: t('nav.auth_files'),
+      value: authFilesCount ?? '-',
+      icon: <IconFileText size={24} />,
+      path: '/quota',
+      loading: authFilesLoading && authFilesCount === null,
+      sublabel: t('dashboard.oauth_credentials'),
+    },
+    {
+      label: t('dashboard.available_models'),
+      value: modelsLoading ? '-' : models.length,
+      icon: <IconSatellite size={24} />,
+      path: '/system',
+      loading: modelsLoading,
+      sublabel: t('dashboard.available_models_desc'),
+    },
+  ];
+
+  const routingStrategyRaw = config?.routingStrategy?.trim() || '';
+  const routingStrategyDisplay = !routingStrategyRaw
+    ? '-'
+    : routingStrategyRaw === 'round-robin'
+      ? t('basic_settings.routing_strategy_round_robin')
+      : routingStrategyRaw === 'fill-first'
+        ? t('basic_settings.routing_strategy_fill_first')
+        : routingStrategyRaw;
+  const routingStrategyBadgeClass = !routingStrategyRaw
+    ? styles.configBadgeUnknown
+    : routingStrategyRaw === 'round-robin'
+      ? styles.configBadgeRoundRobin
+      : routingStrategyRaw === 'fill-first'
+        ? styles.configBadgeFillFirst
+        : styles.configBadgeUnknown;
+
+  const greetingKey = `dashboard.greeting_${timeOfDay}`;
+  const caringKey = `dashboard.caring_${timeOfDay}`;
+
+  const formattedDate = currentTime.toLocaleDateString(i18n.language, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const formattedTime = currentTime.toLocaleTimeString(i18n.language, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const serverBuildDateDisplay = formatDateValue(serverBuildDate, i18n.language);
+
+  return (
+    <div className={styles.dashboard}>
+      <section className={styles.pageHeader}>
+        <div className={styles.headerCopy}>
+          <span className={styles.eyebrow}>{t(greetingKey)}</span>
+          <h1 className={styles.pageTitle}>{t('dashboard.welcome_back')}</h1>
+          <p className={styles.pageDescription}>{t(caringKey)}</p>
+        </div>
+        <div className={styles.headerMeta}>
+          <div className={styles.dateTimeBlock}>
+            <span className={styles.time}>{formattedTime}</span>
+            <span className={styles.date}>{formattedDate}</span>
+          </div>
+          <div className={styles.connectionPill}>
+            <span
+              className={`${styles.statusDot} ${
+                connectionStatus === 'connected'
+                  ? styles.connected
+                  : connectionStatus === 'connecting'
+                    ? styles.connecting
+                    : styles.disconnected
+              }`}
+            />
+            <span className={styles.pillText}>
+              {serverVersion
+                ? `v${serverVersion.trim().replace(/^[vV]+/, '')}`
+                : t(
+                    connectionStatus === 'connected'
+                      ? 'common.connected'
+                      : connectionStatus === 'connecting'
+                        ? 'common.connecting'
+                        : 'common.disconnected'
+                  )}
+            </span>
+          </div>
+          {serverBuildDateDisplay && (
+            <span className={styles.buildDate}>{serverBuildDateDisplay}</span>
+          )}
+        </div>
+      </section>
+
+      <section className={styles.statsSection}>
+        <h2 className={styles.sectionHeading}>{t('dashboard.system_overview')}</h2>
+        <div className={styles.statsGrid}>
+          {overviewStats.map((stat) => (
+            <Link key={stat.path} to={stat.path} className={styles.statCard}>
+              <div className={styles.statHeader}>
+                <span className={styles.statLabel}>{stat.label}</span>
+                <span className={styles.statIcon}>{stat.icon}</span>
+              </div>
+              <div className={styles.statContent}>
+                <span className={styles.statValue}>{stat.loading ? '...' : stat.value}</span>
+                {stat.sublabel && !stat.loading && (
+                  <span className={styles.statSublabel}>{stat.sublabel}</span>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {config && (
+        <section className={styles.configSection}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionHeading}>{t('dashboard.current_config')}</h2>
+            <Link to="/config" className={styles.viewMoreLink}>
+              <span>{t('dashboard.edit_settings')}</span>
+              <ArrowRight size={14} aria-hidden="true" />
+            </Link>
+          </div>
+          <div className={styles.configPillGrid}>
+            <div className={styles.configPill}>
+              <span className={styles.configPillLabel}>{t('basic_settings.debug_enable')}</span>
+              <span
+                className={`${styles.configPillValue} ${config.debug ? styles.on : styles.off}`}
+              >
+                {config.debug ? t('common.yes') : t('common.no')}
+              </span>
+            </div>
+            <div className={styles.configPill}>
+              <span className={styles.configPillLabel}>
+                {t('basic_settings.logging_to_file_enable')}
+              </span>
+              <span
+                className={`${styles.configPillValue} ${config.loggingToFile ? styles.on : styles.off}`}
+              >
+                {config.loggingToFile ? t('common.yes') : t('common.no')}
+              </span>
+            </div>
+            <div className={styles.configPill}>
+              <span className={styles.configPillLabel}>
+                {t('basic_settings.retry_count_label')}
+              </span>
+              <span className={styles.configPillValue}>{config.requestRetry ?? 0}</span>
+            </div>
+            <div className={styles.configPill}>
+              <span className={styles.configPillLabel}>{t('basic_settings.ws_auth_enable')}</span>
+              <span
+                className={`${styles.configPillValue} ${config.wsAuth ? styles.on : styles.off}`}
+              >
+                {config.wsAuth ? t('common.yes') : t('common.no')}
+              </span>
+            </div>
+            <div className={styles.configPill}>
+              <span className={styles.configPillLabel}>{t('dashboard.routing_strategy')}</span>
+              <span className={`${styles.configBadge} ${routingStrategyBadgeClass}`}>
+                {routingStrategyDisplay}
+              </span>
+            </div>
+            {config.proxyUrl && (
+              <div className={`${styles.configPill} ${styles.configPillWide}`}>
+                <span className={styles.configPillLabel}>
+                  {t('basic_settings.proxy_url_label')}
+                </span>
+                <span className={styles.configPillMono}>{config.proxyUrl}</span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,106 @@
+.content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.intro {
+  padding: 2px 1px;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.statusBanner {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.status {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.authUrlBox,
+.callbackSection {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card) 82%, var(--background));
+}
+
+.sectionHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.authUrlLabel {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.authUrlValue {
+  max-height: 92px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.authUrlActions,
+.callbackActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .content {
+    gap: 12px;
+  }
+
+  .statusBanner {
+    align-self: stretch;
+  }
+
+  .authUrlBox,
+  .callbackSection {
+    padding: 12px;
+  }
+
+  .authUrlActions,
+  .callbackActions,
+  .footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

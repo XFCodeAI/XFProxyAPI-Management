@@ -1,0 +1,26 @@
+.alert {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.destructive {
+  border-color: color-mix(in srgb, var(--destructive) 30%, transparent);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}
+
+.info {
+  border-color: color-mix(in srgb, var(--primary) 25%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+@media (max-width: 768px) {
+  .alert {
+    padding: 9px 11px;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+}
