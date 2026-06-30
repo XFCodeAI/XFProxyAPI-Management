@@ -114,6 +114,15 @@ function PluginSidebarIcon({ src }: { src: string }) {
 }
 
 const HEADER_ICON_SIZE = 16;
+const PLUGIN_RESOURCES_CACHE_TTL_MS = 60_000;
+
+type PluginResourcesCache = {
+  apiBase: string;
+  entries: PluginResourceEntry[];
+  timestamp: number;
+};
+
+let pluginResourcesCache: PluginResourcesCache | null = null;
 
 const THEME_CARDS: Array<{
   key: Theme;
@@ -283,30 +292,51 @@ export function MainLayout() {
     });
   }, [fetchConfig]);
 
-  const loadPluginResources = useCallback(async () => {
-    if (connectionStatus !== 'connected' || !supportsPlugin) {
-      setPluginResources([]);
-      return;
-    }
+  const loadPluginResources = useCallback(
+    async ({ force = false }: { force?: boolean } = {}) => {
+      if (connectionStatus !== 'connected' || !supportsPlugin) {
+        setPluginResources([]);
+        pluginResourcesCache = null;
+        return;
+      }
 
-    try {
-      const plugins = await pluginsApi.list();
-      setPluginResources(collectPluginResourceEntries(plugins.plugins));
-    } catch {
-      setPluginResources([]);
-    }
-  }, [connectionStatus, supportsPlugin]);
+      const now = Date.now();
+      if (
+        !force &&
+        pluginResourcesCache &&
+        pluginResourcesCache.apiBase === apiBase &&
+        now - pluginResourcesCache.timestamp < PLUGIN_RESOURCES_CACHE_TTL_MS
+      ) {
+        setPluginResources(pluginResourcesCache.entries);
+        return;
+      }
+
+      try {
+        const plugins = await pluginsApi.list();
+        const entries = collectPluginResourceEntries(plugins.plugins);
+        pluginResourcesCache = { apiBase, entries, timestamp: Date.now() };
+        setPluginResources(entries);
+      } catch {
+        setPluginResources([]);
+      }
+    },
+    [apiBase, connectionStatus, supportsPlugin]
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadPluginResources();
     }, 0);
 
-    window.addEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, loadPluginResources);
+    const handlePluginResourcesRefresh = () => {
+      void loadPluginResources({ force: true });
+    };
+
+    window.addEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, handlePluginResourcesRefresh);
 
     return () => {
       window.clearTimeout(timer);
-      window.removeEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, loadPluginResources);
+      window.removeEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, handlePluginResourcesRefresh);
     };
   }, [apiBase, loadPluginResources]);
 
@@ -528,7 +558,7 @@ export function MainLayout() {
     clearCache();
     const results = await Promise.allSettled([
       fetchConfig(undefined, true),
-      loadPluginResources(),
+      loadPluginResources({ force: true }),
       triggerHeaderRefresh(),
     ]);
     const rejected = results.find((result) => result.status === 'rejected');

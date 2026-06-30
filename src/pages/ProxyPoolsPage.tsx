@@ -234,22 +234,31 @@ export function ProxyPoolsPage() {
     setStatusFailed(false);
 
     try {
-      const snapshot = await proxyPoolsApi.load();
+      const [snapshotResult, statusResult, authFileResult] = await Promise.allSettled([
+        proxyPoolsApi.load(),
+        proxyPoolsApi.loadStatus(),
+        authFilesApi.list(),
+      ]);
+
+      if (snapshotResult.status !== 'fulfilled') {
+        throw snapshotResult.reason;
+      }
+
+      const snapshot = snapshotResult.value;
       setPools(snapshot.pools);
       setGlobalProxyUrl(snapshot.globalProxyUrl);
       setConfigUsages(snapshot.usages);
 
-      try {
-        setStatusPools(await proxyPoolsApi.loadStatus());
-      } catch {
+      if (statusResult.status === 'fulfilled') {
+        setStatusPools(statusResult.value);
+      } else {
         setStatusPools([]);
         setStatusFailed(true);
       }
 
-      try {
-        const authFileData = await authFilesApi.list();
-        setAuthFiles(authFileData.files);
-      } catch {
+      if (authFileResult.status === 'fulfilled') {
+        setAuthFiles(authFileResult.value.files);
+      } else {
         setAuthFiles([]);
         setAuthFilesFailed(true);
       }
@@ -407,7 +416,7 @@ export function ProxyPoolsPage() {
       }
       clearFieldErrors('protocol', 'host', 'port');
     } catch {
-      // 输入过程中允许半成品代理直链存在，提交时再展示校验错误。
+      // Allow incomplete proxy URLs while typing; validation runs on submit.
     }
   };
 

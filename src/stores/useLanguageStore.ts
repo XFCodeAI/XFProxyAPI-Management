@@ -1,13 +1,13 @@
 /**
- * 语言状态管理
- * 从原项目 src/modules/language.js 迁移
+ * Language state management.
+ * Migrated from the original project src/modules/language.js.
  */
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Language } from '@/types';
 import { LANGUAGE_ORDER, STORAGE_KEY_LANGUAGE } from '@/utils/constants';
-import i18n from '@/i18n';
+import { changeI18nLanguage } from '@/i18n';
 import { getInitialLanguage, isSupportedLanguage } from '@/utils/language';
 
 interface LanguageState {
@@ -25,9 +25,12 @@ export const useLanguageStore = create<LanguageState>()(
         if (!isSupportedLanguage(language)) {
           return;
         }
-        // 切换 i18next 语言
-        i18n.changeLanguage(language);
+        const previousLanguage = get().language;
         set({ language });
+        void changeI18nLanguage(language).catch((error) => {
+          console.warn('Failed to switch language resource:', error);
+          set({ language: previousLanguage });
+        });
       },
 
       toggleLanguage: () => {

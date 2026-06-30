@@ -690,6 +690,41 @@
   line-height: 1.55;
 }
 
+.panelUpdateRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+
+  @include mobile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panelUpdateCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.panelUpdateTitle {
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.panelUpdateDescription {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .fieldShell {
   display: flex;
   flex-direction: column;

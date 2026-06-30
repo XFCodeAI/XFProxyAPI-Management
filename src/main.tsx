@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '@/styles/global.scss';
 import '@/styles/tailwind.css';
 import { INLINE_LOGO_JPEG, LOGO_MIME_TYPE } from '@/assets/logoInline';
-import App from './App.tsx';
+import { initializeI18n } from '@/i18n';
 
 document.title = 'CLI Proxy API Management Center';
 document.documentElement.setAttribute('translate', 'no');
@@ -21,8 +21,15 @@ if (faviconEl) {
   document.head.appendChild(newFavicon);
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
+async function bootstrap() {
+  await initializeI18n();
+  const { default: App } = await import('./App.tsx');
+
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  );
+}
+
+void bootstrap();

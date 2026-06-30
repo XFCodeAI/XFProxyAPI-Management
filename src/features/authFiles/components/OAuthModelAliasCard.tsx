@@ -1,10 +1,10 @@
-import { useRef } from 'react';
+import { Suspense, lazy, useRef, type ComponentType, type RefAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { TooltipButton } from '@/components/ui/TooltipControls';
-import { ModelMappingDiagram, type ModelMappingDiagramRef } from '@/components/modelAlias';
+import type { ModelMappingDiagramProps, ModelMappingDiagramRef } from '@/components/modelAlias';
 import { IconChevronUp } from '@/components/ui/icons';
 import type { OAuthModelAliasEntry } from '@/types';
 import type { AuthFileModelItem } from '@/features/authFiles/constants';
@@ -12,6 +12,14 @@ import styles from '@/pages/AuthFilesPage.module.scss';
 
 type UnsupportedError = 'unsupported' | null;
 type ViewMode = 'diagram' | 'list';
+
+const LazyModelMappingDiagram = lazy(() =>
+  import('@/components/modelAlias').then((module) => ({
+    default: module.ModelMappingDiagram as ComponentType<
+      ModelMappingDiagramProps & RefAttributes<ModelMappingDiagramRef>
+    >,
+  }))
+);
 
 export type OAuthModelAliasCardProps = {
   disableControls: boolean;
@@ -110,19 +118,21 @@ export function OAuthModelAliasCard(props: OAuthModelAliasCardProps) {
                 <IconChevronUp size={16} />
               </TooltipButton>
             </div>
-            <ModelMappingDiagram
-              ref={diagramRef}
-              modelAlias={modelAlias}
-              allProviderModels={allProviderModels}
-              onUpdate={onUpdate}
-              onDeleteLink={onDeleteLink}
-              onToggleFork={onToggleFork}
-              onRenameAlias={onRenameAlias}
-              onDeleteAlias={onDeleteAlias}
-              onEditProvider={onEditProvider}
-              onDeleteProvider={onDeleteProvider}
-              className={styles.aliasChart}
-            />
+            <Suspense fallback={null}>
+              <LazyModelMappingDiagram
+                ref={diagramRef}
+                modelAlias={modelAlias}
+                allProviderModels={allProviderModels}
+                onUpdate={onUpdate}
+                onDeleteLink={onDeleteLink}
+                onToggleFork={onToggleFork}
+                onRenameAlias={onRenameAlias}
+                onDeleteAlias={onDeleteAlias}
+                onEditProvider={onEditProvider}
+                onDeleteProvider={onDeleteProvider}
+                className={styles.aliasChart}
+              />
+            </Suspense>
           </div>
         )
       ) : Object.keys(modelAlias).length === 0 ? (

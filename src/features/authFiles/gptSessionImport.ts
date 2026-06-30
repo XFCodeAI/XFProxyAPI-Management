@@ -64,7 +64,6 @@ interface ConvertOptions {
   now?: Date;
   sourceName?: string;
   sourcePath?: string;
-  index?: number;
 }
 
 const DEFAULT_SOURCE_NAME = 'pasted-json';
@@ -226,24 +225,14 @@ const sanitizeFileToken = (value: string | undefined, fallback: string): string 
   return normalized || fallback;
 };
 
-const timestampToken = (date: Date): string => {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(
-    date.getHours()
-  )}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
-};
-
 const buildCpaFileName = (
   name: string,
   email: string | undefined,
-  planType: string | undefined,
-  index: number,
-  now: Date
+  planType: string | undefined
 ): string => {
   const base = sanitizeFileToken(email || name, 'gpt-session');
   const plan = sanitizeFileToken(planType, '');
-  const suffix = index > 0 ? `-${index + 1}` : '';
-  return `codex-${base}${plan ? `-${plan}` : ''}-${timestampToken(now)}${suffix}.json`;
+  return `codex-${base}${plan ? `-${plan}` : ''}.json`;
 };
 
 const readAccessToken = (record: JsonRecord): string | undefined => {
@@ -494,7 +483,7 @@ export function convertGptSessionToCpa(
     hasRefreshToken,
     syntheticIdToken: Boolean(syntheticIdToken),
     cpa,
-    fileName: buildCpaFileName(name, email, planType, options.index ?? 0, now),
+    fileName: buildCpaFileName(name, email, planType),
   };
 }
 
@@ -537,7 +526,7 @@ export function parseGptSessionTextToCpa(
 
 export function consumeGptSessionInput(
   text: string,
-  options: { now?: Date; indexOffset?: number } = {}
+  options: { now?: Date } = {}
 ): GptSessionConsumeResult {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -553,26 +542,20 @@ export function consumeGptSessionInput(
   const now = options.now ?? new Date();
 
   try {
-    const result = convertParsedGptSessionValue(
-      JSON.parse(trimmed) as unknown,
-      now,
-      DEFAULT_SOURCE_NAME,
-      options.indexOffset ?? 0
-    );
+    const result = convertParsedGptSessionValue(JSON.parse(trimmed) as unknown, now);
     return {
       ...result,
       remainingText: result.records.length > 0 ? '' : text,
     };
   } catch {
-    return consumeGptSessionJsonLines(text, now, options.indexOffset ?? 0);
+    return consumeGptSessionJsonLines(text, now);
   }
 }
 
 function convertParsedGptSessionValue(
   parsed: unknown,
   now: Date,
-  sourceName = DEFAULT_SOURCE_NAME,
-  indexOffset = 0
+  sourceName = DEFAULT_SOURCE_NAME
 ): GptSessionImportResult {
   const sources = collectGptSessionSources(parsed, sourceName);
   const records: GptSessionImportRecord[] = [];
@@ -586,14 +569,13 @@ function convertParsedGptSessionValue(
     });
   }
 
-  sources.forEach((source, index) => {
+  sources.forEach((source) => {
     try {
       records.push(
         convertGptSessionToCpa(source.value, {
           now,
           sourceName: source.sourceName,
           sourcePath: source.path,
-          index: indexOffset + index,
         })
       );
     } catch (error) {
@@ -632,7 +614,7 @@ function parseGptSessionJsonLines(
     const sourceName = `line ${line.lineNumber}`;
     try {
       const parsed = JSON.parse(line.text) as unknown;
-      const result = convertParsedGptSessionValue(parsed, now, sourceName, records.length);
+      const result = convertParsedGptSessionValue(parsed, now, sourceName);
       records.push(...result.records);
       appendLineIssues(issues, result, sourceName);
     } catch (error) {
@@ -652,11 +634,7 @@ function parseGptSessionJsonLines(
   };
 }
 
-function consumeGptSessionJsonLines(
-  text: string,
-  now: Date,
-  indexOffset: number
-): GptSessionConsumeResult {
+function consumeGptSessionJsonLines(text: string, now: Date): GptSessionConsumeResult {
   const records: GptSessionImportRecord[] = [];
   const issues: GptSessionImportIssue[] = [];
   const remainingLines: string[] = [];
@@ -674,12 +652,7 @@ function consumeGptSessionJsonLines(
     const sourceName = `line ${index + 1}`;
     try {
       const parsed = JSON.parse(trimmed) as unknown;
-      const result = convertParsedGptSessionValue(
-        parsed,
-        now,
-        sourceName,
-        indexOffset + records.length
-      );
+      const result = convertParsedGptSessionValue(parsed, now, sourceName);
       records.push(...result.records);
       appendLineIssues(issues, result, sourceName);
       if (result.records.length === 0) {

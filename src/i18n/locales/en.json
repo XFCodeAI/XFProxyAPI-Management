@@ -1018,7 +1018,13 @@
           "disable_auto_update_panel_desc": "Download the panel when first missing, but never auto-update it from GitHub",
           "secret_key": "Management Key",
           "secret_key_placeholder": "Set management key",
-          "panel_repo": "Panel Repository"
+          "panel_repo": "Panel Repository",
+          "panel_update": "Update Control Panel Now",
+          "panel_update_desc": "Pull the latest build from the panel repository's latest release. Refresh the page after a successful update.",
+          "panel_update_action": "Update Now",
+          "panel_update_success": "Control panel updated. Refresh the page to use the new version.",
+          "panel_update_already_current": "Control panel is already up to date.",
+          "panel_update_failed": "Control panel update failed"
         },
         "auth": {
           "title": "Authentication Configuration",

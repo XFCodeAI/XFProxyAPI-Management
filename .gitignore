@@ -17,6 +17,9 @@ style.md
 
 node_modules
 dist
+.playwright-cli/
+output/
+management-panel.zip
 dist-ssr
 *.local
 skills

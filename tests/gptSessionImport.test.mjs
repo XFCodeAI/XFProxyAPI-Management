@@ -54,6 +54,7 @@ function testChatGptSessionConvertsToCpa() {
   assert.equal(auth.id_token_synthetic, true);
   assert.equal(auth.id_token.split('.').length, 3);
   assert.equal(auth.last_refresh, fixedNow.toISOString());
+  assert.equal(result.records[0].fileName, 'codex-mark@example-plus.json');
 }
 
 function testPreservesRefreshAndIdToken() {
@@ -149,6 +150,8 @@ function testLineDelimitedSessionsConvertIndependently() {
   assert.equal(result.issues.length, 0);
   assert.equal(result.records[0].sourceName, 'line 1');
   assert.equal(result.records[1].sourceName, 'line 2');
+  assert.equal(result.records[0].fileName, 'codex-first@example.json');
+  assert.equal(result.records[1].fileName, 'codex-second@example.json');
   assert.equal(result.records[0].cpa.access_token, 'first-access-token');
   assert.equal(result.records[1].cpa.access_token, 'second-access-token');
 }

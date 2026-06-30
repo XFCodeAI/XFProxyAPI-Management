@@ -100,7 +100,6 @@ export function LoginPage() {
   const [rememberPassword, setRememberPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [autoLoading, setAutoLoading] = useState(true);
-  const [autoLoginSuccess, setAutoLoginSuccess] = useState(false);
   const [error, setError] = useState('');
 
   const detectedBase = useMemo(() => detectApiBaseFromLocation(), []);
@@ -127,11 +126,8 @@ export function LoginPage() {
       try {
         const autoLoggedIn = await restoreSession();
         if (autoLoggedIn) {
-          setAutoLoginSuccess(true);
-          setTimeout(() => {
-            const redirect = (location.state as RedirectState | null)?.from?.pathname || '/';
-            navigate(redirect, { replace: true });
-          }, 1500);
+          const redirect = (location.state as RedirectState | null)?.from?.pathname || '/';
+          navigate(redirect, { replace: true });
         } else {
           setApiBase(storedBase || detectedBase);
           setManagementKey(storedKey || '');
@@ -190,12 +186,12 @@ export function LoginPage() {
     [loading, submitLogin]
   );
 
-  if (isAuthenticated && !autoLoading && !autoLoginSuccess) {
+  if (isAuthenticated && !autoLoading) {
     const redirect = (location.state as RedirectState | null)?.from?.pathname || '/';
     return <Navigate to={redirect} replace />;
   }
 
-  const showSplash = autoLoading || autoLoginSuccess;
+  const showSplash = autoLoading;
 
   return (
     <div className={styles.container}>

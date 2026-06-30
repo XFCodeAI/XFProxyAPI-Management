@@ -21,7 +21,6 @@ import {
   IconRefreshCw,
   IconSearch,
 } from '@/components/ui/icons';
-import { VisualConfigEditor } from '@/components/config/VisualConfigEditor';
 import { DiffModal } from '@/components/config/DiffModal';
 import { TooltipButton, TooltipIconButton } from '@/components/ui/TooltipControls';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -29,11 +28,17 @@ import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useVisualConfig } from '@/hooks/useVisualConfig';
 import { useNotificationStore, useAuthStore, useThemeStore, useConfigStore } from '@/stores';
+import { configApi } from '@/services/api/config';
 import { configFileApi } from '@/services/api/configFile';
 import styles from './ConfigPage.module.scss';
 
 type ConfigEditorTab = 'visual' | 'source';
 
+const LazyVisualConfigEditor = lazy(() =>
+  import('@/components/config/VisualConfigEditor').then((module) => ({
+    default: module.VisualConfigEditor,
+  }))
+);
 const LazyConfigSourceEditor = lazy(() => import('@/components/config/ConfigSourceEditor'));
 
 function readCommercialModeFromYaml(yamlContent: string): boolean {
@@ -81,6 +86,7 @@ export function ConfigPage() {
     if (saved === 'visual' || saved === 'source') return saved;
     return 'visual';
   });
+  const activeTabRef = useRef(activeTab);
 
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -90,6 +96,7 @@ export function ConfigPage() {
   const [diffModalOpen, setDiffModalOpen] = useState(false);
   const [serverYaml, setServerYaml] = useState('');
   const [mergedYaml, setMergedYaml] = useState('');
+  const [panelUpdating, setPanelUpdating] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -104,7 +111,7 @@ export function ConfigPage() {
   const disableControls = connectionStatus !== 'connected';
   const isDirty = dirty || visualDirty;
   const shouldRenderFloatingActions = isCurrentLayer;
-  const hasVisualModeError = !!visualParseError;
+  const hasVisualModeError = activeTab === 'visual' && !!visualParseError;
   const hasVisualValidationErrors =
     activeTab === 'visual' &&
     (Object.values(visualValidationErrors).some(Boolean) || visualHasPayloadValidationErrors);
@@ -124,6 +131,10 @@ export function ConfigPage() {
     dialog: unsavedChangesDialog,
   });
 
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
   const loadConfig = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -134,7 +145,9 @@ export function ConfigPage() {
       setDiffModalOpen(false);
       setServerYaml(data);
       setMergedYaml(data);
-      loadVisualValuesFromYaml(data);
+      if (activeTabRef.current === 'visual') {
+        loadVisualValuesFromYaml(data);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('notification.refresh_failed');
       setError(message);
@@ -172,7 +185,9 @@ export function ConfigPage() {
       setContent(latestContent);
       setServerYaml(latestContent);
       setMergedYaml(latestContent);
-      loadVisualValuesFromYaml(latestContent);
+      if (activeTab === 'visual') {
+        loadVisualValuesFromYaml(latestContent);
+      }
 
       // Keep the global config store in sync so sidebar / other pages reflect YAML changes immediately.
       try {
@@ -263,7 +278,9 @@ export function ConfigPage() {
         setContent(latestServerYaml);
         setServerYaml(latestServerYaml);
         setMergedYaml(nextMergedYaml);
-        loadVisualValuesFromYaml(latestServerYaml);
+        if (activeTab === 'visual') {
+          loadVisualValuesFromYaml(latestServerYaml);
+        }
         showNotification(t('config_management.diff.no_changes'), 'info');
         return;
       }
@@ -427,6 +444,32 @@ export function ConfigPage() {
     performSearch(lastSearchedQuery, 'next');
   }, [lastSearchedQuery, performSearch]);
 
+  const handleUpdatePanel = useCallback(async () => {
+    setPanelUpdating(true);
+    try {
+      const result = await configApi.updatePanel();
+      if (result.updated) {
+        showNotification(
+          t('config_management.visual.sections.remote.panel_update_success'),
+          'success'
+        );
+      } else {
+        showNotification(
+          t('config_management.visual.sections.remote.panel_update_already_current'),
+          'info'
+        );
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '';
+      showNotification(
+        `${t('config_management.visual.sections.remote.panel_update_failed')}${message ? `: ${message}` : ''}`,
+        'error'
+      );
+    } finally {
+      setPanelUpdating(false);
+    }
+  }, [showNotification, t]);
+
   // Keep bottom floating actions from covering page content by syncing its height to a CSS variable.
   useActionBarHeightVar(
     floatingActionsRef,
@@ -564,13 +607,17 @@ export function ConfigPage() {
           )}
 
           {activeTab === 'visual' ? (
-            <VisualConfigEditor
-              values={visualValues}
-              validationErrors={visualValidationErrors}
-              hasPayloadValidationErrors={visualHasPayloadValidationErrors}
-              disabled={disableControls || loading}
-              onChange={setVisualValues}
-            />
+            <Suspense fallback={null}>
+              <LazyVisualConfigEditor
+                values={visualValues}
+                validationErrors={visualValidationErrors}
+                hasPayloadValidationErrors={visualHasPayloadValidationErrors}
+                disabled={disableControls || loading}
+                panelUpdating={panelUpdating}
+                onUpdatePanel={handleUpdatePanel}
+                onChange={setVisualValues}
+              />
+            </Suspense>
           ) : (
             <div className={styles.sourceWorkspace}>
               <div className={styles.sourceToolbar}>

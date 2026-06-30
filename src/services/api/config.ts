@@ -6,6 +6,14 @@ import { apiClient } from './client';
 import type { Config } from '@/types';
 import { normalizeConfigResponse } from './transformers';
 
+export interface PanelUpdateResponse {
+  status?: string;
+  update_status?: string;
+  updated?: boolean;
+  asset?: string;
+  hash?: string;
+}
+
 export const configApi = {
   /**
    * 获取配置（会进行字段规范化）
@@ -111,4 +119,6 @@ export const configApi = {
    */
   updateRoutingStrategy: (strategy: string) =>
     apiClient.put('/routing/strategy', { value: strategy }),
+
+  updatePanel: () => apiClient.post<PanelUpdateResponse>('/panel/update'),
 };

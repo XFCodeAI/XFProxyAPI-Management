@@ -54,7 +54,7 @@ export function AuthImportModal({
   };
 
   const handleSessionTextChange = (value: string) => {
-    const consumed = consumeGptSessionInput(value, { indexOffset: stagedRecords.length });
+    const consumed = consumeGptSessionInput(value);
     setSessionText(consumed.remainingText);
     setSessionIssues(consumed.issues);
 
@@ -247,7 +247,10 @@ function SessionImportSummary({ result }: { result: GptSessionImportResult }) {
       {result.records.length > 0 ? (
         <div className={styles.previewList}>
           {result.records.map((record) => (
-            <SessionPreviewRow key={`${record.sourcePath}:${record.fileName}`} record={record} />
+            <SessionPreviewRow
+              key={`${record.sourceName}:${record.sourcePath}:${record.cpa.access_token}`}
+              record={record}
+            />
           ))}
         </div>
       ) : null}

@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
+import { Button } from '@/components/ui/Button';
 import { Collapsible } from '@/components/ui/Collapsible';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -19,6 +20,7 @@ import {
   IconCode,
   IconKey,
   IconNetwork,
+  IconRefreshCw,
   IconSatellite,
   IconScrollText,
   IconSearch,
@@ -68,6 +70,8 @@ interface VisualConfigEditorProps {
   validationErrors?: VisualConfigValidationErrors;
   hasPayloadValidationErrors?: boolean;
   disabled?: boolean;
+  panelUpdating?: boolean;
+  onUpdatePanel?: () => void;
   onChange: (values: Partial<VisualConfigValues>) => void;
 }
 
@@ -185,6 +189,8 @@ export function VisualConfigEditor({
   validationErrors,
   hasPayloadValidationErrors = false,
   disabled = false,
+  panelUpdating = false,
+  onUpdatePanel,
   onChange,
 }: VisualConfigEditorProps) {
   const { t } = useTranslation();
@@ -1085,6 +1091,28 @@ export function VisualConfigEditor({
                         />
                       </FieldAnchor>
                     </SectionGrid>
+                    {onUpdatePanel ? (
+                      <div className={styles.panelUpdateRow}>
+                        <div className={styles.panelUpdateCopy}>
+                          <div className={styles.panelUpdateTitle}>
+                            {t('config_management.visual.sections.remote.panel_update')}
+                          </div>
+                          <div className={styles.panelUpdateDescription}>
+                            {t('config_management.visual.sections.remote.panel_update_desc')}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={onUpdatePanel}
+                          disabled={disabled || values.rmDisableControlPanel}
+                          loading={panelUpdating}
+                        >
+                          <IconRefreshCw size={16} aria-hidden="true" />
+                          {t('config_management.visual.sections.remote.panel_update_action')}
+                        </Button>
+                      </div>
+                    ) : null}
                   </SectionStack>
                 </Collapsible>
               </SectionStack>
