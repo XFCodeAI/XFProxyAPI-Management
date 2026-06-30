@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProxySelectionControl } from '@/components/proxy/ProxySelectionControl';
 import { Button } from '@/components/ui/Button';
@@ -22,6 +22,10 @@ interface QuotaOAuthDialogProps {
   onCopyLink: (url?: string) => void;
   onSubmitCallback: () => void;
   onCallbackUrlChange: (value: string) => void;
+}
+
+function hasSelectableProxy(pool: ProxyPoolStatusEntry): boolean {
+  return pool.enabled && !pool.configError;
 }
 
 export function QuotaOAuthDialog({
@@ -65,10 +69,9 @@ export function QuotaOAuthDialog({
           ? `${getProviderText('oauth_status_error')} ${state.error || ''}`
           : getProviderText('oauth_status_waiting')
       : '';
-  const hasSelectableProxy = (pool: ProxyPoolStatusEntry) => pool.enabled && !pool.configError;
   const startDisabled = Boolean(state.url) || (!pluginProvider && proxyPoolsLoading);
 
-  const loadProxyPools = async () => {
+  const loadProxyPools = useCallback(async () => {
     if (pluginProvider) return;
     setProxyPoolsLoading(true);
     try {
@@ -83,13 +86,13 @@ export function QuotaOAuthDialog({
     } finally {
       setProxyPoolsLoading(false);
     }
-  };
+  }, [pluginProvider]);
 
   useEffect(() => {
     if (!open) return;
     setProxySelection({ mode: 'smart' });
     void loadProxyPools();
-  }, [open, pluginProvider]);
+  }, [loadProxyPools, open]);
 
   return (
     <Modal

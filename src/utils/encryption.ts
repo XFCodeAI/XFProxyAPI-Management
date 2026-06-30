@@ -28,7 +28,7 @@ function getKeyBytes(): Uint8Array {
     const ua = navigator.userAgent;
     cachedKeyBytes = encodeText(`${SECRET_SALT}|${host}|${ua}`);
   } catch (error) {
-    console.warn('Obfuscation fallback to simple key:', error);
+    console.warn('混淆密钥生成失败，已回退到简单密钥:', error);
     cachedKeyBytes = encodeText(SECRET_SALT);
   }
 
@@ -71,7 +71,7 @@ export function obfuscateData(value: string): string {
     const encrypted = xorBytes(encodeText(value), keyBytes);
     return `${ENC_PREFIX}${toBase64(encrypted)}`;
   } catch (error) {
-    console.warn('Obfuscation failed, fallback to plaintext:', error);
+    console.warn('数据混淆失败，已回退到明文:', error);
     return value;
   }
 }
@@ -90,7 +90,7 @@ export function deobfuscateData(payload: string): string {
     const decrypted = xorBytes(encrypted, getKeyBytes());
     return decodeText(decrypted);
   } catch (error) {
-    console.warn('Deobfuscation failed, return as-is:', error);
+    console.warn('数据解混淆失败，已返回原始内容:', error);
     return payload;
   }
 }

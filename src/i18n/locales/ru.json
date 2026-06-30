@@ -54,7 +54,8 @@
     "model_alias_placeholder": "Псевдоним модели (необязательно)",
     "invalid_provider_index": "Неверный индекс провайдера.",
     "unsaved_changes_title": "Несохранённые изменения",
-    "unsaved_changes_message": "У вас есть несохранённые изменения. Если вы уйдёте, они будут потеряны. Выйти?"
+    "unsaved_changes_message": "У вас есть несохранённые изменения. Если вы уйдёте, они будут потеряны. Выйти?",
+    "select": "Выбрать"
   },
   "title": {
     "main": "Центр управления CLI Proxy API",
@@ -95,7 +96,9 @@
     "error_not_found": "Management API не найден, проверьте, что адрес указывает на backend CLIProxyAPI",
     "error_server": "Backend не смог обработать запрос управления, проверьте журналы сервера",
     "error_cors": "Блокировка CORS, проверьте конфигурацию сервера",
-    "error_ssl": "Ошибка проверки SSL/TLS сертификата"
+    "error_ssl": "Ошибка проверки SSL/TLS сертификата",
+    "show_key": "Показать ключ",
+    "hide_key": "Скрыть ключ"
   },
   "header": {
     "check_connection": "Проверить подключение",
@@ -377,7 +380,16 @@
     "quota_refresh_single": "Обновить квоту",
     "quota_refresh_hint": "Обновить квоту только для этих учётных данных",
     "quota_refresh_success": "Квота для \"{{name}}\" обновлена",
-    "quota_refresh_failed": "Не удалось обновить квоту для \"{{name}}\": {{message}}"
+    "quota_refresh_failed": "Не удалось обновить квоту для \"{{name}}\": {{message}}",
+    "delete_title": "Удалить файл",
+    "delete_all_title": "Удалить все файлы",
+    "filtered_empty_title": "Нет учётных данных по фильтрам",
+    "filtered_empty_desc": "Измените фильтры или загрузите новые файлы авторизации.",
+    "lazy_loaded_info": "Показано {{current}} / {{total}} учётных данных",
+    "load_more": "Загрузить ещё",
+    "headers_label": "Пользовательские заголовки",
+    "headers_hint": "JSON-объект с дополнительными заголовками запроса.",
+    "headers_placeholder": "{\n  X-Custom: value\n}"
   },
   "two_factor": {
     "load_failed": "Не удалось загрузить данные 2FA: {{message}}",
@@ -525,7 +537,13 @@
     "plan_team": "Team",
     "plan_free": "Free",
     "plan_pro": "Pro 20x",
-    "plan_prolite": "Pro 5x"
+    "plan_prolite": "Pro 5x",
+    "reset_button": "Сбросить квоту",
+    "reset_confirm_title": "Сбросить квоту Codex?",
+    "reset_confirm_message": "Будет запрошен сброс локального состояния квоты для {{name}}.",
+    "reset_confirm_button": "Сбросить",
+    "reset_success": "Квота Codex для {{name}} сброшена",
+    "reset_failed": "Не удалось сбросить квоту Codex для {{name}}: {{message}}"
   },
   "kimi_quota": {
     "title": "Квота Kimi",
@@ -618,7 +636,8 @@
     "scope_provider": "Область: {{provider}}",
     "upgrade_required": "Текущая версия CPA не поддерживает отключение OAuth-моделей. Пожалуйста, обновите систему.",
     "upgrade_required_title": "Пожалуйста, обновите CLI Proxy API",
-    "upgrade_required_desc": "Текущая версия сервера не поддерживает получение отключения OAuth-моделей. Обновите CPA (CLI Proxy API) до последней версии и повторите попытку."
+    "upgrade_required_desc": "Текущая версия сервера не поддерживает получение отключения OAuth-моделей. Обновите CPA (CLI Proxy API) до последней версии и повторите попытку.",
+    "delete_title": "Удалить исключение"
   },
   "oauth_model_alias": {
     "title": "Псевдонимы моделей OAuth",
@@ -682,7 +701,8 @@
     "provider_required": "Сначала укажите провайдера",
     "upgrade_required": "Эта функция требует более новой версии CLI Proxy API (CPA). Обновите систему.",
     "upgrade_required_title": "Пожалуйста, обновите CLI Proxy API",
-    "upgrade_required_desc": "Текущая версия сервера не поддерживает API псевдонимов моделей OAuth. Обновите CLI Proxy API (CPA) до последней версии."
+    "upgrade_required_desc": "Текущая версия сервера не поддерживает API псевдонимов моделей OAuth. Обновите CLI Proxy API (CPA) до последней версии.",
+    "delete_title": "Удалить сопоставления"
   },
   "auth_login": {
     "codex_oauth_title": "Codex OAuth",
@@ -871,7 +891,8 @@
     "lines": "строк",
     "removed": "Отфильтровано",
     "upgrade_required_title": "Обновите CLI Proxy API",
-    "upgrade_required_desc": "Текущая версия сервера не поддерживает просмотр журналов. Обновите CLI Proxy API до последней версии, чтобы использовать эту функцию."
+    "upgrade_required_desc": "Текущая версия сервера не поддерживает просмотр журналов. Обновите CLI Proxy API до последней версии, чтобы использовать эту функцию.",
+    "clear_confirm_title": "Очистить журналы"
   },
   "config_management": {
     "title": "Панель конфигурации",
@@ -1172,7 +1193,8 @@
         "cancel": "Отменить",
         "update": "Обновить",
         "add": "Добавить"
-      }
+      },
+      "validation_blocked_short": "Исправьте ошибки"
     }
   },
   "quota_management": {
@@ -1425,7 +1447,9 @@
     "claude_api_key": "API-ключ Claude",
     "commercial_mode_restart_required": "Режим коммерческого использования изменён. Перезапустите сервис, чтобы применить изменения",
     "copy_failed": "Не удалось скопировать",
-    "link_copied": "Ссылка скопирована в буфер обмена"
+    "link_copied": "Ссылка скопирована в буфер обмена",
+    "load_failed": "Не удалось загрузить",
+    "save_failed": "Не удалось сохранить"
   },
   "language": {
     "switch": "Язык",
@@ -1445,7 +1469,9 @@
   },
   "sidebar": {
     "toggle_expand": "Развернуть боковую панель",
-    "toggle_collapse": "Свернуть боковую панель"
+    "toggle_collapse": "Свернуть боковую панель",
+    "expand": "Развернуть",
+    "collapse": "Свернуть"
   },
   "footer": {
     "api_version": "Версия CLI Proxy API",
@@ -1709,5 +1735,131 @@
     "modelCatalog": {
       "notLoaded": "Не загружено"
     }
+  },
+  "proxy_pools": {
+    "title": "Пулы прокси",
+    "runtime_notice": "Пулы прокси сразу сохраняются в файл конфигурации и используются, когда конфигурация ссылается на пул.",
+    "status_failed": "Не удалось загрузить состояние пула прокси",
+    "pool_list": "Записи прокси",
+    "usage_title": "Ссылки на прокси в конфигурации",
+    "panel_label": "Содержимое пула прокси",
+    "empty": "Прокси пока нет",
+    "no_usages": "Глобальная конфигурация и поставщики AI сейчас не ссылаются на прокси напрямую. Привязки учётных данных смотрите в записях прокси.",
+    "disabled": "Отключено",
+    "invalid": "Недействительно",
+    "available": "Доступно",
+    "unavailable": "Недоступно",
+    "unchecked": "Не проверено",
+    "no_bound_credentials": "Не привязано",
+    "add": "Добавить прокси",
+    "check_all": "Проверить все",
+    "check_success": "Проверка прокси завершена",
+    "check_failed": "Проверка прокси не удалась",
+    "check_one": "Проверить",
+    "create_title": "Добавить прокси",
+    "edit_title": "Изменить прокси",
+    "update_success": "Прокси сохранён",
+    "add_success": "Прокси добавлен",
+    "delete_title": "Удалить прокси",
+    "delete_message": "Удалить прокси {{target}}?",
+    "delete_success": "Прокси удалён",
+    "bind_credentials": "Привязать учётные данные",
+    "binding_title": "Привязка учётных данных",
+    "binding_success": "Привязки учётных данных обновлены",
+    "binding_failed": "Не удалось обновить привязки учётных данных",
+    "binding_selected_count": "{{count}} учётных данных",
+    "auth_files_failed": "Не удалось загрузить файлы авторизации",
+    "no_auth_files": "Нет файлов авторизации",
+    "select_proxy": "Выбрать прокси",
+    "deselect_proxy": "Снять выбор прокси",
+    "batch_selected": "Выбрано прокси: {{count}}",
+    "batch_select_visible": "Выбрать текущие прокси",
+    "batch_check": "Проверить выбранные",
+    "batch_check_success": "Проверено прокси: {{count}}",
+    "batch_check_partial": "Проверка завершена: успешно {{success}}, ошибок {{failed}}",
+    "batch_delete_title": "Удалить выбранные прокси",
+    "batch_delete_message": "Удалить выбранные прокси ({{count}})?",
+    "batch_delete_success": "Удалено прокси: {{count}}",
+    "summary": {
+      "total": "Прокси",
+      "enabled": "Включено",
+      "available": "Доступно после проверки",
+      "bound_credentials": "Привязанные учётные данные"
+    },
+    "columns": {
+      "address": "Адрес",
+      "health": "Состояние / регион",
+      "bound": "Привязанные учётные данные",
+      "note": "Заметка",
+      "actions": "Действия"
+    },
+    "usage": {
+      "global": "Глобальный прокси",
+      "auth_file": "Файл авторизации",
+      "provider_key": "Поставщик AI"
+    },
+    "form": {
+      "protocol": "Протокол",
+      "add_mode": "Способ добавления",
+      "mode_url": "URL",
+      "mode_form": "Форма",
+      "proxy_url": "URL прокси",
+      "host": "Хост",
+      "port": "Порт",
+      "username": "Имя пользователя",
+      "password": "Пароль",
+      "show_password": "Показать пароль",
+      "hide_password": "Скрыть пароль",
+      "enabled": "Включить этот прокси",
+      "note": "Заметка"
+    },
+    "validation": {
+      "protocol_required": "Выберите протокол прокси",
+      "host_required": "Введите адрес прокси",
+      "host_pattern": "Адрес прокси не должен содержать пробелы",
+      "port_required": "Введите порт",
+      "port_number": "Порт должен быть числом",
+      "port_range": "Порт должен быть от 1 до 65535",
+      "proxy_url_invalid": "Введите корректный URL прокси"
+    }
+  },
+  "proxy_selection": {
+    "title": "Назначение прокси",
+    "file": "Прокси из файла",
+    "smart": "Умное назначение",
+    "manual": "Указать прокси",
+    "direct": "Напрямую",
+    "proxy": "Прокси",
+    "empty": "Пул прокси пуст. Можно выбрать прямое подключение.",
+    "invalid": "Недействительно",
+    "available": "Доступно",
+    "unavailable": "Недоступно",
+    "unchecked": "Не проверено",
+    "bound_count": "{{count}} учётных данных",
+    "upload_title": "Выбор прокси для файлов авторизации",
+    "inspecting_files": "Разбор адресов прокси из файлов авторизации: {{count}}...",
+    "file_proxy_summary": "Прокси в файлах: {{proxyFiles}}/{{total}}",
+    "unique_proxy_summary": "Уникальных прокси: {{count}}",
+    "existing_proxy_count": "Уже в пуле",
+    "new_proxy_count": "Будут добавлены",
+    "ignored_proxy_count": "Не применяются",
+    "no_proxy_file_count": "Файлы без прокси",
+    "invalid_file_count": "Ошибки разбора",
+    "compare_failed": "Не удалось прочитать конфигурацию пула прокси. После загрузки сервер применит прокси из файлов как резервный вариант.",
+    "new_proxy_preview": "Будет записано в пул прокси",
+    "file_proxy_ignored_hint": "Текущий режим переопределяет или игнорирует прокси внутри файлов, поэтому новые записи пула не создаются автоматически.",
+    "parse_failure_preview": "Файлы с ошибками разбора",
+    "more_failure_count": "Ещё файлов с ошибками: {{count}}",
+    "proxy_file_count": "Файлов: {{count}}",
+    "more_proxy_count": "Ещё прокси: {{count}}"
+  },
+  "plugin_resource": {
+    "load_failed": "Не удалось загрузить ресурс плагина",
+    "not_found": "Ресурс не найден",
+    "not_found_desc": "Проверьте, установлен ли плагин и существует ли ресурс.",
+    "unavailable": "Ресурс недоступен",
+    "empty_src": "Источник пуст",
+    "empty_src_desc": "Для этой страницы плагина нет доступного содержимого.",
+    "page_count": "{{count}} страниц"
   }
 }

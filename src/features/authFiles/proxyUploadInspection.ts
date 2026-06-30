@@ -86,7 +86,7 @@ async function readAuthFileProxy(file: File): Promise<ParsedAuthFileProxy> {
     const text = await file.text();
     const parsed = JSON.parse(text) as unknown;
     if (!isRecord(parsed)) {
-      return { fileName: file.name, status: 'failed', error: 'JSON must be an object' };
+      return { fileName: file.name, status: 'failed', error: 'JSON 必须是对象' };
     }
     const rawProxyURL = readAuthFileProxyValue(parsed);
     if (!rawProxyURL) {
@@ -94,14 +94,14 @@ async function readAuthFileProxy(file: File): Promise<ParsedAuthFileProxy> {
     }
     return { fileName: file.name, status: 'proxy', proxyUrl: normalizeProxyURL(rawProxyURL) };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Invalid JSON or proxy URL';
+    const message = err instanceof Error ? err.message : 'JSON 或代理地址无效';
     return { fileName: file.name, status: 'failed', error: message };
   }
 }
 
 async function yieldToBrowser() {
   await new Promise<void>((resolve) => {
-    window.setTimeout(resolve, 0);
+    globalThis.setTimeout(resolve, 0);
   });
 }
 

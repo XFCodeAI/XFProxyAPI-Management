@@ -39,7 +39,7 @@ const detectRuntimeKind = async (): Promise<ServerRuntimeKind> => {
   try {
     return await versionApi.detectRuntimeKind();
   } catch (error) {
-    console.warn('Runtime kind detection failed:', error);
+    console.warn('检测运行时类型失败:', error);
     return 'unknown';
   }
 };
@@ -96,7 +96,7 @@ export const useAuthStore = create<AuthStoreState>()(
               });
               return true;
             } catch (error) {
-              console.warn('Auto login failed:', error);
+              console.warn('自动登录失败:', error);
               return false;
             }
           }

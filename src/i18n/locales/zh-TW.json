@@ -54,7 +54,8 @@
     "model_alias_placeholder": "模型別名（選填）",
     "invalid_provider_index": "無效的供應商索引。",
     "unsaved_changes_title": "未儲存的變更",
-    "unsaved_changes_message": "你有未儲存的變更，離開後將遺失這些變更。確定要離開嗎？"
+    "unsaved_changes_message": "你有未儲存的變更，離開後將遺失這些變更。確定要離開嗎？",
+    "select": "選擇"
   },
   "title": {
     "main": "CLI Proxy API Management Center",
@@ -95,7 +96,9 @@
     "error_not_found": "找不到 Management API，請確認服務位址指向 CLIProxyAPI 後端",
     "error_server": "後端處理管理介面時發生錯誤，請查看服務日誌",
     "error_cors": "跨域請求被阻擋，請檢查伺服器設定",
-    "error_ssl": "SSL/TLS 憑證驗證失敗"
+    "error_ssl": "SSL/TLS 憑證驗證失敗",
+    "show_key": "顯示密鑰",
+    "hide_key": "隱藏密鑰"
   },
   "header": {
     "check_connection": "檢查連線",
@@ -383,7 +386,13 @@
     "quota_refresh_single": "重新整理配額",
     "quota_refresh_hint": "僅重新整理該驗證檔案的配額",
     "quota_refresh_success": "已重新整理「{{name}}」的配額",
-    "quota_refresh_failed": "重新整理「{{name}}」的配額失敗：{{message}}"
+    "quota_refresh_failed": "重新整理「{{name}}」的配額失敗：{{message}}",
+    "delete_title": "刪除檔案",
+    "delete_all_title": "刪除所有檔案",
+    "filtered_empty_title": "暫無符合篩選的憑證",
+    "filtered_empty_desc": "請調整篩選條件或上傳新的認證檔案。",
+    "lazy_loaded_info": "已顯示 {{current}} / {{total}} 個憑證",
+    "load_more": "載入更多"
   },
   "two_factor": {
     "load_failed": "2FA 資料載入失敗：{{message}}",
@@ -630,7 +639,8 @@
     "scope_provider": "目前範圍：{{provider}}",
     "upgrade_required": "目前 CPA 版本不支援 OAuth 模型停用，請升級 CPA 版本",
     "upgrade_required_title": "需要升級 CPA 版本",
-    "upgrade_required_desc": "目前伺服器版本不支援取得 OAuth 模型停用功能，請升級到最新版本的 CPA（CLI Proxy API）後重試。"
+    "upgrade_required_desc": "目前伺服器版本不支援取得 OAuth 模型停用功能，請升級到最新版本的 CPA（CLI Proxy API）後重試。",
+    "delete_title": "刪除排除項"
   },
   "oauth_model_alias": {
     "title": "OAuth 模型別名",
@@ -694,7 +704,8 @@
     "provider_required": "請先填寫供應商名稱",
     "upgrade_required": "目前 CPA 版本不支援模型別名功能，請升級 CPA 版本",
     "upgrade_required_title": "需要升級 CPA 版本",
-    "upgrade_required_desc": "目前伺服器版本不支援 OAuth 模型別名功能，請升級到最新版本的 CPA（CLI Proxy API）後重試。"
+    "upgrade_required_desc": "目前伺服器版本不支援 OAuth 模型別名功能，請升級到最新版本的 CPA（CLI Proxy API）後重試。",
+    "delete_title": "刪除映射"
   },
   "auth_login": {
     "codex_oauth_title": "Codex OAuth",
@@ -816,7 +827,8 @@
     "iflow_cookie_result_expired": "到期時間",
     "iflow_cookie_result_path": "儲存路徑",
     "iflow_cookie_result_type": "類型",
-    "remote_access_disabled": "遠端存取不支援此登入方式，請從本地（localhost）存取"
+    "remote_access_disabled": "遠端存取不支援此登入方式，請從本地（localhost）存取",
+    "login_another_account": "登入另一個帳號"
   },
   "stats": {
     "success": "成功",
@@ -909,7 +921,8 @@
     "lines": "行",
     "removed": "已篩選",
     "upgrade_required_title": "需要升級 CLI Proxy API",
-    "upgrade_required_desc": "目前伺服器版本不支援記錄檢視功能，請升級到最新版本的 CLI Proxy API 以使用此功能。"
+    "upgrade_required_desc": "目前伺服器版本不支援記錄檢視功能，請升級到最新版本的 CLI Proxy API 以使用此功能。",
+    "clear_confirm_title": "清空日誌"
   },
   "config_management": {
     "title": "設定面板",
@@ -1210,7 +1223,8 @@
         "cancel": "取消",
         "update": "更新",
         "add": "新增"
-      }
+      },
+      "validation_blocked_short": "修復錯誤"
     }
   },
   "quota_management": {
@@ -1473,7 +1487,9 @@
     "claude_api_key": "Claude API 金鑰",
     "commercial_mode_restart_required": "商業模式開關已變更，請重啟服務後生效",
     "copy_failed": "複製失敗",
-    "link_copied": "已複製"
+    "link_copied": "已複製",
+    "load_failed": "載入失敗",
+    "save_failed": "儲存失敗"
   },
   "language": {
     "switch": "語言",
@@ -1493,7 +1509,9 @@
   },
   "sidebar": {
     "toggle_expand": "展開側邊欄",
-    "toggle_collapse": "收起側邊欄"
+    "toggle_collapse": "收起側邊欄",
+    "expand": "展開",
+    "collapse": "收起"
   },
   "footer": {
     "api_version": "CLI Proxy API 版本",
@@ -1757,5 +1775,122 @@
     "modelCatalog": {
       "notLoaded": "未載入"
     }
+  },
+  "proxy_pools": {
+    "title": "代理池",
+    "runtime_notice": "代理池會立即儲存到設定檔，並在設定引用代理池時參與請求代理路線。",
+    "status_failed": "代理池狀態讀取失敗",
+    "pool_list": "代理項目",
+    "usage_title": "設定代理引用",
+    "panel_label": "代理池內容",
+    "empty": "暫無代理項目",
+    "no_usages": "目前沒有全域或 AI 供應商設定直接引用代理；憑證綁定請看「代理項目」。",
+    "disabled": "停用",
+    "invalid": "無效",
+    "available": "可用",
+    "unavailable": "不可用",
+    "unchecked": "未檢測",
+    "no_bound_credentials": "未綁定",
+    "add": "新增代理",
+    "check_all": "檢測全部",
+    "check_success": "代理檢測完成",
+    "check_failed": "代理檢測失敗",
+    "check_one": "檢測",
+    "create_title": "新增代理",
+    "edit_title": "編輯代理",
+    "update_success": "代理已儲存",
+    "add_success": "代理已新增",
+    "delete_title": "刪除代理",
+    "delete_message": "確認刪除代理 {{target}}？",
+    "delete_success": "代理已刪除",
+    "bind_credentials": "綁定憑證",
+    "binding_title": "綁定憑證",
+    "binding_success": "憑證綁定已更新",
+    "binding_failed": "憑證綁定失敗",
+    "binding_selected_count": "{{count}} 個憑證",
+    "auth_files_failed": "認證檔案讀取失敗",
+    "no_auth_files": "暫無認證檔案",
+    "select_proxy": "選擇代理",
+    "deselect_proxy": "取消選擇代理",
+    "batch_selected": "已選 {{count}} 個代理",
+    "batch_select_visible": "全選目前代理",
+    "batch_check": "檢測已選",
+    "batch_check_success": "已檢測 {{count}} 個代理",
+    "batch_check_partial": "代理檢測完成，成功 {{success}} 個，失敗 {{failed}} 個",
+    "batch_delete_title": "刪除已選代理",
+    "batch_delete_message": "確認刪除已選的 {{count}} 個代理？",
+    "batch_delete_success": "已刪除 {{count}} 個代理",
+    "summary": {
+      "total": "代理數量",
+      "enabled": "啟用",
+      "available": "檢測可用",
+      "bound_credentials": "綁定憑證"
+    },
+    "columns": {
+      "address": "地址",
+      "health": "健康 / 地區",
+      "bound": "綁定憑證",
+      "note": "備註",
+      "actions": "操作"
+    },
+    "usage": {
+      "global": "全域代理",
+      "auth_file": "認證檔案",
+      "provider_key": "AI 供應商"
+    },
+    "form": {
+      "protocol": "協議",
+      "add_mode": "新增方式",
+      "mode_url": "直連",
+      "mode_form": "表格",
+      "proxy_url": "代理直連",
+      "host": "地址",
+      "port": "連接埠",
+      "username": "使用者名稱",
+      "password": "密碼",
+      "show_password": "顯示密碼",
+      "hide_password": "隱藏密碼",
+      "enabled": "啟用這個代理",
+      "note": "備註"
+    },
+    "validation": {
+      "protocol_required": "請選擇代理協議",
+      "host_required": "請輸入代理地址",
+      "host_pattern": "代理地址不能包含空格",
+      "port_required": "請輸入連接埠",
+      "port_number": "連接埠必須是數字",
+      "port_range": "連接埠範圍必須是 1-65535",
+      "proxy_url_invalid": "請輸入有效的代理直連"
+    }
+  },
+  "proxy_selection": {
+    "title": "代理分配",
+    "file": "檔案內代理",
+    "smart": "智慧分配",
+    "manual": "指定代理",
+    "direct": "直連",
+    "proxy": "代理",
+    "empty": "代理池為空，可選擇直連",
+    "invalid": "無效",
+    "available": "可用",
+    "unavailable": "不可用",
+    "unchecked": "未檢測",
+    "bound_count": "{{count}} 個憑證",
+    "upload_title": "選擇認證檔案代理",
+    "inspecting_files": "正在解析 {{count}} 個認證檔案的代理地址...",
+    "file_proxy_summary": "檔案內代理: {{proxyFiles}}/{{total}} 個檔案",
+    "unique_proxy_summary": "{{count}} 個唯一代理",
+    "existing_proxy_count": "已在代理池",
+    "new_proxy_count": "將新增",
+    "ignored_proxy_count": "不會套用",
+    "no_proxy_file_count": "無代理檔案",
+    "invalid_file_count": "解析失敗",
+    "compare_failed": "代理池設定讀取失敗，上傳後將由後端按檔案內代理兜底處理。",
+    "new_proxy_preview": "將寫入代理池",
+    "file_proxy_ignored_hint": "目前模式會覆蓋或忽略檔案內代理地址，不會因為這些檔案自動新增代理池項目。",
+    "parse_failure_preview": "解析失敗檔案",
+    "more_failure_count": "還有 {{count}} 個失敗檔案",
+    "proxy_file_count": "{{count}} 個檔案",
+    "more_proxy_count": "還有 {{count}} 個代理"
   }
 }

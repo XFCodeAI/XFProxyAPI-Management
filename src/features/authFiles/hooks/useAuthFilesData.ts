@@ -244,9 +244,18 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           const details = result.failed.map((item) => `${item.name}: ${item.error}`).join('; ');
           showNotification(`${t('notification.upload_failed')}: ${details}`, 'error');
         }
+
+        if (result.failed.length === 0) {
+          return [];
+        }
+        const failedNames = new Set(result.failed.map((item) => item.name).filter(Boolean));
+        return failedNames.size > 0
+          ? validFiles.filter((file) => failedNames.has(file.name))
+          : validFiles;
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        const errorMessage = err instanceof Error ? err.message : '未知错误';
         showNotification(`${t('notification.upload_failed')}: ${errorMessage}`, 'error');
+        return validFiles;
       } finally {
         setUploading(false);
       }
@@ -717,9 +726,16 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     }
     const filesToUpload = pendingUploadFiles;
     setUploadProxyDialogOpen(false);
-    setPendingUploadFiles([]);
-    await uploadFilesWithSelection(filesToUpload, uploadProxySelection);
-  }, [pendingUploadFiles, uploadFilesWithSelection, uploadProxySelection]);
+    const failedFiles = await uploadFilesWithSelection(filesToUpload, uploadProxySelection);
+    if (failedFiles.length === 0) {
+      setPendingUploadFiles([]);
+      setUploadProxyInspection(emptyAuthFileProxyInspection());
+      return;
+    }
+    setPendingUploadFiles(failedFiles);
+    void inspectUploadProxyFiles(failedFiles);
+    setUploadProxyDialogOpen(true);
+  }, [inspectUploadProxyFiles, pendingUploadFiles, uploadFilesWithSelection, uploadProxySelection]);
 
   return {
     files,

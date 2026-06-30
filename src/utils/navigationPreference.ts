@@ -17,5 +17,7 @@ export function writeNavigationPreference(key: string, value: string) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(key, value);
-  } catch {}
+  } catch {
+    // 浏览器隐私模式或存储配额异常时，导航偏好丢失不影响主流程。
+  }
 }

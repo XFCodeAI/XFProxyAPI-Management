@@ -32,7 +32,7 @@ export function ConfirmationModal() {
       await onConfirm();
       hideConfirmation();
     } catch (error) {
-      console.error('Confirmation action failed:', error);
+      console.error('确认操作执行失败:', error);
     } finally {
       setConfirmationLoading(false);
     }

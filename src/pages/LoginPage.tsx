@@ -146,7 +146,7 @@ export function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSubmit = useCallback(async () => {
+  const submitLogin = useCallback(async () => {
     if (!managementKey.trim()) {
       setError(t('login.error_required'));
       return;
@@ -181,14 +181,13 @@ export function LoginPage() {
     t,
   ]);
 
-  const handleSubmitKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter' && !loading) {
-        event.preventDefault();
-        handleSubmit();
-      }
+  const handleSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (loading) return;
+      void submitLogin();
     },
-    [loading, handleSubmit]
+    [loading, submitLogin]
   );
 
   if (isAuthenticated && !autoLoading && !autoLoginSuccess) {
@@ -214,7 +213,17 @@ export function LoginPage() {
           <div className={styles.formContent}>
             <img src={INLINE_LOGO_JPEG} alt="Logo" className={styles.logo} />
 
-            <div className={styles.loginCard}>
+            <form className={styles.loginCard} onSubmit={handleSubmit}>
+              <input
+                className={styles.hiddenUsername}
+                type="text"
+                name="cpa-management-base"
+                autoComplete="username"
+                value={apiBase || detectedBase}
+                readOnly
+                tabIndex={-1}
+                aria-hidden="true"
+              />
               <div className={styles.loginHeader}>
                 <div className={styles.titleRow}>
                   <div className={styles.title}>{t('title.login')}</div>
@@ -265,7 +274,6 @@ export function LoginPage() {
                 autoComplete="current-password"
                 value={managementKey}
                 onChange={(e) => setManagementKey(e.target.value)}
-                onKeyDown={handleSubmitKeyDown}
                 rightElement={
                   <TooltipIconButton
                     onClick={() => setShowKey((prev) => !prev)}
@@ -290,12 +298,12 @@ export function LoginPage() {
                 />
               </div>
 
-              <Button fullWidth onClick={handleSubmit} loading={loading}>
+              <Button type="submit" fullWidth loading={loading}>
                 {loading ? t('login.submitting') : t('login.submit_button')}
               </Button>
 
               {error && <div className={styles.errorBox}>{error}</div>}
-            </div>
+            </form>
           </div>
         )}
       </div>
