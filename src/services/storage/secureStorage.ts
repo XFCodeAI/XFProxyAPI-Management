@@ -95,7 +95,7 @@ class ObfuscatedStorageService {
       try {
         this.setItem(key, parsed);
       } catch (error) {
-        console.warn(`Failed to migrate key "${key}":`, error);
+        console.warn(`迁移本地存储键 "${key}" 失败:`, error);
       }
     });
   }

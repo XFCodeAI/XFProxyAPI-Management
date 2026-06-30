@@ -279,7 +279,9 @@ export function ProxyPoolsPage() {
         try {
           useConfigStore.getState().clearCache();
           await useConfigStore.getState().fetchConfig(undefined, true);
-        } catch {}
+        } catch (err: unknown) {
+          console.warn('代理池已保存，但配置缓存刷新失败:', err);
+        }
         showNotification(successMessage, 'success');
         return snapshot;
       } catch (err: unknown) {
@@ -404,7 +406,9 @@ export function ProxyPoolsPage() {
         setInputMode('url');
       }
       clearFieldErrors('protocol', 'host', 'port');
-    } catch {}
+    } catch {
+      // 输入过程中允许半成品代理直链存在，提交时再展示校验错误。
+    }
   };
 
   const handleModalSubmit = async () => {
@@ -552,11 +556,11 @@ export function ProxyPoolsPage() {
       const results = await Promise.allSettled(
         selectedPoolStatuses.map((status) => proxyPoolsApi.checkOne(status.id))
       );
-      const nextStatuses = results
-        .filter((result): result is PromiseFulfilledResult<ProxyPoolStatusEntry[]> => {
-          return result.status === 'fulfilled';
-        })
-        .flatMap((result) => result.value);
+      const fulfilledResults = results.filter(
+        (result): result is PromiseFulfilledResult<ProxyPoolStatusEntry[]> =>
+          result.status === 'fulfilled'
+      );
+      const nextStatuses = fulfilledResults.flatMap((result) => result.value);
 
       if (nextStatuses.length > 0) {
         const statusByID = new Map(nextStatuses.map((status) => [status.id, status]));
@@ -564,16 +568,17 @@ export function ProxyPoolsPage() {
         setStatusFailed(false);
       }
 
-      const failedCount = results.length - nextStatuses.length;
+      const successCount = fulfilledResults.length;
+      const failedCount = results.length - successCount;
       showNotification(
         failedCount === 0
           ? t('proxy_pools.batch_check_success', {
               defaultValue: '已检测 {{count}} 个代理',
-              count: nextStatuses.length,
+              count: successCount,
             })
           : t('proxy_pools.batch_check_partial', {
               defaultValue: '代理检测完成，成功 {{success}} 个，失败 {{failed}} 个',
-              success: nextStatuses.length,
+              success: successCount,
               failed: failedCount,
             }),
         failedCount === 0 ? 'success' : 'warning'

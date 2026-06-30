@@ -17,11 +17,7 @@ import {
   itemTitleClass,
 } from '@/components/ui/listStyles';
 import { getStatusBadgeClass } from '@/components/ui/statusStyles';
-import {
-  TooltipButton,
-  TooltipElement,
-  TooltipIconButton,
-} from '@/components/ui/TooltipControls';
+import { TooltipButton, TooltipElement, TooltipIconButton } from '@/components/ui/TooltipControls';
 import { lockScroll, unlockScroll } from '@/components/ui/scrollLock';
 import {
   IconChevronDown,
@@ -320,7 +316,7 @@ export function LogsPage() {
         setLogState({ buffer, visibleFrom });
       }
     } catch (err: unknown) {
-      console.error('Failed to load logs:', err);
+      console.error('加载日志失败:', err);
       if (isLoggingToFileDisabledError(err)) {
         if (!incremental) {
           resetLogPosition();
@@ -410,7 +406,7 @@ export function LogsPage() {
       // API 返回 { files: [...] }
       setErrorLogs(Array.isArray(res.files) ? res.files : []);
     } catch (err: unknown) {
-      console.error('Failed to load error logs:', err);
+      console.error('加载错误日志失败:', err);
       setErrorLogs([]);
       const message = getErrorMessage(err);
       setErrorLogsError(
@@ -1282,9 +1278,7 @@ export function LogsPage() {
               </span>
             </div>
           )}
-          {selectedErrorLogError && (
-            <div className={fieldErrorClass}>{selectedErrorLogError}</div>
-          )}
+          {selectedErrorLogError && <div className={fieldErrorClass}>{selectedErrorLogError}</div>}
           {selectedErrorLogLoading ? (
             <div className={fieldHintClass}>{t('common.loading')}</div>
           ) : selectedErrorLogText ? (

@@ -88,7 +88,7 @@ const normalizeBatchFailures = (value: unknown): AuthFileBatchFailure[] => {
           : '';
 
     if (!name && !error) return result;
-    result.push({ name, error: error || 'Unknown error' });
+    result.push({ name, error: error || '未知错误' });
     return result;
   }, []);
 };

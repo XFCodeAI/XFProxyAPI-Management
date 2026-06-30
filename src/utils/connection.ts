@@ -23,7 +23,7 @@ export const detectApiBaseFromLocation = (): string => {
     const normalizedPort = port ? `:${port}` : '';
     return normalizeApiBase(`${protocol}//${hostname}${normalizedPort}`);
   } catch (error) {
-    console.warn('Failed to detect api base from location, fallback to default', error);
+    console.warn('从浏览器地址检测 API 地址失败，已回退到默认地址:', error);
     return normalizeApiBase(`http://localhost:${DEFAULT_API_PORT}`);
   }
 };

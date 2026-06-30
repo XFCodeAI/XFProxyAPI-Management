@@ -21,6 +21,7 @@ export const Button = forwardRef<HTMLButtonElement, PropsWithChildren<ButtonProp
     loading = false,
     className = '',
     disabled,
+    type = 'button',
     ...rest
   },
   ref
@@ -35,10 +36,8 @@ export const Button = forwardRef<HTMLButtonElement, PropsWithChildren<ButtonProp
   );
 
   return (
-    <button ref={ref} className={classes} disabled={disabled || loading} {...rest}>
-      {loading && (
-        <span className={styles.spinner} aria-hidden="true" />
-      )}
+    <button ref={ref} type={type} className={classes} disabled={disabled || loading} {...rest}>
+      {loading && <span className={styles.spinner} aria-hidden="true" />}
       {hasChildren ? children : null}
     </button>
   );

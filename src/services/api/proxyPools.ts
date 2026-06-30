@@ -185,12 +185,13 @@ function collectProxyUsages(parsed: unknown): ProxyPoolUsage[] {
 }
 
 function serializeProxyPool(pool: ProxyPoolEntry): Record<string, unknown> {
+  const normalizedPort = pool.port.trim();
   const entry: Record<string, unknown> = {
     name: pool.name.trim() || DEFAULT_PROXY_POOL_NAME,
     enabled: pool.enabled,
     protocol: pool.protocol,
     host: pool.host.trim(),
-    port: Number(pool.port),
+    port: /^\d+$/.test(normalizedPort) ? Number(normalizedPort) : normalizedPort,
   };
   if (pool.username.trim()) entry.username = pool.username.trim();
   if (pool.password) entry.password = pool.password;
@@ -230,7 +231,7 @@ function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
   const id = readString(value, 'id');
   if (!id) return null;
   const protocol = normalizeProtocol(value.protocol);
-  const assignedTo = normalizeAssignments(value.assigned_to);
+  const assignedTo = normalizeAssignments(value.assigned_to ?? value.assignedTo);
   return {
     id,
     name: readString(value, 'name') || DEFAULT_PROXY_POOL_NAME,
@@ -240,12 +241,12 @@ function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
     port: readNumber(value, 'port'),
     username: readString(value, 'username'),
     note: readString(value, 'note'),
-    redactedUrl: readString(value, 'redacted_url'),
-    configError: readString(value, 'config_error') || undefined,
+    redactedUrl: readString(value, 'redacted_url') || readString(value, 'redactedUrl'),
+    configError: readString(value, 'config_error') || readString(value, 'configError') || undefined,
     checked: readBool(value, 'checked', false),
     available: readBool(value, 'available', false),
-    checkError: readString(value, 'check_error') || undefined,
-    lastChecked: readString(value, 'last_checked') || undefined,
+    checkError: readString(value, 'check_error') || readString(value, 'checkError') || undefined,
+    lastChecked: readString(value, 'last_checked') || readString(value, 'lastChecked') || undefined,
     ip: readString(value, 'ip') || undefined,
     country: readString(value, 'country') || undefined,
     region: readString(value, 'region') || undefined,
@@ -253,7 +254,10 @@ function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
     location: readString(value, 'location') || undefined,
     org: readString(value, 'org') || undefined,
     timezone: readString(value, 'timezone') || undefined,
-    assignedCount: readNumber(value, 'assigned_count') || assignedTo.length,
+    assignedCount:
+      readNumber(value, 'assigned_count') ||
+      readNumber(value, 'assignedCount') ||
+      assignedTo.length,
     assignedTo,
   };
 }
@@ -275,7 +279,7 @@ async function save(pools: ProxyPoolEntry[]): Promise<ProxyPoolsConfigSnapshot> 
   const latestYaml = await configFileApi.fetchConfigYaml();
   const doc = parseDocument(latestYaml);
   if (doc.errors.length > 0) {
-    throw new Error(doc.errors[0]?.message || 'Invalid YAML');
+    throw new Error(doc.errors[0]?.message || 'YAML 无效');
   }
   if (!isMap(doc.contents)) {
     doc.contents = doc.createNode({}) as unknown as typeof doc.contents;
@@ -316,13 +320,18 @@ function defaultProxyPort(protocol: ProxyPoolProtocol): string {
 
 export function parseProxyPoolURL(raw: string): Omit<ProxyPoolEntry, 'id' | 'note'> {
   const value = raw.trim();
-  const parsed = new URL(value);
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('代理地址格式无效');
+  }
   const protocol = normalizeProxyPoolProtocol(parsed.protocol.replace(/:$/, ''));
   if (!protocol) {
-    throw new Error('unsupported proxy protocol');
+    throw new Error('不支持的代理协议');
   }
   if (!parsed.hostname.trim()) {
-    throw new Error('proxy host is required');
+    throw new Error('代理地址不能为空');
   }
 
   return {
