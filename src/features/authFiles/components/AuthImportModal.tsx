@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FileJson, TextCursorInput, Upload } from 'lucide-react';
+import { FileJson, TextCursorInput, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import {
@@ -75,6 +75,13 @@ export function AuthImportModal({
       });
       return newRecords.length > 0 ? [...currentRecords, ...newRecords] : currentRecords;
     });
+  };
+
+  const handleRemoveSessionRecord = (recordKey: string) => {
+    if (importing) return;
+    setStagedRecords((currentRecords) =>
+      currentRecords.filter((record) => getSessionPreviewRecordKey(record) !== recordKey)
+    );
   };
 
   const handleImportSession = () => {
@@ -179,7 +186,11 @@ export function AuthImportModal({
                   '{"user":{"email":"mark@example.com"},"accessToken":"...","sessionToken":"..."}',
               })}
             />
-            <SessionImportSummary result={importResult} />
+            <SessionImportSummary
+              result={importResult}
+              disabled={importing}
+              onRemoveRecord={handleRemoveSessionRecord}
+            />
           </div>
         )}
       </div>
@@ -199,7 +210,15 @@ function buildSessionImportResult(
   };
 }
 
-function SessionImportSummary({ result }: { result: GptSessionImportResult }) {
+function SessionImportSummary({
+  result,
+  disabled,
+  onRemoveRecord,
+}: {
+  result: GptSessionImportResult;
+  disabled?: boolean;
+  onRemoveRecord: (recordKey: string) => void;
+}) {
   const { t } = useTranslation();
   const visibleIssues = result.issues.slice(0, 3);
   const hiddenIssueCount = Math.max(0, result.issues.length - visibleIssues.length);
@@ -248,8 +267,10 @@ function SessionImportSummary({ result }: { result: GptSessionImportResult }) {
         <div className={styles.previewList}>
           {result.records.map((record) => (
             <SessionPreviewRow
-              key={`${record.sourceName}:${record.sourcePath}:${record.cpa.access_token}`}
+              key={getSessionPreviewRecordKey(record)}
               record={record}
+              disabled={disabled}
+              onRemove={onRemoveRecord}
             />
           ))}
         </div>
@@ -277,7 +298,22 @@ function SessionImportSummary({ result }: { result: GptSessionImportResult }) {
   );
 }
 
-function SessionPreviewRow({ record }: { record: GptSessionImportRecord }) {
+function SessionPreviewRow({
+  record,
+  disabled,
+  onRemove,
+}: {
+  record: GptSessionImportRecord;
+  disabled?: boolean;
+  onRemove: (recordKey: string) => void;
+}) {
+  const { t } = useTranslation();
+  const recordLabel = record.email || record.name;
+  const removeLabel = t('auth_files.import_gpt_session_remove_preview', {
+    name: recordLabel,
+    defaultValue: '删除预览项',
+  });
+
   return (
     <div className={styles.previewRow}>
       <div className={styles.previewMain}>
@@ -288,6 +324,18 @@ function SessionPreviewRow({ record }: { record: GptSessionImportRecord }) {
         <span>{record.planType || '-'}</span>
         <span>{formatDate(record.expiresAt) || '-'}</span>
       </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={styles.previewDeleteButton}
+        onClick={() => onRemove(getSessionPreviewRecordKey(record))}
+        disabled={disabled}
+        aria-label={removeLabel}
+        title={removeLabel}
+      >
+        <Trash2 size={14} aria-hidden="true" />
+      </Button>
     </div>
   );
 }
@@ -314,4 +362,8 @@ function formatDate(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+function getSessionPreviewRecordKey(record: GptSessionImportRecord): string {
+  return `${record.sourceName}:${record.sourcePath}:${record.cpa.access_token}`;
 }

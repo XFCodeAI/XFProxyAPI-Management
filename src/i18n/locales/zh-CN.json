@@ -236,6 +236,7 @@
     "import_gpt_session_placeholder": "{\"user\":{\"email\":\"mark@example.com\"},\"accessToken\":\"...\",\"sessionToken\":\"...\"}",
     "import_gpt_session_empty": "等待粘贴 Session JSON。",
     "import_gpt_session_confirm": "导入 CPA",
+    "import_gpt_session_remove_preview": "从预览中删除 {{name}}",
     "import_stat_ready": "可导入",
     "import_stat_missing_refresh": "无刷新令牌",
     "import_stat_synthetic_id": "占位 ID Token",

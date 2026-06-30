@@ -202,6 +202,7 @@
 
 .previewRow {
   flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .previewMain {
@@ -237,6 +238,17 @@
   color: var(--muted-foreground);
   font-size: 0.75rem;
   white-space: nowrap;
+}
+
+.previewDeleteButton {
+  width: 2rem;
+  padding: 0;
+  color: var(--muted-foreground);
+
+  &:hover:not(:disabled) {
+    color: var(--destructive);
+    background: color-mix(in srgb, var(--destructive) 8%, transparent);
+  }
 }
 
 .issueRow {
@@ -290,6 +302,10 @@
   .previewMeta {
     flex-wrap: wrap;
     white-space: normal;
+  }
+
+  .previewDeleteButton {
+    justify-self: flex-start;
   }
 
   .footer {
