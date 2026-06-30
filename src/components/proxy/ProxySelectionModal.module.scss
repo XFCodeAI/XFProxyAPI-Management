@@ -1,4 +1,7 @@
 .content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   padding: 2px 0;
 }
 
@@ -7,4 +10,160 @@
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.inspectionBox {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+}
+
+.inspectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.inspectionStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.statItem {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+
+  strong {
+    display: block;
+    font-size: 16px;
+    line-height: 1.1;
+    color: var(--foreground);
+  }
+
+  span {
+    display: block;
+    margin-top: 3px;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.3;
+    color: var(--muted-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.statItemBad strong {
+  color: var(--destructive);
+}
+
+.inspectionWarning,
+.inspectionHint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.inspectionWarning {
+  color: var(--destructive);
+}
+
+.proxyPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.failurePreview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.proxyPreviewTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.proxyPreviewRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  font-size: 12px;
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  em {
+    flex: 0 0 auto;
+    font-style: normal;
+    color: var(--muted-foreground);
+  }
+}
+
+.proxyPreviewMore {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.failureRow {
+  display: grid;
+  grid-template-columns: minmax(0, 0.45fr) minmax(0, 0.55fr);
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in oklch, var(--destructive), var(--border) 72%);
+  border-radius: 6px;
+  background: var(--background);
+  font-size: 12px;
+
+  span,
+  em {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    color: var(--foreground);
+  }
+
+  em {
+    font-style: normal;
+    color: var(--destructive);
+  }
+}
+
+@media (max-width: 640px) {
+  .inspectionHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .inspectionStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

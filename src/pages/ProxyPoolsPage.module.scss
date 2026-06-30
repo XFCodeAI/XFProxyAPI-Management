@@ -8,6 +8,9 @@
   flex-direction: column;
   gap: 16px;
   margin: 0 auto;
+  padding-bottom: calc(
+    var(--proxy-pools-action-bar-height, 0px) + 16px + env(safe-area-inset-bottom)
+  );
   overflow-y: auto;
 }
 
@@ -180,6 +183,86 @@
   }
 }
 
+.managementPanel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.panelTabs {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  scrollbar-width: thin;
+}
+
+.panelTab {
+  @include button-reset;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 32px;
+  min-width: 108px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-md) - 2px);
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+
+  &:hover:not(.panelTabActive) {
+    border-color: var(--border);
+    background: var(--accent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
+}
+
+.panelTabActive {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  color: var(--primary);
+}
+
+.panelCount {
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.panelContent {
+  min-width: 0;
+}
+
 .warningText {
   color: var(--muted-foreground);
   font-size: 12px;
@@ -198,7 +281,8 @@
 .tableRow {
   display: grid;
   grid-template-columns:
-    minmax(260px, 1.5fr) minmax(150px, 0.95fr) minmax(150px, 0.9fr) minmax(140px, 0.8fr)
+    34px minmax(260px, 1.5fr) minmax(150px, 0.95fr) minmax(150px, 0.9fr)
+    minmax(140px, 0.8fr)
     152px;
   align-items: center;
   gap: 12px;
@@ -219,6 +303,10 @@
   }
 }
 
+.tableRowSelected {
+  background: color-mix(in srgb, var(--primary) 7%, var(--background));
+}
+
 .tableHead {
   min-height: 38px;
   background: var(--muted);
@@ -229,6 +317,13 @@
   @media (max-width: 980px) {
     display: none;
   }
+}
+
+.selectionCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
 }
 
 .proxyCell {
@@ -256,6 +351,42 @@
     font-size: 11px;
     font-weight: 750;
   }
+}
+
+.batchActionBar {
+  position: fixed;
+  left: var(--content-center-x, 50%);
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 50;
+  display: flex;
+  box-sizing: border-box;
+  width: min(920px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--popover);
+  box-shadow: var(--shadow-lg);
+}
+
+.batchSelectionText {
+  flex: 0 0 auto;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.batchActionButtons {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .monoValue {
@@ -630,4 +761,34 @@
 .bindingProvider {
   color: var(--muted-foreground);
   font-weight: 650;
+}
+
+@include mobile {
+  .panelTabs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .panelTab {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .batchActionBar {
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+    transform: none;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .batchActionButtons {
+    justify-content: stretch;
+
+    > button {
+      flex: 1 1 auto;
+    }
+  }
 }

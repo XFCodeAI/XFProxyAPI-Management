@@ -113,6 +113,7 @@ interface QuotaSectionProps<TState extends QuotaStatusState, TData> {
   onDeleteCredential?: (name: string) => void;
   onToggleCredentialStatus?: (item: AuthFileItem, enabled: boolean) => void;
   onToggleCredentialSelect?: (name: string) => void;
+  onVisibleCredentialsChange?: (items: AuthFileItem[]) => void;
   headerActionAfterRefresh?: ReactNode;
 }
 
@@ -131,6 +132,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
   onDeleteCredential,
   onToggleCredentialStatus,
   onToggleCredentialSelect,
+  onVisibleCredentialsChange,
   headerActionAfterRefresh,
 }: QuotaSectionProps<TState, TData>) {
   const { t } = useTranslation();
@@ -145,20 +147,28 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
   const [visibleAllCount, setVisibleAllCount] = useState(0);
   const [resettingQuotaName, setResettingQuotaName] = useState<string | null>(null);
   const lazyLoadRef = useRef<HTMLDivElement | null>(null);
+  const { quota, loadQuota } = useQuotaLoader(config);
 
   const providerFiles = useMemo(
     () => files.filter((file) => config.filterFn(file)),
     [files, config]
+  );
+  const isProblemCredential = useCallback(
+    (file: AuthFileItem) => {
+      const quotaStatus = quota[file.name]?.status;
+      return hasAuthFileStatusMessage(file) || quotaStatus === 'error';
+    },
+    [quota]
   );
   const filteredFiles = useMemo(
     () =>
       providerFiles.filter((file) => {
         if (statusFilterMode === 'enabled') return file.disabled !== true;
         if (statusFilterMode === 'disabled') return file.disabled === true;
-        if (statusFilterMode === 'problem') return hasAuthFileStatusMessage(file);
+        if (statusFilterMode === 'problem') return isProblemCredential(file);
         return true;
       }),
-    [providerFiles, statusFilterMode]
+    [isProblemCredential, providerFiles, statusFilterMode]
   );
   const effectiveViewMode: ViewMode = viewMode;
   const allViewChunkSize = Math.max(ALL_VIEW_MIN_CHUNK_SIZE, columns * 3);
@@ -187,13 +197,16 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     setVisibleAllCount(Math.min(filteredFiles.length, allViewChunkSize));
   }, [allViewChunkSize, effectiveViewMode, filteredFiles.length, statusFilterMode]);
 
-  const { quota, loadQuota } = useQuotaLoader(config);
-
   const visibleAllItems = useMemo(
     () => filteredFiles.slice(0, visibleAllCount),
     [filteredFiles, visibleAllCount]
   );
   const visibleItems = effectiveViewMode === 'all' ? visibleAllItems : pageItems;
+
+  useEffect(() => {
+    onVisibleCredentialsChange?.(visibleItems);
+  }, [onVisibleCredentialsChange, visibleItems]);
+
   const canLoadMoreAll = effectiveViewMode === 'all' && visibleAllCount < filteredFiles.length;
   const loadMoreAll = useCallback(() => {
     setVisibleAllCount((current) =>

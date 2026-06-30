@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
@@ -151,6 +151,14 @@ export function ProvidersWorkbenchPage() {
   const providerSortBy = activeFilterState.sortBy;
   const providerSortDir = activeFilterState.sortDir;
   const activeGroup = groups.find((g) => g.id === activeBrand) ?? groups[0] ?? null;
+
+  useEffect(() => {
+    if (groups.length === 0) return;
+    if (groups.some((group) => group.id === uiState.activeBrand)) return;
+    persistUiState((prev) =>
+      prev.activeBrand === firstVisibleBrand ? prev : { ...prev, activeBrand: firstVisibleBrand }
+    );
+  }, [firstVisibleBrand, groups, persistUiState, uiState.activeBrand]);
 
   const updateActiveFilterState = useCallback(
     (patch: Partial<ProviderFilterState>) => {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Upload } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -23,13 +24,16 @@ import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components
 import { useAuthFilesData } from '@/features/authFiles/hooks/useAuthFilesData';
 import { useAuthFilesModels } from '@/features/authFiles/hooks/useAuthFilesModels';
 import { useAuthFilesPrefixProxyEditor } from '@/features/authFiles/hooks/useAuthFilesPrefixProxyEditor';
+import { isRuntimeOnlyAuthFile } from '@/features/authFiles/constants';
 import { getPluginTitle } from '@/features/plugins/pluginResources';
+import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useOAuthProviderFlow } from '@/hooks/useOAuthProviderFlow';
 import { authFilesApi, pluginsApi } from '@/services/api';
 import { useAuthStore, useNotificationStore } from '@/stores';
 import type { AuthFileItem, PluginListEntry } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
+import { readNavigationPreference, writeNavigationPreference } from '@/utils/navigationPreference';
 import { resolveAuthProvider } from '@/utils/quota';
 import styles from './QuotaPage.module.scss';
 
@@ -60,6 +64,9 @@ type QuotaProviderDefinition = BuiltInQuotaProviderDefinition | PluginQuotaProvi
 type QuotaProviderSummary = QuotaProviderDefinition & {
   credentialCount: number;
 };
+
+const EMPTY_AUTH_FILE_ITEMS: AuthFileItem[] = [];
+const QUOTA_ACTIVE_PROVIDER_STORAGE_KEY = 'quotaPage.activeProvider';
 
 const createProviderFilter = (providerId: string) => (file: AuthFileItem) =>
   resolveAuthProvider(file) === providerId;
@@ -164,6 +171,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     uploadProxySelection,
     uploadProxyPools,
     uploadProxyPoolsLoading,
+    uploadProxyInspection,
     fileInputRef,
     loadFiles,
     handleUploadClick,
@@ -172,6 +180,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     handleDownload,
     handleStatusToggle,
     toggleSelect,
+    selectAllVisible,
     deselectAll,
     batchDownload,
     batchSetStatus,
@@ -183,10 +192,18 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     cancelUploadProxySelection,
   } = useAuthFilesData();
   const [pluginProviders, setPluginProviders] = useState<PluginQuotaProviderDefinition[]>([]);
+  const [pluginProvidersLoaded, setPluginProvidersLoaded] = useState(false);
   const [excludedModels, setExcludedModels] = useState<Record<string, string[]>>({});
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(() =>
+    readNavigationPreference(QUOTA_ACTIVE_PROVIDER_STORAGE_KEY)
+  );
   const [oauthDialogProviderId, setOauthDialogProviderId] = useState<string | null>(null);
   const [authSettingsOpen, setAuthSettingsOpen] = useState(false);
+  const [visibleQuotaCredentials, setVisibleQuotaCredentials] = useState<{
+    providerId: string;
+    files: AuthFileItem[];
+  }>({ providerId: '', files: EMPTY_AUTH_FILE_ITEMS });
+  const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
 
   const disableControls = connectionStatus !== 'connected';
   const {
@@ -229,6 +246,20 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const activeProviderId = selectedProviderId ?? defaultProviderId;
   const activeProvider =
     providerSummaries.find((provider) => provider.id === activeProviderId) ?? providerSummaries[0];
+  const activeProviderCredentials = useMemo(
+    () => files.filter(activeProvider.config.filterFn),
+    [activeProvider, files]
+  );
+  const visibleCredentialFiles =
+    activeProvider.kind === 'plugin'
+      ? activeProviderCredentials
+      : visibleQuotaCredentials.providerId === activeProvider.id
+        ? visibleQuotaCredentials.files
+        : EMPTY_AUTH_FILE_ITEMS;
+  const selectableVisibleCredentialFiles = useMemo(
+    () => visibleCredentialFiles.filter((file) => !isRuntimeOnlyAuthFile(file)),
+    [visibleCredentialFiles]
+  );
   const selectedNames = useMemo(() => Array.from(selectedFiles), [selectedFiles]);
   const selectedHasStatusUpdating = useMemo(
     () => selectedNames.some((name) => statusUpdating[name] === true),
@@ -247,8 +278,10 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   );
 
   const loadPluginProviders = useCallback(async () => {
+    setPluginProvidersLoaded(false);
     if (connectionStatus !== 'connected' || !supportsPlugin) {
       setPluginProviders([]);
+      setPluginProvidersLoaded(true);
       return;
     }
 
@@ -257,6 +290,8 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
       setPluginProviders(buildPluginQuotaProviders(response.plugins));
     } catch {
       setPluginProviders([]);
+    } finally {
+      setPluginProvidersLoaded(true);
     }
   }, [connectionStatus, supportsPlugin]);
 
@@ -330,16 +365,37 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     void refreshQuotaPage();
   }, [refreshQuotaPage]);
 
+  const handleVisibleQuotaCredentialsChange = useCallback(
+    (items: AuthFileItem[]) => {
+      setVisibleQuotaCredentials({ providerId: activeProvider.id, files: items });
+    },
+    [activeProvider.id]
+  );
+
+  const selectQuotaProvider = useCallback((providerId: string) => {
+    setSelectedProviderId(providerId);
+    writeNavigationPreference(QUOTA_ACTIVE_PROVIDER_STORAGE_KEY, providerId);
+  }, []);
+
   const oauthFlow = useOAuthProviderFlow({
     getProviderText: getOAuthText,
     onSuccess: handleOAuthSuccess,
   });
+
+  useActionBarHeightVar(floatingBatchActionsRef, '--quota-action-bar-height', selectionCount > 0);
 
   useHeaderRefresh(refreshQuotaPage);
 
   useEffect(() => {
     void refreshQuotaPage();
   }, [refreshQuotaPage]);
+
+  useEffect(() => {
+    if (!pluginProvidersLoaded || !selectedProviderId) return;
+    if (providerSummaries.some((provider) => provider.id === selectedProviderId)) return;
+    setSelectedProviderId(defaultProviderId);
+    writeNavigationPreference(QUOTA_ACTIVE_PROVIDER_STORAGE_KEY, defaultProviderId);
+  }, [defaultProviderId, pluginProvidersLoaded, providerSummaries, selectedProviderId]);
 
   const oauthDialogProvider = oauthDialogProviderId
     ? (providerSummaries.find((provider) => provider.id === oauthDialogProviderId) ?? null)
@@ -354,7 +410,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
 
   const openProviderOAuth = (provider: QuotaProviderSummary) => {
     if (disableControls) return;
-    setSelectedProviderId(provider.id);
+    selectQuotaProvider(provider.id);
     oauthFlow.resetProviderAttempt(provider.oauthProviderId);
     setOauthDialogProviderId(provider.id);
   };
@@ -401,6 +457,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     onDeleteCredential: handleDelete,
     onToggleCredentialStatus: handleStatusToggle,
     onToggleCredentialSelect: toggleSelect,
+    onVisibleCredentialsChange: handleVisibleQuotaCredentialsChange,
     headerActionAfterRefresh: renderOAuthAction(activeProvider),
   };
 
@@ -503,7 +560,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
                 key={provider.id}
                 type="button"
                 className={itemClassName}
-                onClick={() => setSelectedProviderId(provider.id)}
+                onClick={() => selectQuotaProvider(provider.id)}
                 aria-current={active ? 'page' : undefined}
                 aria-label={`${providerLabel}, ${t('quota_management.provider_credentials', {
                   count: provider.credentialCount,
@@ -547,49 +604,60 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
 
       <div className={styles.providerPanel}>{activeQuotaSection}</div>
 
-      {selectionCount > 0 && (
-        <div className={styles.credentialBatchBar}>
-          <span className={styles.credentialBatchText}>
-            {t('auth_files.batch_selected', { count: selectionCount })}
-          </span>
-          <div className={styles.credentialBatchActions}>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void batchDownload(selectedNames)}
-              disabled={disableControls || selectedNames.length === 0}
-            >
-              {t('auth_files.batch_download')}
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => batchSetStatus(selectedNames, true)}
-              disabled={batchStatusButtonsDisabled}
-            >
-              {t('auth_files.batch_enable')}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => batchSetStatus(selectedNames, false)}
-              disabled={batchStatusButtonsDisabled}
-            >
-              {t('auth_files.batch_disable')}
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => batchDelete(selectedNames)}
-              disabled={disableControls || selectedNames.length === 0}
-            >
-              {t('common.delete')}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={deselectAll}>
-              {t('auth_files.batch_deselect')}
-            </Button>
-          </div>
-        </div>
-      )}
+      {selectionCount > 0 && typeof document !== 'undefined'
+        ? createPortal(
+            <div className={styles.credentialBatchBar} ref={floatingBatchActionsRef}>
+              <span className={styles.credentialBatchText}>
+                {t('auth_files.batch_selected', { count: selectionCount })}
+              </span>
+              <div className={styles.credentialBatchActions}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => selectAllVisible(visibleCredentialFiles)}
+                  disabled={selectableVisibleCredentialFiles.length === 0}
+                >
+                  {t('auth_files.batch_select_page')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void batchDownload(selectedNames)}
+                  disabled={disableControls || selectedNames.length === 0}
+                >
+                  {t('auth_files.batch_download')}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => batchSetStatus(selectedNames, true)}
+                  disabled={batchStatusButtonsDisabled}
+                >
+                  {t('auth_files.batch_enable')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => batchSetStatus(selectedNames, false)}
+                  disabled={batchStatusButtonsDisabled}
+                >
+                  {t('auth_files.batch_disable')}
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => batchDelete(selectedNames)}
+                  disabled={disableControls || selectedNames.length === 0}
+                >
+                  {t('common.delete')}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={deselectAll}>
+                  {t('auth_files.batch_deselect')}
+                </Button>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       {oauthDialogProvider ? (
         <QuotaOAuthDialog
@@ -622,6 +690,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
         pools={uploadProxyPools}
         loading={uploadProxyPoolsLoading}
         confirming={uploading}
+        inspection={uploadProxyInspection}
         allowFileMode
         onChange={setUploadProxySelection}
         onRefresh={() => void refreshUploadProxyPools()}

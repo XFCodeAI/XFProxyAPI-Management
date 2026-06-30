@@ -8,6 +8,7 @@
   flex-direction: column;
   gap: 12px;
   margin: 0;
+  padding-bottom: calc(var(--quota-action-bar-height, 0px) + 16px + env(safe-area-inset-bottom));
 }
 
 .embeddedContainer {
@@ -204,10 +205,11 @@
 
 .credentialBatchBar {
   position: fixed;
-  left: 50%;
+  left: var(--content-center-x, 50%);
   bottom: calc(16px + env(safe-area-inset-bottom));
-  z-index: 120;
+  z-index: 50;
   display: flex;
+  box-sizing: border-box;
   max-width: min(920px, calc(100vw - 32px));
   min-width: min(620px, calc(100vw - 32px));
   transform: translateX(-50%);

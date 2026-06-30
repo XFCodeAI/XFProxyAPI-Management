@@ -13,6 +13,12 @@ import {
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
 } from '@/features/authFiles/constants';
+import {
+  emptyAuthFileProxyInspection,
+  inspectAuthFileProxyUploads,
+  loadingAuthFileProxyInspection,
+  type AuthFileProxyInspection,
+} from '@/features/authFiles/proxyUploadInspection';
 
 type DeleteAllOptions = {
   filter: string;
@@ -40,6 +46,7 @@ export type UseAuthFilesDataResult = {
   uploadProxySelection: ProxySelection;
   uploadProxyPools: ProxyPoolStatusEntry[];
   uploadProxyPoolsLoading: boolean;
+  uploadProxyInspection: AuthFileProxyInspection;
   fileInputRef: RefObject<HTMLInputElement | null>;
   loadFiles: () => Promise<void>;
   handleUploadClick: () => void;
@@ -80,10 +87,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   });
   const [uploadProxyPools, setUploadProxyPools] = useState<ProxyPoolStatusEntry[]>([]);
   const [uploadProxyPoolsLoading, setUploadProxyPoolsLoading] = useState(false);
+  const [uploadProxyInspection, setUploadProxyInspection] = useState<AuthFileProxyInspection>(() =>
+    emptyAuthFileProxyInspection()
+  );
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const batchStatusPendingRef = useRef(false);
+  const uploadProxyInspectionSeqRef = useRef(0);
   const selectionCount = selectedFiles.size;
   const toggleSelect = useCallback((name: string) => {
     setSelectedFiles((prev) => {
@@ -195,6 +206,21 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     }
   }, []);
 
+  const inspectUploadProxyFiles = useCallback(async (validFiles: File[]) => {
+    const seq = uploadProxyInspectionSeqRef.current + 1;
+    uploadProxyInspectionSeqRef.current = seq;
+    setUploadProxyInspection(loadingAuthFileProxyInspection(validFiles.length));
+
+    const poolComparison = proxyPoolsApi
+      .load()
+      .then((snapshot) => ({ pools: snapshot.pools }))
+      .catch(() => ({ pools: [], compareFailed: true }));
+    const inspection = await inspectAuthFileProxyUploads(validFiles, poolComparison);
+    if (uploadProxyInspectionSeqRef.current === seq) {
+      setUploadProxyInspection(inspection);
+    }
+  }, []);
+
   const uploadFilesWithSelection = useCallback(
     async (validFiles: File[], selection: ProxySelection) => {
       setUploading(true);
@@ -209,6 +235,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
             result.failed.length ? 'warning' : 'success'
           );
           await loadFiles();
+          if (selection.mode === 'file') {
+            await refreshUploadProxyPools();
+          }
         }
 
         if (result.failed.length > 0) {
@@ -222,7 +251,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         setUploading(false);
       }
     },
-    [loadFiles, showNotification, t]
+    [loadFiles, refreshUploadProxyPools, showNotification, t]
   );
 
   const handleUploadClick = useCallback(() => {
@@ -268,11 +297,12 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
       setPendingUploadFiles(validFiles);
       setUploadProxySelection({ mode: 'file' });
+      void inspectUploadProxyFiles(validFiles);
       setUploadProxyDialogOpen(true);
       event.target.value = '';
       void refreshUploadProxyPools();
     },
-    [refreshUploadProxyPools, showNotification, t]
+    [inspectUploadProxyFiles, refreshUploadProxyPools, showNotification, t]
   );
 
   const handleDelete = useCallback(
@@ -674,7 +704,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
   const cancelUploadProxySelection = useCallback(() => {
     if (uploading) return;
+    uploadProxyInspectionSeqRef.current += 1;
     setPendingUploadFiles([]);
+    setUploadProxyInspection(emptyAuthFileProxyInspection());
     setUploadProxyDialogOpen(false);
   }, [uploading]);
 
@@ -704,6 +736,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     uploadProxySelection,
     uploadProxyPools,
     uploadProxyPoolsLoading,
+    uploadProxyInspection,
     fileInputRef,
     loadFiles,
     handleUploadClick,

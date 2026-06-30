@@ -141,6 +141,7 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
     uploadProxySelection,
     uploadProxyPools,
     uploadProxyPoolsLoading,
+    uploadProxyInspection,
     fileInputRef,
     loadFiles,
     handleUploadClick,
@@ -946,6 +947,7 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
         pools={uploadProxyPools}
         loading={uploadProxyPoolsLoading}
         confirming={uploading}
+        inspection={uploadProxyInspection}
         allowFileMode
         onChange={setUploadProxySelection}
         onRefresh={() => void refreshUploadProxyPools()}
