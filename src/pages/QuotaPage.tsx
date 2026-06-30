@@ -20,6 +20,8 @@ import {
   XAI_CONFIG,
 } from '@/components/quota';
 import { AuthFileModelsModal } from '@/features/authFiles/components/AuthFileModelsModal';
+import { AuthImportModal } from '@/features/authFiles/components/AuthImportModal';
+import { AuthSessionImportResultModal } from '@/features/authFiles/components/AuthSessionImportResultModal';
 import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components/AuthFilesPrefixProxyEditorModal';
 import { useAuthFilesData } from '@/features/authFiles/hooks/useAuthFilesData';
 import { useAuthFilesModels } from '@/features/authFiles/hooks/useAuthFilesModels';
@@ -172,8 +174,10 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     uploadProxyPools,
     uploadProxyPoolsLoading,
     uploadProxyInspection,
+    sessionImportResult,
     fileInputRef,
     loadFiles,
+    beginFileImport,
     handleUploadClick,
     handleFileChange,
     handleDelete,
@@ -190,6 +194,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     refreshUploadProxyPools,
     confirmUploadProxySelection,
     cancelUploadProxySelection,
+    clearSessionImportResult,
   } = useAuthFilesData();
   const [pluginProviders, setPluginProviders] = useState<PluginQuotaProviderDefinition[]>([]);
   const [pluginProvidersLoaded, setPluginProvidersLoaded] = useState(false);
@@ -198,6 +203,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     readNavigationPreference(QUOTA_ACTIVE_PROVIDER_STORAGE_KEY)
   );
   const [oauthDialogProviderId, setOauthDialogProviderId] = useState<string | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [authSettingsOpen, setAuthSettingsOpen] = useState(false);
   const [visibleQuotaCredentials, setVisibleQuotaCredentials] = useState<{
     providerId: string;
@@ -424,6 +430,24 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     void refreshQuotaPage();
   };
 
+  const openImportModal = () => {
+    if (disableControls || uploading) return;
+    setImportModalOpen(true);
+  };
+
+  const closeImportModal = () => {
+    if (uploading) return;
+    setImportModalOpen(false);
+  };
+
+  const pickImportFiles = () => {
+    handleUploadClick();
+  };
+
+  const importGeneratedFiles = (generatedFiles: File[]) => {
+    beginFileImport(generatedFiles, { source: 'session' });
+  };
+
   const renderOAuthAction = (provider: QuotaProviderSummary) => {
     const oauthState = oauthFlow.states[provider.oauthProviderId] || {};
     const providerLabel = getProviderLabel(provider);
@@ -576,12 +600,12 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           variant="secondary"
           size="sm"
           className={styles.uploadButton}
-          onClick={handleUploadClick}
+          onClick={openImportModal}
           disabled={disableControls || uploading}
           loading={uploading}
         >
           {!uploading && <Upload size={16} aria-hidden="true" />}
-          <span>{t('auth_files.upload_button')}</span>
+          <span>{t('auth_files.import_button', { defaultValue: '导入' })}</span>
         </Button>
         <TooltipButton
           variant="secondary"
@@ -683,6 +707,18 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           }
         />
       ) : null}
+      <AuthImportModal
+        open={importModalOpen}
+        importing={uploading}
+        onClose={closeImportModal}
+        onPickFiles={pickImportFiles}
+        onImportFiles={importGeneratedFiles}
+      />
+      <AuthSessionImportResultModal
+        open={Boolean(sessionImportResult)}
+        result={sessionImportResult}
+        onClose={clearSessionImportResult}
+      />
       <ProxySelectionModal
         open={uploadProxyDialogOpen}
         title={t('proxy_selection.upload_title', { defaultValue: '选择认证文件代理' })}

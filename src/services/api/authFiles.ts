@@ -27,6 +27,12 @@ type AuthFileBatchUploadResponse = {
   files?: unknown;
   failed?: unknown;
 };
+type AuthFileSessionValidationResponse = {
+  status?: string;
+  validated?: number;
+  files?: unknown;
+  failed?: unknown;
+};
 type AuthFileBatchDeleteResponse = {
   status?: string;
   deleted?: number;
@@ -36,6 +42,12 @@ type AuthFileBatchDeleteResponse = {
 type AuthFileBatchUploadResult = {
   status: string;
   uploaded: number;
+  files: string[];
+  failed: AuthFileBatchFailure[];
+};
+export type AuthFileSessionValidationResult = {
+  status: string;
+  validated: number;
   files: string[];
   failed: AuthFileBatchFailure[];
 };
@@ -106,6 +118,19 @@ const normalizeBatchUploadResponse = (
     status: payload?.status ?? (failed.length > 0 ? 'partial' : 'ok'),
     uploaded: payload?.uploaded ?? (inferFromRequest ? requestedNames.length : 0),
     files: filesFromPayload.length ? filesFromPayload : inferFromRequest ? [...requestedNames] : [],
+    failed,
+  };
+};
+
+const normalizeSessionValidationResponse = (
+  payload: AuthFileSessionValidationResponse | undefined
+): AuthFileSessionValidationResult => {
+  const failed = normalizeBatchFailures(payload?.failed);
+  const files = normalizeBatchFileNames(payload?.files);
+  return {
+    status: payload?.status ?? (failed.length > 0 ? 'partial' : 'ok'),
+    validated: payload?.validated ?? files.length,
+    files,
     failed,
   };
 };
@@ -374,6 +399,30 @@ export const authFilesApi = {
 
   upload: (file: File, proxySelection?: ProxySelection) =>
     authFilesApi.uploadFiles([file], proxySelection),
+
+  validateSessionFiles: async (
+    files: File[],
+    proxySelection?: ProxySelection
+  ): Promise<AuthFileSessionValidationResult> => {
+    if (files.length === 0) {
+      return { status: 'ok', validated: 0, files: [], failed: [] };
+    }
+
+    const payload = {
+      files: await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          content: await file.text(),
+        }))
+      ),
+      ...proxySelectionParams(proxySelection),
+    };
+    const response = await apiClient.post<AuthFileSessionValidationResponse>(
+      '/auth-files/session-validate',
+      payload
+    );
+    return normalizeSessionValidationResponse(response);
+  },
 
   deleteFiles: async (names: string[]): Promise<AuthFileBatchDeleteResult> => {
     const requestedNames = normalizeRequestedAuthFileNames(names);

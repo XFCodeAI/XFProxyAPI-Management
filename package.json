@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "test": "tsc --noEmit",
+    "test:gpt-session": "node --experimental-strip-types tests/gptSessionImport.test.mjs",
     "build": "tsc --noEmit && vite build",
     "package": "node scripts/package-panel.mjs",
     "verify": "pnpm build && pnpm package",

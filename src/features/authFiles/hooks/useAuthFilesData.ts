@@ -31,6 +31,28 @@ type DeleteAllOptions = {
   onResetEnabledOnly: () => void;
 };
 
+type PendingUploadSource = 'file' | 'session';
+
+type BeginFileImportOptions = {
+  source?: PendingUploadSource;
+};
+
+export type SessionImportFailurePhase = 'validation' | 'upload';
+
+export interface SessionImportFailure {
+  name: string;
+  phase: SessionImportFailurePhase;
+  reason: string;
+}
+
+export interface SessionImportResult {
+  total: number;
+  validated: number;
+  imported: number;
+  failed: number;
+  failures: SessionImportFailure[];
+}
+
 export type UseAuthFilesDataResult = {
   files: AuthFileItem[];
   selectedFiles: Set<string>;
@@ -47,8 +69,10 @@ export type UseAuthFilesDataResult = {
   uploadProxyPools: ProxyPoolStatusEntry[];
   uploadProxyPoolsLoading: boolean;
   uploadProxyInspection: AuthFileProxyInspection;
+  sessionImportResult: SessionImportResult | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
   loadFiles: () => Promise<void>;
+  beginFileImport: (files: File[], options?: BeginFileImportOptions) => boolean;
   handleUploadClick: () => void;
   handleFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleDelete: (name: string) => void;
@@ -66,7 +90,21 @@ export type UseAuthFilesDataResult = {
   refreshUploadProxyPools: () => Promise<void>;
   confirmUploadProxySelection: () => Promise<void>;
   cancelUploadProxySelection: () => void;
+  clearSessionImportResult: () => void;
 };
+
+const SESSION_IMPORT_BATCH_SIZE = 5;
+
+const chunkFiles = (files: File[], size: number): File[][] => {
+  const chunks: File[][] = [];
+  for (let index = 0; index < files.length; index += size) {
+    chunks.push(files.slice(index, index + size));
+  }
+  return chunks;
+};
+
+const getErrorMessage = (err: unknown): string =>
+  err instanceof Error && err.message ? err.message : 'Unknown error';
 
 export function useAuthFilesData(): UseAuthFilesDataResult {
   const { t } = useTranslation();
@@ -91,6 +129,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     emptyAuthFileProxyInspection()
   );
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
+  const [pendingUploadSource, setPendingUploadSource] = useState<PendingUploadSource>('file');
+  const [sessionImportResult, setSessionImportResult] = useState<SessionImportResult | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const batchStatusPendingRef = useRef(false);
@@ -263,16 +303,142 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     [loadFiles, refreshUploadProxyPools, showNotification, t]
   );
 
-  const handleUploadClick = useCallback(() => {
-    fileInputRef.current?.click();
+  const validateAndUploadSessionFiles = useCallback(
+    async (validFiles: File[], selection: ProxySelection) => {
+      setUploading(true);
+      const failures: SessionImportFailure[] = [];
+      let validatedCount = 0;
+      let importedCount = 0;
+
+      try {
+        const missingValidationResult = t('auth_files.session_validation_missing_result', {
+          defaultValue: '后端未返回验活结果',
+        });
+        const missingUploadResult = t('auth_files.session_upload_missing_result', {
+          defaultValue: '后端未返回导入结果',
+        });
+
+        for (const batch of chunkFiles(validFiles, SESSION_IMPORT_BATCH_SIZE)) {
+          let filesToUpload: File[] = [];
+
+          try {
+            const validation = await authFilesApi.validateSessionFiles(batch, selection);
+            const validNames = new Set(validation.files);
+            const validationFailedNames = new Set(
+              validation.failed.map((item) => item.name).filter(Boolean)
+            );
+            filesToUpload = batch.filter((file) => validNames.has(file.name));
+            validatedCount += filesToUpload.length;
+
+            validation.failed.forEach((item) => {
+              failures.push({
+                name: item.name || '-',
+                phase: 'validation',
+                reason: item.error || 'Unknown error',
+              });
+            });
+            batch.forEach((file) => {
+              if (validNames.has(file.name) || validationFailedNames.has(file.name)) return;
+              failures.push({
+                name: file.name,
+                phase: 'validation',
+                reason: missingValidationResult,
+              });
+            });
+          } catch (err: unknown) {
+            const reason = getErrorMessage(err);
+            batch.forEach((file) => {
+              failures.push({ name: file.name, phase: 'validation', reason });
+            });
+            continue;
+          }
+
+          if (filesToUpload.length === 0) {
+            continue;
+          }
+
+          try {
+            const uploadResult = await authFilesApi.uploadFiles(filesToUpload, selection);
+            const uploadedNames = new Set(uploadResult.files);
+            const uploadFailedNames = new Set(
+              uploadResult.failed.map((item) => item.name).filter(Boolean)
+            );
+            const uploadedCount =
+              uploadedNames.size > 0
+                ? filesToUpload.filter((file) => uploadedNames.has(file.name)).length
+                : uploadResult.uploaded;
+            importedCount += Math.min(uploadedCount, filesToUpload.length);
+
+            uploadResult.failed.forEach((item) => {
+              failures.push({
+                name: item.name || '-',
+                phase: 'upload',
+                reason: item.error || 'Unknown error',
+              });
+            });
+            if (uploadedNames.size > 0) {
+              filesToUpload.forEach((file) => {
+                if (uploadedNames.has(file.name) || uploadFailedNames.has(file.name)) return;
+                failures.push({
+                  name: file.name,
+                  phase: 'upload',
+                  reason: missingUploadResult,
+                });
+              });
+            } else {
+              const knownFailureCount = filesToUpload.filter((file) =>
+                uploadFailedNames.has(file.name)
+              ).length;
+              const missingFailureCount = Math.max(
+                0,
+                filesToUpload.length - uploadedCount - knownFailureCount
+              );
+              filesToUpload
+                .filter((file) => !uploadFailedNames.has(file.name))
+                .slice(0, missingFailureCount)
+                .forEach((file) => {
+                  failures.push({
+                    name: file.name,
+                    phase: 'upload',
+                    reason: missingUploadResult,
+                  });
+                });
+            }
+          } catch (err: unknown) {
+            const reason = getErrorMessage(err);
+            filesToUpload.forEach((file) => {
+              failures.push({ name: file.name, phase: 'upload', reason });
+            });
+          }
+        }
+
+        if (importedCount > 0) {
+          await loadFiles();
+          if (selection.mode === 'file') {
+            await refreshUploadProxyPools();
+          }
+        }
+
+        setSessionImportResult({
+          total: validFiles.length,
+          validated: validatedCount,
+          imported: importedCount,
+          failed: failures.length,
+          failures,
+        });
+      } finally {
+        setUploading(false);
+      }
+    },
+    [loadFiles, refreshUploadProxyPools, t]
+  );
+
+  const clearSessionImportResult = useCallback(() => {
+    setSessionImportResult(null);
   }, []);
 
-  const handleFileChange = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const fileList = event.target.files;
-      if (!fileList || fileList.length === 0) return;
-
-      const filesToUpload = Array.from(fileList);
+  const beginFileImport = useCallback(
+    (filesToUpload: File[], options: BeginFileImportOptions = {}) => {
       const validFiles: File[] = [];
       const invalidFiles: string[] = [];
       const oversizedFiles: string[] = [];
@@ -300,18 +466,33 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       }
 
       if (validFiles.length === 0) {
-        event.target.value = '';
-        return;
+        return false;
       }
 
       setPendingUploadFiles(validFiles);
+      setPendingUploadSource(options.source ?? 'file');
       setUploadProxySelection({ mode: 'file' });
       void inspectUploadProxyFiles(validFiles);
       setUploadProxyDialogOpen(true);
-      event.target.value = '';
       void refreshUploadProxyPools();
+      return true;
     },
     [inspectUploadProxyFiles, refreshUploadProxyPools, showNotification, t]
+  );
+
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const fileList = event.target.files;
+      if (!fileList || fileList.length === 0) return;
+
+      beginFileImport(Array.from(fileList));
+      event.target.value = '';
+    },
+    [beginFileImport]
   );
 
   const handleDelete = useCallback(
@@ -715,6 +896,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     if (uploading) return;
     uploadProxyInspectionSeqRef.current += 1;
     setPendingUploadFiles([]);
+    setPendingUploadSource('file');
     setUploadProxyInspection(emptyAuthFileProxyInspection());
     setUploadProxyDialogOpen(false);
   }, [uploading]);
@@ -725,17 +907,30 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       return;
     }
     const filesToUpload = pendingUploadFiles;
+    const source = pendingUploadSource;
     setUploadProxyDialogOpen(false);
+    setPendingUploadFiles([]);
+    setPendingUploadSource('file');
+    if (source === 'session') {
+      await validateAndUploadSessionFiles(filesToUpload, uploadProxySelection);
+      return;
+    }
     const failedFiles = await uploadFilesWithSelection(filesToUpload, uploadProxySelection);
     if (failedFiles.length === 0) {
-      setPendingUploadFiles([]);
       setUploadProxyInspection(emptyAuthFileProxyInspection());
       return;
     }
     setPendingUploadFiles(failedFiles);
     void inspectUploadProxyFiles(failedFiles);
     setUploadProxyDialogOpen(true);
-  }, [inspectUploadProxyFiles, pendingUploadFiles, uploadFilesWithSelection, uploadProxySelection]);
+  }, [
+    inspectUploadProxyFiles,
+    pendingUploadFiles,
+    pendingUploadSource,
+    uploadFilesWithSelection,
+    uploadProxySelection,
+    validateAndUploadSessionFiles,
+  ]);
 
   return {
     files,
@@ -753,8 +948,10 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     uploadProxyPools,
     uploadProxyPoolsLoading,
     uploadProxyInspection,
+    sessionImportResult,
     fileInputRef,
     loadFiles,
+    beginFileImport,
     handleUploadClick,
     handleFileChange,
     handleDelete,
@@ -772,5 +969,6 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     refreshUploadProxyPools,
     confirmUploadProxySelection,
     cancelUploadProxySelection,
+    clearSessionImportResult,
   };
 }
