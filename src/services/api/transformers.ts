@@ -101,6 +101,19 @@ const normalizeAuthIndex = (value: unknown): string | undefined => {
   return trimmed ? trimmed : undefined;
 };
 
+const normalizeDownstreamApiKey = (entry: unknown): string | null => {
+  if (typeof entry === 'string') {
+    const trimmed = entry.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (!isRecord(entry)) return null;
+
+  const key = entry.key ?? entry.apiKey ?? entry['api-key'] ?? entry.Key;
+  if (typeof key !== 'string') return null;
+  const trimmed = key.trim();
+  return trimmed ? trimmed : null;
+};
+
 const normalizeApiKeyEntry = (entry: unknown): ApiKeyEntry | null => {
   if (entry === undefined || entry === null) return null;
   const record = isRecord(entry) ? entry : null;
@@ -329,7 +342,9 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
   }
   const apiKeysRaw = raw['api-keys'];
   if (Array.isArray(apiKeysRaw)) {
-    config.apiKeys = apiKeysRaw.map((key) => String(key)).filter((key) => key.trim() !== '');
+    config.apiKeys = apiKeysRaw
+      .map((key) => normalizeDownstreamApiKey(key))
+      .filter((key): key is string => Boolean(key));
   }
 
   const geminiList = raw['gemini-api-key'];
