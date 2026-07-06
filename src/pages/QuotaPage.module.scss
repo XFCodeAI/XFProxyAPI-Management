@@ -389,6 +389,16 @@
   }
 }
 
+.planFilterToggle {
+  max-width: min(100%, 520px);
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 .quotaHeaderOAuthButton {
   min-width: 32px;
   padding-inline: 10px;

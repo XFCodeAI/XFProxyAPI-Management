@@ -15,6 +15,8 @@ import { triggerHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useNotificationStore, useQuotaStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
 import { getStatusFromError } from '@/utils/quota';
+import { normalizePlanType } from '@/utils/quota/parsers';
+import { resolveCodexPlanType } from '@/utils/quota/resolvers';
 import { hasAuthFileStatusMessage } from '@/features/authFiles/constants';
 import { QuotaCard } from './QuotaCard';
 import type { QuotaStatusState } from './QuotaCard';
@@ -30,10 +32,37 @@ type QuotaSetter<T> = (updater: QuotaUpdater<T>) => void;
 
 type ViewMode = 'paged' | 'all';
 type StatusFilterMode = 'all' | 'enabled' | 'disabled' | 'problem';
+type PlanAwareQuotaState = QuotaStatusState & { planType?: string | null };
 
 const MAX_ITEMS_PER_PAGE = 25;
 const ALL_VIEW_MIN_CHUNK_SIZE = 12;
 const QUOTA_REFRESH_BATCH_SIZE = 6;
+const PLAN_FILTER_ALL = 'all';
+const PLAN_FILTER_UNVERIFIED = '__unverified__';
+
+const resolveQuotaPlanType = (state: QuotaStatusState | undefined): string | null => {
+  if (!state) return null;
+  return normalizePlanType((state as PlanAwareQuotaState).planType);
+};
+
+const resolveFilePlanType = (file: AuthFileItem): string | null =>
+  normalizePlanType(resolveCodexPlanType(file));
+
+const resolvePlanFilterValue = (
+  file: AuthFileItem,
+  state: QuotaStatusState | undefined
+): string => resolveQuotaPlanType(state) ?? resolveFilePlanType(file) ?? PLAN_FILTER_UNVERIFIED;
+
+const formatPlanFilterLabel = (plan: string): string => {
+  return plan
+    .split(/([_\-\s]+)/)
+    .map((part) => {
+      if (/^[_\-\s]+$/.test(part)) return part;
+      if (/\d/.test(part) && part.length <= 4) return part.toUpperCase();
+      return part ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : part;
+    })
+    .join('');
+};
 
 interface QuotaPaginationState<T> {
   pageSize: number;
@@ -144,6 +173,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
   const [columns, gridRef] = useGridColumns(380);
   const [viewMode, setViewMode] = useState<ViewMode>('paged');
   const [statusFilterMode, setStatusFilterMode] = useState<StatusFilterMode>('all');
+  const [planFilter, setPlanFilter] = useState(PLAN_FILTER_ALL);
   const [visibleAllCount, setVisibleAllCount] = useState(0);
   const [resettingQuotaName, setResettingQuotaName] = useState<string | null>(null);
   const lazyLoadRef = useRef<HTMLDivElement | null>(null);
@@ -160,7 +190,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     },
     [quota]
   );
-  const filteredFiles = useMemo(
+  const statusFilteredFiles = useMemo(
     () =>
       providerFiles.filter((file) => {
         if (statusFilterMode === 'enabled') return file.disabled !== true;
@@ -170,6 +200,45 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
       }),
     [isProblemCredential, providerFiles, statusFilterMode]
   );
+
+  const showPlanFilter = config.type === 'codex';
+
+  const planFilterOptions = useMemo(() => {
+    if (!showPlanFilter) return [];
+
+    const counts = new Map<string, number>();
+    statusFilteredFiles.forEach((file) => {
+      const plan = resolvePlanFilterValue(file, quota[file.name]);
+      counts.set(plan, (counts.get(plan) ?? 0) + 1);
+    });
+    if (planFilter !== PLAN_FILTER_ALL && !counts.has(planFilter)) {
+      counts.set(planFilter, 0);
+    }
+
+    const plans = Array.from(counts.keys()).sort((a, b) => {
+      if (a === PLAN_FILTER_UNVERIFIED) return 1;
+      if (b === PLAN_FILTER_UNVERIFIED) return -1;
+      return a.localeCompare(b);
+    });
+
+    return [
+      { value: PLAN_FILTER_ALL, label: t('auth_files.plan_filter_all') },
+      ...plans.map((plan) => ({
+        value: plan,
+        label:
+          plan === PLAN_FILTER_UNVERIFIED
+            ? `${t('auth_files.plan_filter_unverified')} (${counts.get(plan) ?? 0})`
+            : `${formatPlanFilterLabel(plan)} (${counts.get(plan) ?? 0})`,
+      })),
+    ];
+  }, [planFilter, quota, showPlanFilter, statusFilteredFiles, t]);
+
+  const filteredFiles = useMemo(() => {
+    if (!showPlanFilter || planFilter === PLAN_FILTER_ALL) return statusFilteredFiles;
+    return statusFilteredFiles.filter(
+      (file) => resolvePlanFilterValue(file, quota[file.name]) === planFilter
+    );
+  }, [planFilter, quota, showPlanFilter, statusFilteredFiles]);
   const effectiveViewMode: ViewMode = viewMode;
   const allViewChunkSize = Math.max(ALL_VIEW_MIN_CHUNK_SIZE, columns * 3);
 
@@ -195,7 +264,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
       return;
     }
     setVisibleAllCount(Math.min(filteredFiles.length, allViewChunkSize));
-  }, [allViewChunkSize, effectiveViewMode, filteredFiles.length, statusFilterMode]);
+  }, [allViewChunkSize, effectiveViewMode, filteredFiles.length, planFilter, statusFilterMode]);
 
   const visibleAllItems = useMemo(
     () => filteredFiles.slice(0, visibleAllCount),
@@ -410,6 +479,26 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
               </button>
             ))}
           </div>
+          {showPlanFilter && (
+            <div
+              className={`${styles.viewModeToggle} ${styles.planFilterToggle}`}
+              aria-label={t('auth_files.plan_filter_label')}
+            >
+              {planFilterOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`${styles.viewModeButton} ${
+                    planFilter === option.value ? styles.viewModeButtonActive : ''
+                  }`}
+                  onClick={() => setPlanFilter(option.value)}
+                  aria-pressed={planFilter === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
           <TooltipButton
             variant="secondary"
             size="sm"
