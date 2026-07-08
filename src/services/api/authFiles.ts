@@ -13,6 +13,8 @@ type StatusError = { status?: number };
 type AuthFileStatusResponse = { status: string; disabled: boolean };
 type AuthFileEntry = AuthFilesResponse['files'][number];
 export type AuthFileFieldsPatch = {
+  alias?: string;
+  groups?: string[];
   prefix?: string;
   proxy_url?: string;
   headers?: Record<string, string>;

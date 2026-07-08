@@ -43,6 +43,7 @@ import {
 } from '@/features/authFiles/constants';
 import { AuthFileCard } from '@/features/authFiles/components/AuthFileCard';
 import { AuthFileModelsModal } from '@/features/authFiles/components/AuthFileModelsModal';
+import { AuthFilesGroupAssignmentModal } from '@/features/authFiles/components/AuthFilesGroupAssignmentModal';
 import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components/AuthFilesPrefixProxyEditorModal';
 import { OAuthExcludedCard } from '@/features/authFiles/components/OAuthExcludedCard';
 import { OAuthModelAliasCard } from '@/features/authFiles/components/OAuthModelAliasCard';
@@ -142,6 +143,9 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
     uploadProxyPools,
     uploadProxyPoolsLoading,
     uploadProxyInspection,
+    groupAssignment,
+    groupAssigning,
+    groupAssignmentError,
     fileInputRef,
     loadFiles,
     handleUploadClick,
@@ -161,6 +165,8 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
     refreshUploadProxyPools,
     confirmUploadProxySelection,
     cancelUploadProxySelection,
+    closeCredentialGroupAssignment,
+    confirmCredentialGroupAssignment,
   } = useAuthFilesData();
 
   const statusBarCache = useAuthFilesStatusBarCache(files);
@@ -938,6 +944,15 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
         onCopyText={copyTextWithNotification}
         onSave={handlePrefixProxySave}
         onChange={handlePrefixProxyChange}
+      />
+
+      <AuthFilesGroupAssignmentModal
+        assignment={groupAssignment}
+        open={Boolean(groupAssignment)}
+        saving={groupAssigning}
+        error={groupAssignmentError}
+        onClose={closeCredentialGroupAssignment}
+        onConfirm={confirmCredentialGroupAssignment}
       />
 
       <ProxySelectionModal

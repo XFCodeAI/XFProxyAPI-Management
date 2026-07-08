@@ -1243,6 +1243,25 @@
   margin-left: auto;
 }
 
+.groupBadgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.groupBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  background: color-mix(in srgb, var(--primary) 9%, var(--background));
+  color: var(--primary);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
 .apiKeyEntryStat {
   display: inline-flex;
   align-items: center;

@@ -1,12 +1,4 @@
-import {
-  Suspense,
-  lazy,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import type { ReactCodeMirrorRef } from '@uiw/react-codemirror';
@@ -27,9 +19,12 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useVisualConfig } from '@/hooks/useVisualConfig';
+import { resolveCredentialGroupOptions } from '@/hooks/apiKeyBindings';
 import { useNotificationStore, useAuthStore, useThemeStore, useConfigStore } from '@/stores';
 import { configApi } from '@/services/api/config';
 import { configFileApi } from '@/services/api/configFile';
+import { authFilesApi } from '@/services/api/authFiles';
+import type { AuthFileItem } from '@/types';
 import styles from './ConfigPage.module.scss';
 
 type ConfigEditorTab = 'visual' | 'source';
@@ -58,6 +53,52 @@ function normalizeYamlForVisualDiff(yamlContent: string): string {
   } catch {
     return yamlContent;
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function mergeCredentialGroupOptions(...groupLists: string[][]): string[] {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const list of groupLists) {
+    for (const item of list) {
+      const group = String(item ?? '').trim();
+      if (!group) continue;
+      const key = group.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(group);
+    }
+  }
+  return merged;
+}
+
+function resolveAuthFileCredentialGroupOptions(files: AuthFileItem[]): string[] {
+  return mergeCredentialGroupOptions(
+    files.flatMap((file) => (Array.isArray(file.groups) ? file.groups : []))
+  );
+}
+
+function resolveConfigCredentialGroupOptionsFromYaml(yamlContent: string): string[] {
+  try {
+    const parsed = asRecord(parseYaml(yamlContent) || {}) ?? {};
+    return resolveCredentialGroupOptions(parsed);
+  } catch {
+    return [];
+  }
+}
+
+function buildVisualCredentialGroupOptions(
+  yamlContent: string,
+  authFiles: AuthFileItem[]
+): string[] {
+  return mergeCredentialGroupOptions(
+    resolveConfigCredentialGroupOptionsFromYaml(yamlContent),
+    resolveAuthFileCredentialGroupOptions(authFiles)
+  );
 }
 
 export function ConfigPage() {
@@ -135,11 +176,27 @@ export function ConfigPage() {
     activeTabRef.current = activeTab;
   }, [activeTab]);
 
+  const refreshVisualReferenceOptions = useCallback(
+    async (yamlContent: string) => {
+      const authFilesResult = await authFilesApi.list().catch(() => null);
+      setVisualValues({
+        credentialGroupOptions: buildVisualCredentialGroupOptions(
+          yamlContent,
+          authFilesResult?.files ?? []
+        ),
+      });
+    },
+    [setVisualValues]
+  );
+
   const loadConfig = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await configFileApi.fetchConfigYaml();
+      const [data, authFilesResult] = await Promise.all([
+        configFileApi.fetchConfigYaml(),
+        authFilesApi.list().catch(() => null),
+      ]);
       setContent(data);
       setDirty(false);
       setDiffModalOpen(false);
@@ -147,6 +204,12 @@ export function ConfigPage() {
       setMergedYaml(data);
       if (activeTabRef.current === 'visual') {
         loadVisualValuesFromYaml(data);
+        setVisualValues({
+          credentialGroupOptions: buildVisualCredentialGroupOptions(
+            data,
+            authFilesResult?.files ?? []
+          ),
+        });
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('notification.refresh_failed');
@@ -154,7 +217,7 @@ export function ConfigPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadVisualValuesFromYaml, t]);
+  }, [loadVisualValuesFromYaml, setVisualValues, t]);
 
   useEffect(() => {
     loadConfig();
@@ -187,6 +250,7 @@ export function ConfigPage() {
       setMergedYaml(latestContent);
       if (activeTab === 'visual') {
         loadVisualValuesFromYaml(latestContent);
+        void refreshVisualReferenceOptions(latestContent);
       }
 
       // Keep the global config store in sync so sidebar / other pages reflect YAML changes immediately.
@@ -280,6 +344,7 @@ export function ConfigPage() {
         setMergedYaml(nextMergedYaml);
         if (activeTab === 'visual') {
           loadVisualValuesFromYaml(latestServerYaml);
+          void refreshVisualReferenceOptions(latestServerYaml);
         }
         showNotification(t('config_management.diff.no_changes'), 'info');
         return;
@@ -323,6 +388,7 @@ export function ConfigPage() {
           );
           return;
         }
+        void refreshVisualReferenceOptions(content);
       }
 
       setActiveTab(tab);
@@ -333,6 +399,7 @@ export function ConfigPage() {
       applyVisualChangesToYaml,
       content,
       loadVisualValuesFromYaml,
+      refreshVisualReferenceOptions,
       showNotification,
       t,
       visualDirty,

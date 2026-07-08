@@ -34,6 +34,7 @@ export interface ProviderResource {
   brand: ProviderBrand;
   originalIndex: number;
   name: string | null;
+  groups: string[];
   identifier: string;
   apiKeyPreview: string | null;
   apiKey: string | null;
@@ -94,10 +95,12 @@ export interface SponsorKeyEntryInput {
 }
 
 export interface ApiKeyEntryInput {
+  name?: string;
   apiKey: string;
   existingApiKey?: string;
   proxyUrl: string;
   authIndex?: string;
+  groups?: string[];
 }
 
 export interface CloakInput {
@@ -110,6 +113,7 @@ export interface CloakInput {
 export interface ProviderEntryFormInput {
   apiKey: string;
   name: string;
+  groups?: string[];
   baseUrl: string;
   proxyUrl: string;
   prefix: string;

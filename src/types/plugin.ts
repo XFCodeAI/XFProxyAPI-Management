@@ -61,6 +61,17 @@ export interface PluginDeleteResult {
   restartRequired: boolean;
 }
 
+export interface PluginUploadResult {
+  status: string;
+  id: string;
+  version: string;
+  path: string;
+  bytes: number;
+  overwritten: boolean;
+  pluginsEnabled: boolean;
+  restartRequired: boolean;
+}
+
 export interface PluginStoreEntry {
   storeId: string;
   sourceId: string;

@@ -57,6 +57,22 @@ const parseTextList = (text: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const normalizeCredentialGroups = (groups: string[] | undefined): string[] | undefined => {
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  (groups ?? []).forEach((group) => {
+    const trimmed = String(group ?? '').trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push(trimmed);
+  });
+
+  return normalized.length > 0 ? normalized : undefined;
+};
+
 const headersFromEntries = (
   entries: Array<{ key: string; value: string }>
 ): Record<string, string> => {
@@ -136,7 +152,9 @@ const buildProviderKeyConfig = (
   const excluded = buildExcludedModels(input.excludedModelsText, input.disabled, brand);
   const apiKeyChanged = input.apiKey.trim().length > 0;
   const next: ProviderKeyConfig = {
+    name: input.name.trim() || undefined,
     apiKey: apiKeyChanged ? input.apiKey.trim() : (existing?.apiKey ?? ''),
+    groups: normalizeCredentialGroups(input.groups),
     priority: input.priority,
     prefix: input.prefix.trim() || undefined,
     baseUrl: input.baseUrl.trim() || undefined,
@@ -178,9 +196,11 @@ const buildOpenAIConfig = (
         const fallbackApiKey =
           entry.existingApiKey?.trim() || existing?.apiKeyEntries?.[index]?.apiKey?.trim() || '';
         return {
+          name: entry.name?.trim() || undefined,
           apiKey: entry.apiKey.trim() || fallbackApiKey,
           proxyUrl: entry.proxyUrl.trim() || undefined,
           authIndex: entry.authIndex?.trim() || undefined,
+          groups: normalizeCredentialGroups(entry.groups),
         };
       })
       .filter((entry) => entry.apiKey) ?? [];

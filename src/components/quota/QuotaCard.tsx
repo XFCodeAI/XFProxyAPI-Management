@@ -39,6 +39,21 @@ type QuotaStatus = 'idle' | 'loading' | 'success' | 'error';
 
 const HEALTHY_STATUS_MESSAGES = new Set(['ok', 'healthy', 'ready', 'success', 'available']);
 
+const normalizeCredentialGroups = (groups: AuthFileItem['groups']) => {
+  if (!Array.isArray(groups)) return [];
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  groups.forEach((group) => {
+    const value = String(group ?? '').trim();
+    if (!value) return;
+    const key = value.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push(value);
+  });
+  return normalized;
+};
+
 export interface QuotaStatusState {
   status: QuotaStatus;
   error?: string;
@@ -146,6 +161,12 @@ export function QuotaCard<TState extends QuotaStatusState>({
     Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase());
   const priorityValue = parsePriorityValue(item.priority ?? item['priority']);
   const noteValue = typeof item.note === 'string' ? item.note.trim() : '';
+  const credentialGroups = normalizeCredentialGroups(item.groups);
+  const visibleCredentialGroups = credentialGroups.slice(0, 3);
+  const hiddenCredentialGroupCount = Math.max(
+    0,
+    credentialGroups.length - visibleCredentialGroups.length
+  );
   const fileStats = {
     success: normalizeUsageTotal(item.success),
     failure: normalizeUsageTotal(item.failed),
@@ -188,9 +209,7 @@ export function QuotaCard<TState extends QuotaStatusState>({
     <div
       className={`${authStyles.fileCard} ${cardClassName} ${
         selected ? authStyles.fileCardSelected : ''
-      } ${
-        item.disabled ? authStyles.fileCardDisabled : ''
-      }`}
+      } ${item.disabled ? authStyles.fileCardDisabled : ''}`}
     >
       <div className={authStyles.fileCardLayout}>
         <div className={authStyles.fileCardMain}>
@@ -239,6 +258,27 @@ export function QuotaCard<TState extends QuotaStatusState>({
               <span className={authStyles.fileName} title={item.name}>
                 {item.name}
               </span>
+              {credentialGroups.length > 0 && (
+                <div
+                  className={authStyles.credentialGroupRow}
+                  aria-label={t('auth_files.groups_card_label')}
+                  title={credentialGroups.join(', ')}
+                >
+                  <span className={authStyles.credentialGroupLabel}>
+                    {t('auth_files.groups_card_label')}
+                  </span>
+                  {visibleCredentialGroups.map((group) => (
+                    <span className={authStyles.credentialGroupChip} key={group}>
+                      {group}
+                    </span>
+                  ))}
+                  {hiddenCredentialGroupCount > 0 && (
+                    <span className={authStyles.credentialGroupChip}>
+                      +{hiddenCredentialGroupCount}
+                    </span>
+                  )}
+                </div>
+              )}
               {noteValue && (
                 <div className={authStyles.noteText} title={noteValue}>
                   <span className={authStyles.noteLabel}>{t('auth_files.note_display')}</span>

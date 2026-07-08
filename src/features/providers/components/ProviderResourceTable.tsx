@@ -145,6 +145,9 @@ export function ProviderResourceTable({
   };
 
   const renderPrimary = (r: ProviderResource) => {
+    const visibleGroups = r.groups.slice(0, 2);
+    const hiddenGroupCount = Math.max(0, r.groups.length - visibleGroups.length);
+
     if (r.brand === 'apikeyFun') {
       return (
         <div className={styles.primaryCell}>
@@ -152,6 +155,18 @@ export function ProviderResourceTable({
           <span className={styles.primarySub}>
             {r.apiKeyPreview ?? t('providersPage.status.notConfigured')}
           </span>
+          {visibleGroups.length > 0 ? (
+            <div className={styles.groupList}>
+              {visibleGroups.map((group) => (
+                <span key={group} className={styles.groupChip}>
+                  {group}
+                </span>
+              ))}
+              {hiddenGroupCount > 0 ? (
+                <span className={styles.groupChip}>+{hiddenGroupCount}</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       );
     }
@@ -161,6 +176,18 @@ export function ProviderResourceTable({
         <div className={styles.primaryCell}>
           <span className={styles.primaryName}>{r.name ?? r.identifier}</span>
           <span className={styles.primarySub}>{(r.apiKeyPreview ?? '—') + extra}</span>
+          {visibleGroups.length > 0 ? (
+            <div className={styles.groupList}>
+              {visibleGroups.map((group) => (
+                <span key={group} className={styles.groupChip}>
+                  {group}
+                </span>
+              ))}
+              {hiddenGroupCount > 0 ? (
+                <span className={styles.groupChip}>+{hiddenGroupCount}</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       );
     }
@@ -168,6 +195,16 @@ export function ProviderResourceTable({
       <div className={styles.primaryCell}>
         <span className={styles.primaryName}>{r.apiKeyPreview ?? '—'}</span>
         {r.authIndex ? <span className={styles.primarySub}>auth: {r.authIndex}</span> : null}
+        {visibleGroups.length > 0 ? (
+          <div className={styles.groupList}>
+            {visibleGroups.map((group) => (
+              <span key={group} className={styles.groupChip}>
+                {group}
+              </span>
+            ))}
+            {hiddenGroupCount > 0 ? <span className={styles.groupChip}>+{hiddenGroupCount}</span> : null}
+          </div>
+        ) : null}
       </div>
     );
   };

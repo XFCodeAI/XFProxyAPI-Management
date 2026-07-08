@@ -17,6 +17,22 @@ import type {
 const countHeaders = (headers?: Record<string, string>): number =>
   headers ? Object.keys(headers).length : 0;
 
+const collectCredentialGroups = (groups?: string[]): string[] => {
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  (groups ?? []).forEach((group) => {
+    const trimmed = String(group ?? '').trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push(trimmed);
+  });
+
+  return normalized;
+};
+
 const collectModelNames = (models?: Array<{ name?: string }>): string[] => {
   const seen = new Set<string>();
   (models ?? []).forEach((model) => {
@@ -66,7 +82,8 @@ function providerKeyToResource(
     id: buildId(brand, index, truncateForId(apiKey)),
     brand,
     originalIndex: index,
-    name: null,
+    name: config.name?.trim() || null,
+    groups: collectCredentialGroups(config.groups),
     identifier: maskApiKey(apiKey) || `#${index + 1}`,
     apiKeyPreview: apiKey ? maskApiKey(apiKey) : null,
     apiKey: apiKey || null,
@@ -107,11 +124,15 @@ export function openaiToResource(config: OpenAIProviderConfig, index: number): P
   const name = (config.name ?? '').trim();
   const firstEntry = config.apiKeyEntries?.[0];
   const previewApiKey = firstEntry?.apiKey ? maskApiKey(firstEntry.apiKey) : null;
+  const groups = collectCredentialGroups(
+    (config.apiKeyEntries ?? []).flatMap((entry) => entry.groups ?? [])
+  );
   return {
     id: buildId('openaiCompatibility', index, truncateForId(name) || `#${index}`),
     brand: 'openaiCompatibility',
     originalIndex: index,
     name: name || null,
+    groups,
     identifier: name || `#${index + 1}`,
     apiKeyPreview: previewApiKey,
     apiKey: null,
@@ -183,12 +204,18 @@ export function apiKeyFunToResource(raw: SponsorProviderRaw): ProviderResource |
     raw.openai[0]?.config.baseUrl ?? raw.codex[0]?.config.baseUrl ?? raw.claude[0]?.config.baseUrl
   );
   const protocolUrls = getApiKeyFunProtocolUrls(baseUrl);
+  const groups = collectCredentialGroups([
+    ...raw.openai.flatMap((item) => item.config.apiKeyEntries?.flatMap((entry) => entry.groups ?? []) ?? []),
+    ...raw.codex.flatMap((item) => item.config.groups ?? []),
+    ...raw.claude.flatMap((item) => item.config.groups ?? []),
+  ]);
 
   return {
     id: buildId('apikeyFun', 0, 'sponsor'),
     brand: 'apikeyFun',
     originalIndex: 0,
     name: APIKEY_FUN_DISPLAY_NAME,
+    groups,
     identifier: APIKEY_FUN_DISPLAY_NAME,
     apiKeyPreview: apiKey ? maskApiKey(apiKey) : null,
     apiKey: apiKey || null,

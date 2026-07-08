@@ -18,13 +18,15 @@ import {
   IconExternalLink,
   IconGithub,
   IconPlug,
+  IconPlus,
   IconRefreshCw,
   IconSearch,
   IconSettings,
   IconShield,
+  IconUpload,
 } from '@/components/ui/icons';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
-import { pluginStoreApi } from '@/services/api';
+import { pluginsApi, pluginStoreApi } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
 import { cn } from '@/lib/utils';
 import { getErrorMessage, isRecord } from '@/utils/helpers';
@@ -37,6 +39,8 @@ import {
   resolvePluginAssetURL,
 } from './pluginResources';
 import { PluginInstallGateModal } from './components/PluginInstallGateModal';
+import { PluginSourceImportModal } from './components/PluginSourceImportModal';
+import { PluginUploadModal } from './components/PluginUploadModal';
 import { waitForPluginStoreState } from './pluginPolling';
 import styles from './PluginStorePage.module.scss';
 
@@ -89,6 +93,10 @@ export function PluginStorePage() {
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StoreStatusFilter>('all');
   const [installingKey, setInstallingKey] = useState('');
+  const [sourceImportOpen, setSourceImportOpen] = useState(false);
+  const [sourceAdding, setSourceAdding] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [restartRequiredKeys, setRestartRequiredKeys] = useState<string[]>([]);
   const [expandedDescriptionKeys, setExpandedDescriptionKeys] = useState<string[]>([]);
   const [overflowingDescriptionKeys, setOverflowingDescriptionKeys] = useState<string[]>([]);
@@ -376,6 +384,94 @@ export function PluginStorePage() {
 
   const handleGateClose = useCallback(() => setGateOpen(false), []);
 
+  const handleAddSource = useCallback(
+    async (url: string) => {
+      setSourceAdding(true);
+      try {
+        const result = await pluginStoreApi.addSource(url);
+        clearConfigCache();
+        setSourceImportOpen(false);
+        showNotification(
+          result.added
+            ? t('plugin_store.source_add_success')
+            : t('plugin_store.source_already_exists'),
+          result.added ? 'success' : 'info'
+        );
+        await loadStore();
+      } catch (err: unknown) {
+        const fallback =
+          err instanceof Error && err.message === 'invalid_plugin_source_url'
+            ? t('plugin_store.source_url_invalid')
+            : getErrorMessage(err, t('plugin_store.source_add_failed'));
+        showNotification(`${t('plugin_store.source_add_failed')}: ${fallback}`, 'error');
+      } finally {
+        setSourceAdding(false);
+      }
+    },
+    [clearConfigCache, loadStore, showNotification, t]
+  );
+
+  const uploadPluginFile = useCallback(
+    async (file: File, overwrite: boolean) => {
+      setUploading(true);
+      try {
+        const result = await pluginsApi.uploadPlugin(file, { overwrite });
+        clearConfigCache();
+        setUploadOpen(false);
+        showNotification(
+          t('plugin_store.upload_success', { plugin: result.id || file.name }),
+          'success'
+        );
+        if (result.restartRequired) {
+          showNotification(t('plugin_store.upload_restart_required'), 'warning');
+        }
+        if (!result.pluginsEnabled) {
+          showNotification(t('plugin_store.global_disabled_hint'), 'warning');
+        }
+        await loadStore();
+        return true;
+      } catch (err: unknown) {
+        if (!overwrite && getErrorStatus(err) === 409) {
+          throw err;
+        }
+        showNotification(
+          `${t('plugin_store.upload_failed')}: ${getErrorMessage(err, t('plugin_store.upload_failed'))}`,
+          'error'
+        );
+        return false;
+      } finally {
+        setUploading(false);
+      }
+    },
+    [clearConfigCache, loadStore, showNotification, t]
+  );
+
+  const handleUploadPlugin = useCallback(
+    async (file: File) => {
+      try {
+        await uploadPluginFile(file, false);
+      } catch (err: unknown) {
+        if (getErrorStatus(err) !== 409) {
+          showNotification(
+            `${t('plugin_store.upload_failed')}: ${getErrorMessage(err, t('plugin_store.upload_failed'))}`,
+            'error'
+          );
+          return;
+        }
+        showConfirmation({
+          title: t('plugin_store.upload_duplicate_title'),
+          message: t('plugin_store.upload_duplicate_message', { file: file.name }),
+          confirmText: t('plugin_store.upload_duplicate_confirm'),
+          variant: 'primary',
+          onConfirm: async () => {
+            await uploadPluginFile(file, true);
+          },
+        });
+      }
+    },
+    [showConfirmation, showNotification, t, uploadPluginFile]
+  );
+
   const renderCard = (entry: PluginStoreEntry) => {
     const entryKey = getStoreEntryKey(entry);
     const logo = resolvePluginAssetURL(entry.logo, apiBase);
@@ -642,6 +738,24 @@ export function PluginStorePage() {
           <IconRefreshCw size={16} />
           {t('plugin_store.refresh')}
         </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setSourceImportOpen(true)}
+          disabled={!connected || sourceAdding}
+        >
+          <IconPlus size={16} />
+          {t('plugin_store.source_import')}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setUploadOpen(true)}
+          disabled={!connected || uploading}
+        >
+          <IconUpload size={16} />
+          {t('plugin_store.upload_plugin')}
+        </Button>
       </div>
 
       {/* ── Status Filter Chips ── */}
@@ -723,6 +837,19 @@ export function PluginStorePage() {
         installing={gateEntry ? installingKey === getStoreEntryKey(gateEntry) : false}
         onClose={handleGateClose}
         onConfirm={handleGateConfirm}
+      />
+      <PluginSourceImportModal
+        open={sourceImportOpen}
+        sources={data?.sources ?? []}
+        adding={sourceAdding}
+        onClose={() => setSourceImportOpen(false)}
+        onSubmit={handleAddSource}
+      />
+      <PluginUploadModal
+        open={uploadOpen}
+        uploading={uploading}
+        onClose={() => setUploadOpen(false)}
+        onSubmit={handleUploadPlugin}
       />
     </div>
   );

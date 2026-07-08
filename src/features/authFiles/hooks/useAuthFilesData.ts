@@ -19,6 +19,7 @@ import {
   loadingAuthFileProxyInspection,
   type AuthFileProxyInspection,
 } from '@/features/authFiles/proxyUploadInspection';
+import { normalizeCredentialGroups } from '@/utils/credentialGroups';
 
 type DeleteAllOptions = {
   filter: string;
@@ -32,6 +33,20 @@ type DeleteAllOptions = {
 };
 
 type PendingUploadSource = 'file' | 'session';
+
+export type AuthFileGroupAssignmentSource = PendingUploadSource | 'oauth';
+
+export interface AuthFileGroupAssignmentTarget {
+  name: string;
+  type?: string;
+  provider?: string;
+  groups: string[];
+}
+
+export interface AuthFileGroupAssignmentState {
+  source: AuthFileGroupAssignmentSource;
+  targets: AuthFileGroupAssignmentTarget[];
+}
 
 type BeginFileImportOptions = {
   source?: PendingUploadSource;
@@ -70,8 +85,11 @@ export type UseAuthFilesDataResult = {
   uploadProxyPoolsLoading: boolean;
   uploadProxyInspection: AuthFileProxyInspection;
   sessionImportResult: SessionImportResult | null;
+  groupAssignment: AuthFileGroupAssignmentState | null;
+  groupAssigning: boolean;
+  groupAssignmentError: string;
   fileInputRef: RefObject<HTMLInputElement | null>;
-  loadFiles: () => Promise<void>;
+  loadFiles: () => Promise<AuthFileItem[]>;
   beginFileImport: (files: File[], options?: BeginFileImportOptions) => boolean;
   handleUploadClick: () => void;
   handleFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
@@ -91,6 +109,12 @@ export type UseAuthFilesDataResult = {
   confirmUploadProxySelection: () => Promise<void>;
   cancelUploadProxySelection: () => void;
   clearSessionImportResult: () => void;
+  openCredentialGroupAssignment: (
+    targets: AuthFileItem[],
+    source?: AuthFileGroupAssignmentSource
+  ) => void;
+  closeCredentialGroupAssignment: () => void;
+  confirmCredentialGroupAssignment: (groups: string[]) => Promise<void>;
 };
 
 const SESSION_IMPORT_BATCH_SIZE = 5;
@@ -105,6 +129,48 @@ const chunkFiles = (files: File[], size: number): File[][] => {
 
 const getErrorMessage = (err: unknown): string =>
   err instanceof Error && err.message ? err.message : 'Unknown error';
+
+const normalizeAssignmentTargets = (targets: AuthFileItem[]): AuthFileGroupAssignmentTarget[] => {
+  const normalized: AuthFileGroupAssignmentTarget[] = [];
+  const seen = new Set<string>();
+
+  targets.forEach((target) => {
+    const name = String(target.name ?? '').trim();
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    normalized.push({
+      name,
+      type: typeof target.type === 'string' ? target.type : undefined,
+      provider: typeof target.provider === 'string' ? target.provider : undefined,
+      groups: normalizeCredentialGroups(target.groups),
+    });
+  });
+
+  return normalized;
+};
+
+const resolveAssignmentTargetsByName = (names: string[], files: AuthFileItem[]): AuthFileItem[] => {
+  const byName = new Map(files.map((file) => [file.name, file]));
+  return names
+    .map((name) => {
+      const trimmed = String(name ?? '').trim();
+      if (!trimmed) return null;
+      return byName.get(trimmed) ?? ({ name: trimmed, groups: [] } satisfies AuthFileItem);
+    })
+    .filter(Boolean) as AuthFileItem[];
+};
+
+const uniqueNames = (names: string[]): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  names.forEach((name) => {
+    const trimmed = String(name ?? '').trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    result.push(trimmed);
+  });
+  return result;
+};
 
 export function useAuthFilesData(): UseAuthFilesDataResult {
   const { t } = useTranslation();
@@ -131,11 +197,21 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
   const [pendingUploadSource, setPendingUploadSource] = useState<PendingUploadSource>('file');
   const [sessionImportResult, setSessionImportResult] = useState<SessionImportResult | null>(null);
+  const [groupAssignment, setGroupAssignment] = useState<AuthFileGroupAssignmentState | null>(null);
+  const [groupAssigning, setGroupAssigning] = useState(false);
+  const [groupAssignmentError, setGroupAssignmentError] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const batchStatusPendingRef = useRef(false);
   const uploadProxyInspectionSeqRef = useRef(0);
+  const filesRef = useRef<AuthFileItem[]>([]);
+  const pendingUploadGroupNamesRef = useRef<string[]>([]);
   const selectionCount = selectedFiles.size;
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
   const toggleSelect = useCallback((name: string) => {
     setSelectedFiles((prev) => {
       const next = new Set(prev);
@@ -226,10 +302,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     setError('');
     try {
       const data = await authFilesApi.list();
-      setFiles(data?.files || []);
+      const nextFiles = data?.files || [];
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+      return nextFiles;
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : t('notification.refresh_failed');
       setError(errorMessage);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -261,6 +341,111 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     }
   }, []);
 
+  const openCredentialGroupAssignment = useCallback(
+    (targets: AuthFileItem[], source: AuthFileGroupAssignmentSource = 'file') => {
+      const normalizedTargets = normalizeAssignmentTargets(targets);
+      if (normalizedTargets.length === 0) return;
+      setGroupAssignment({ source, targets: normalizedTargets });
+      setGroupAssignmentError('');
+    },
+    []
+  );
+
+  const openCredentialGroupAssignmentByNames = useCallback(
+    (names: string[], source: AuthFileGroupAssignmentSource) => {
+      const targets = resolveAssignmentTargetsByName(uniqueNames(names), filesRef.current);
+      openCredentialGroupAssignment(targets, source);
+    },
+    [openCredentialGroupAssignment]
+  );
+
+  const addPendingUploadGroupNames = useCallback((names: string[]) => {
+    pendingUploadGroupNamesRef.current = uniqueNames([
+      ...pendingUploadGroupNamesRef.current,
+      ...names,
+    ]);
+  }, []);
+
+  const flushPendingUploadGroupAssignment = useCallback(
+    (source: AuthFileGroupAssignmentSource) => {
+      const names = pendingUploadGroupNamesRef.current;
+      pendingUploadGroupNamesRef.current = [];
+      if (names.length === 0) return;
+      openCredentialGroupAssignmentByNames(names, source);
+    },
+    [openCredentialGroupAssignmentByNames]
+  );
+
+  const closeCredentialGroupAssignment = useCallback(() => {
+    if (groupAssigning) return;
+    setGroupAssignment(null);
+    setGroupAssignmentError('');
+  }, [groupAssigning]);
+
+  const confirmCredentialGroupAssignment = useCallback(
+    async (groups: string[]) => {
+      if (!groupAssignment || groupAssigning) return;
+      const targetGroups = normalizeCredentialGroups(groups);
+      const targets = groupAssignment.targets;
+      if (targets.length === 0) {
+        setGroupAssignment(null);
+        return;
+      }
+
+      setGroupAssigning(true);
+      setGroupAssignmentError('');
+      try {
+        const results = await Promise.allSettled(
+          targets.map((target) => authFilesApi.patchFields(target.name, { groups: targetGroups }))
+        );
+        const failed = results
+          .map((result, index) => ({ result, target: targets[index] }))
+          .filter((entry) => entry.result.status === 'rejected');
+        const successCount = results.length - failed.length;
+
+        if (successCount > 0) {
+          await loadFiles();
+        }
+
+        if (failed.length > 0) {
+          const details = failed
+            .slice(0, 5)
+            .map((entry) => {
+              const reason =
+                entry.result.status === 'rejected' ? getErrorMessage(entry.result.reason) : '';
+              return `${entry.target.name}: ${reason}`;
+            })
+            .join('; ');
+          const suffix =
+            failed.length > 5
+              ? t('auth_files.group_assignment_failed_more', {
+                  defaultValue: '，另有 {{count}} 项失败',
+                  count: failed.length - 5,
+                })
+              : '';
+          const message = `${t('auth_files.group_assignment_failed', {
+            defaultValue: '分组写入失败',
+          })}: ${details}${suffix}`;
+          setGroupAssignmentError(message);
+          showNotification(message, successCount > 0 ? 'warning' : 'error');
+          return;
+        }
+
+        showNotification(
+          t('auth_files.group_assignment_success', {
+            defaultValue: '已更新 {{count}} 个凭证的分组',
+            count: targets.length,
+          }),
+          'success'
+        );
+        setGroupAssignment(null);
+      } finally {
+        setGroupAssigning(false);
+      }
+    },
+    [groupAssignment, groupAssigning, loadFiles, showNotification, t]
+  );
+
   const uploadFilesWithSelection = useCallback(
     async (validFiles: File[], selection: ProxySelection) => {
       setUploading(true);
@@ -269,12 +454,21 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         const successCount = result.uploaded;
 
         if (successCount > 0) {
+          const failedNames = new Set(result.failed.map((item) => item.name).filter(Boolean));
+          const uploadedNames =
+            result.files.length > 0
+              ? result.files
+              : validFiles
+                  .filter((file) => !failedNames.has(file.name))
+                  .slice(0, successCount)
+                  .map((file) => file.name);
           const suffix = validFiles.length > 1 ? ` (${successCount}/${validFiles.length})` : '';
           showNotification(
             `${t('auth_files.upload_success')}${suffix}`,
             result.failed.length ? 'warning' : 'success'
           );
           await loadFiles();
+          addPendingUploadGroupNames(uploadedNames);
           if (selection.mode === 'file') {
             await refreshUploadProxyPools();
           }
@@ -300,7 +494,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         setUploading(false);
       }
     },
-    [loadFiles, refreshUploadProxyPools, showNotification, t]
+    [addPendingUploadGroupNames, loadFiles, refreshUploadProxyPools, showNotification, t]
   );
 
   const validateAndUploadSessionFiles = useCallback(
@@ -309,6 +503,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       const failures: SessionImportFailure[] = [];
       let validatedCount = 0;
       let importedCount = 0;
+      const importedNames: string[] = [];
 
       try {
         const missingValidationResult = t('auth_files.session_validation_missing_result', {
@@ -368,6 +563,16 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
                 ? filesToUpload.filter((file) => uploadedNames.has(file.name)).length
                 : uploadResult.uploaded;
             importedCount += Math.min(uploadedCount, filesToUpload.length);
+            if (uploadedNames.size > 0) {
+              importedNames.push(...Array.from(uploadedNames));
+            } else if (uploadedCount > 0) {
+              importedNames.push(
+                ...filesToUpload
+                  .filter((file) => !uploadFailedNames.has(file.name))
+                  .slice(0, uploadedCount)
+                  .map((file) => file.name)
+              );
+            }
 
             uploadResult.failed.forEach((item) => {
               failures.push({
@@ -417,6 +622,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           if (selection.mode === 'file') {
             await refreshUploadProxyPools();
           }
+          openCredentialGroupAssignmentByNames(importedNames, 'session');
         }
 
         setSessionImportResult({
@@ -430,7 +636,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         setUploading(false);
       }
     },
-    [loadFiles, refreshUploadProxyPools, t]
+    [loadFiles, openCredentialGroupAssignmentByNames, refreshUploadProxyPools, t]
   );
 
   const clearSessionImportResult = useCallback(() => {
@@ -894,12 +1100,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
   const cancelUploadProxySelection = useCallback(() => {
     if (uploading) return;
+    const source = pendingUploadSource;
     uploadProxyInspectionSeqRef.current += 1;
     setPendingUploadFiles([]);
     setPendingUploadSource('file');
     setUploadProxyInspection(emptyAuthFileProxyInspection());
     setUploadProxyDialogOpen(false);
-  }, [uploading]);
+    flushPendingUploadGroupAssignment(source);
+  }, [flushPendingUploadGroupAssignment, pendingUploadSource, uploading]);
 
   const confirmUploadProxySelection = useCallback(async () => {
     if (pendingUploadFiles.length === 0) {
@@ -918,12 +1126,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     const failedFiles = await uploadFilesWithSelection(filesToUpload, uploadProxySelection);
     if (failedFiles.length === 0) {
       setUploadProxyInspection(emptyAuthFileProxyInspection());
+      flushPendingUploadGroupAssignment('file');
       return;
     }
     setPendingUploadFiles(failedFiles);
     void inspectUploadProxyFiles(failedFiles);
     setUploadProxyDialogOpen(true);
   }, [
+    flushPendingUploadGroupAssignment,
     inspectUploadProxyFiles,
     pendingUploadFiles,
     pendingUploadSource,
@@ -949,6 +1159,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     uploadProxyPoolsLoading,
     uploadProxyInspection,
     sessionImportResult,
+    groupAssignment,
+    groupAssigning,
+    groupAssignmentError,
     fileInputRef,
     loadFiles,
     beginFileImport,
@@ -970,5 +1183,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     confirmUploadProxySelection,
     cancelUploadProxySelection,
     clearSessionImportResult,
+    openCredentialGroupAssignment,
+    closeCredentialGroupAssignment,
+    confirmCredentialGroupAssignment,
   };
 }

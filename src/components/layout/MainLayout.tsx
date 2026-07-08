@@ -439,6 +439,12 @@ export function MainLayout() {
               icon: <span className="nav-sub-dot" aria-hidden="true" />,
             },
             {
+              path: '/credential-groups',
+              labelKey: 'nav.credential_groups',
+              metaKey: 'nav_meta.credential_groups',
+              icon: <span className="nav-sub-dot" aria-hidden="true" />,
+            },
+            {
               path: '/2fa',
               labelKey: 'nav.two_factor',
               metaKey: 'nav_meta.two_factor',
@@ -549,7 +555,10 @@ export function MainLayout() {
     const from = normalize(fromPathname);
     const to = normalize(toPathname);
     const isCredentialsQuota = (pathname: string) =>
-      pathname === '/quota' || pathname === '/2fa' || isAuthFilesPath(pathname);
+      pathname === '/quota' ||
+      pathname === '/credential-groups' ||
+      pathname === '/2fa' ||
+      isAuthFilesPath(pathname);
     if (isCredentialsQuota(from) && isCredentialsQuota(to)) return 'ios';
     return 'vertical';
   }, []);

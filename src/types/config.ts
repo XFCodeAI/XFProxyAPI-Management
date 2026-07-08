@@ -15,6 +15,7 @@ export interface Config {
   debug?: boolean;
   proxyUrl?: string;
   requestRetry?: number;
+  credentialGroups?: string[];
   quotaExceeded?: QuotaExceededConfig;
   requestLog?: boolean;
   loggingToFile?: boolean;
@@ -36,6 +37,7 @@ export type RawConfigSection =
   | 'debug'
   | 'proxy-url'
   | 'request-retry'
+  | 'credential-groups'
   | 'quota-exceeded'
   | 'request-log'
   | 'logging-to-file'

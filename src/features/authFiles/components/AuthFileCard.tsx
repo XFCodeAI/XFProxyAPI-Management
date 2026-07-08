@@ -63,6 +63,21 @@ const resolveQuotaType = (file: AuthFileItem): QuotaProviderType | null => {
   return provider as QuotaProviderType;
 };
 
+const normalizeCredentialGroups = (groups: AuthFileItem['groups']) => {
+  if (!Array.isArray(groups)) return [];
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  groups.forEach((group) => {
+    const value = String(group ?? '').trim();
+    if (!value) return;
+    const key = value.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push(value);
+  });
+  return normalized;
+};
+
 export function AuthFileCard(props: AuthFileCardProps) {
   const { t } = useTranslation();
   const {
@@ -125,6 +140,12 @@ export function AuthFileCard(props: AuthFileCardProps) {
 
   const priorityValue = parsePriorityValue(file.priority ?? file['priority']);
   const noteValue = typeof file.note === 'string' ? file.note.trim() : '';
+  const credentialGroups = normalizeCredentialGroups(file.groups);
+  const visibleCredentialGroups = credentialGroups.slice(0, 3);
+  const hiddenCredentialGroupCount = Math.max(
+    0,
+    credentialGroups.length - visibleCredentialGroups.length
+  );
   const stateLabel = isRuntimeOnly
     ? t('auth_files.type_virtual') || '虚拟认证文件'
     : file.disabled
@@ -193,6 +214,27 @@ export function AuthFileCard(props: AuthFileCardProps) {
               <span className={styles.fileName} title={file.name}>
                 {file.name}
               </span>
+              {credentialGroups.length > 0 && (
+                <div
+                  className={styles.credentialGroupRow}
+                  aria-label={t('auth_files.groups_card_label')}
+                  title={credentialGroups.join(', ')}
+                >
+                  <span className={styles.credentialGroupLabel}>
+                    {t('auth_files.groups_card_label')}
+                  </span>
+                  {visibleCredentialGroups.map((group) => (
+                    <span className={styles.credentialGroupChip} key={group}>
+                      {group}
+                    </span>
+                  ))}
+                  {hiddenCredentialGroupCount > 0 && (
+                    <span className={styles.credentialGroupChip}>
+                      +{hiddenCredentialGroupCount}
+                    </span>
+                  )}
+                </div>
+              )}
               {!compact && noteValue && (
                 <div className={styles.noteText} title={noteValue}>
                   <span className={styles.noteLabel}>{t('auth_files.note_display')}</span>

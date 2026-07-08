@@ -23,7 +23,9 @@ const serializeHeaders = (headers?: Record<string, string>) =>
 const RESPONSE_ONLY_FIELDS = ['auth-index'] as const;
 
 const PROVIDER_COMMON_KEY_FIELDS = [
+  'name',
   'api-key',
+  'groups',
   'priority',
   'prefix',
   'base-url',
@@ -42,7 +44,9 @@ const CLAUDE_KEY_FIELDS = [
   'experimental-cch-signing',
 ] as const;
 const VERTEX_KEY_FIELDS = [
+  'name',
   'api-key',
+  'groups',
   'priority',
   'prefix',
   'base-url',
@@ -68,7 +72,7 @@ const OPENAI_PROVIDER_FIELDS = [
 const MODEL_ALIAS_FIELDS = ['name', 'alias', 'priority', 'test-model'] as const;
 const OPENAI_MODEL_ALIAS_FIELDS = [...MODEL_ALIAS_FIELDS, 'image', 'thinking'] as const;
 
-const API_KEY_ENTRY_FIELDS = ['api-key', 'proxy-url'] as const;
+const API_KEY_ENTRY_FIELDS = ['name', 'api-key', 'proxy-url', 'groups'] as const;
 
 const CLOAK_FIELDS = ['mode', 'strict-mode', 'sensitive-words', 'cache-user-id'] as const;
 
@@ -300,12 +304,16 @@ const serializeModelAliases = (models?: ModelAlias[], includeOpenAIFields = fals
 
 const serializeApiKeyEntry = (entry: ApiKeyEntry) => {
   const payload: Record<string, unknown> = { 'api-key': entry.apiKey };
+  if (entry.name?.trim()) payload.name = entry.name.trim();
   if (entry.proxyUrl) payload['proxy-url'] = entry.proxyUrl;
+  if (entry.groups?.length) payload.groups = entry.groups;
   return payload;
 };
 
 const serializeProviderKey = (config: ProviderKeyConfig) => {
   const payload: Record<string, unknown> = { 'api-key': config.apiKey };
+  if (config.name?.trim()) payload.name = config.name.trim();
+  if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
@@ -355,6 +363,8 @@ const serializeVertexModelAliases = (models?: ModelAlias[]) =>
 
 const serializeVertexKey = (config: ProviderKeyConfig) => {
   const payload: Record<string, unknown> = { 'api-key': config.apiKey };
+  if (config.name?.trim()) payload.name = config.name.trim();
+  if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
@@ -371,6 +381,8 @@ const serializeVertexKey = (config: ProviderKeyConfig) => {
 
 const serializeGeminiKey = (config: GeminiKeyConfig) => {
   const payload: Record<string, unknown> = { 'api-key': config.apiKey };
+  if (config.name?.trim()) payload.name = config.name.trim();
+  if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;

@@ -106,6 +106,29 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                     </h3>
                   </div>
                   <div className={styles.prefixProxyFields}>
+                    <div className={cn(fieldRootClass, styles.prefixProxyReadonlyGroups)}>
+                      <div className={fieldLabelClass}>{t('auth_files.groups_label')}</div>
+                      {editor.groups.length > 0 ? (
+                        <div className={styles.prefixProxyGroupChips}>
+                          {editor.groups.map((group) => (
+                            <span key={group} className={styles.prefixProxyGroupChip}>
+                              {group}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className={styles.prefixProxyGroupsEmpty}>
+                          {t('auth_files.groups_readonly_empty', {
+                            defaultValue: '未绑定分组',
+                          })}
+                        </div>
+                      )}
+                      <div className={fieldHintClass}>
+                        {t('auth_files.groups_readonly_hint', {
+                          defaultValue: '分组只能在分组管理，或导入/登录完成后的分组弹窗中调整。',
+                        })}
+                      </div>
+                    </div>
                     <Input
                       label={t('auth_files.prefix_label')}
                       value={editor.prefix}

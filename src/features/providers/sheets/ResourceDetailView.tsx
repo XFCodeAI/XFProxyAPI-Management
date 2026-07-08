@@ -14,9 +14,14 @@ interface ResourceDetailViewProps {
 
 export function ResourceDetailView({ resource, usageByProvider }: ResourceDetailViewProps) {
   const { t } = useTranslation();
+  const resolveFieldLabel = (key: string) =>
+    key === 'groups'
+      ? t('providersPage.detail.fields.groups', { defaultValue: '凭证分组' })
+      : t(`providersPage.detail.fields.${key}`);
 
   const primary: Array<[string, string]> = [
     ['identifier', resource.identifier],
+    ['groups', resource.groups.length > 0 ? resource.groups.join(', ') : t('providersPage.status.none')],
     ['baseUrl', resource.baseUrl ?? t('providersPage.status.notSet')],
     ['proxyUrl', resource.proxyUrl ?? t('providersPage.status.notSet')],
     ['prefix', resource.prefix ?? t('providersPage.status.none')],
@@ -43,7 +48,7 @@ export function ResourceDetailView({ resource, usageByProvider }: ResourceDetail
       <dl className={styles.dl}>
         {primary.map(([key, value]) => (
           <div key={key}>
-            <dt className={styles.dt}>{t(`providersPage.detail.fields.${key}`)}</dt>
+            <dt className={styles.dt}>{resolveFieldLabel(key)}</dt>
             <dd className={styles.dd}>{value}</dd>
           </div>
         ))}
@@ -71,6 +76,15 @@ export function ResourceDetailView({ resource, usageByProvider }: ResourceDetail
                   {entry.proxyUrl ? (
                     <span className={styles.apiKeyEntryProxy}>{entry.proxyUrl}</span>
                   ) : null}
+                  {entry.groups?.length ? (
+                    <div className={styles.groupBadgeRow}>
+                      {entry.groups.map((group) => (
+                        <span key={group} className={styles.groupBadge}>
+                          {group}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className={styles.apiKeyEntryStats}>
                     <span className={`${styles.apiKeyEntryStat} ${styles.apiKeyEntryStatSuccess}`}>
                       <IconCheck size={12} /> {entryStats.success}
@@ -91,7 +105,7 @@ export function ResourceDetailView({ resource, usageByProvider }: ResourceDetail
           <dl className={styles.dl}>
             {metadata.map(([key, value]) => (
               <div key={key}>
-                <dt className={styles.dt}>{t(`providersPage.detail.fields.${key}`)}</dt>
+                <dt className={styles.dt}>{resolveFieldLabel(key)}</dt>
                 <dd className={styles.dd}>{value}</dd>
               </div>
             ))}

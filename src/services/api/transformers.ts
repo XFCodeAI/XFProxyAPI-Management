@@ -16,6 +16,23 @@ const normalizeBoolean = (value: unknown): boolean | undefined =>
 const normalizeRecord = (value: unknown): Record<string, unknown> | undefined =>
   isRecord(value) ? value : undefined;
 
+const normalizeCredentialGroups = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  value.forEach((item) => {
+    const trimmed = String(item ?? '').trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push(trimmed);
+  });
+
+  return normalized.length > 0 ? normalized : undefined;
+};
+
 const normalizeModelAliases = (models: unknown): ModelAlias[] => {
   if (!Array.isArray(models)) return [];
   return models
@@ -101,6 +118,12 @@ const normalizeAuthIndex = (value: unknown): string | undefined => {
   return trimmed ? trimmed : undefined;
 };
 
+const normalizeCredentialName = (value: unknown): string | undefined => {
+  if (value === undefined || value === null) return undefined;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : undefined;
+};
+
 const normalizeDownstreamApiKey = (entry: unknown): string | null => {
   if (typeof entry === 'string') {
     const trimmed = entry.trim();
@@ -123,12 +146,16 @@ const normalizeApiKeyEntry = (entry: unknown): ApiKeyEntry | null => {
 
   const proxyUrl = record?.['proxy-url'];
   const authIndex = normalizeAuthIndex(record?.['auth-index']);
+  const name = normalizeCredentialName(record?.name);
 
   const result: ApiKeyEntry = {
     apiKey: trimmed,
     proxyUrl: proxyUrl ? String(proxyUrl) : undefined,
   };
+  if (name) result.name = name;
   if (authIndex) result.authIndex = authIndex;
+  const groups = normalizeCredentialGroups(record?.groups);
+  if (groups) result.groups = groups;
   return result;
 };
 
@@ -140,6 +167,10 @@ const normalizeProviderKeyConfig = (item: unknown): ProviderKeyConfig | null => 
   if (!trimmed) return null;
 
   const config: ProviderKeyConfig = { apiKey: trimmed };
+  const name = normalizeCredentialName(record?.name);
+  if (name) config.name = name;
+  const groups = normalizeCredentialGroups(record?.groups);
+  if (groups) config.groups = groups;
   const priority = record?.priority;
   if (priority !== undefined && priority !== null && String(priority).trim() !== '') {
     const parsed = Number(priority);
@@ -208,6 +239,10 @@ const normalizeGeminiKeyConfig = (item: unknown): GeminiKeyConfig | null => {
   if (!trimmed) return null;
 
   const config: GeminiKeyConfig = { apiKey: trimmed };
+  const name = normalizeCredentialName(record?.name);
+  if (name) config.name = name;
+  const groups = normalizeCredentialGroups(record?.groups);
+  if (groups) config.groups = groups;
   const priority = record?.priority;
   if (priority !== undefined && priority !== null && String(priority).trim() !== '') {
     const parsed = Number(priority);
@@ -313,6 +348,11 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
     }
   }
 
+  const credentialGroups = normalizeCredentialGroups(raw['credential-groups']);
+  if (credentialGroups) {
+    config.credentialGroups = credentialGroups;
+  }
+
   const quota = raw['quota-exceeded'];
   if (isRecord(quota)) {
     config.quotaExceeded = {
@@ -392,6 +432,7 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
 
 export {
   normalizeApiKeyEntry,
+  normalizeCredentialGroups,
   normalizeGeminiKeyConfig,
   normalizeModelAliases,
   normalizeOpenAIProvider,

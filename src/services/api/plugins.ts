@@ -1,5 +1,7 @@
 import { apiClient } from './client';
+import { configFileApi } from './configFile';
 import { isRecord } from '@/utils/helpers';
+import { isMap, parse as parseYaml, parseDocument } from 'yaml';
 import {
   isManagementOAuthProviderKey,
   normalizeManagementOAuthProviderKey,
@@ -16,7 +18,10 @@ import type {
   PluginStoreInstallResult,
   PluginStoreResponse,
   PluginStoreSource,
+  PluginUploadResult,
 } from '@/types';
+
+type YamlDocument = ReturnType<typeof parseDocument>;
 
 const asString = (value: unknown): string => {
   if (value === undefined || value === null) return '';
@@ -32,6 +37,36 @@ const normalizePluginOAuthProvider = (value: unknown): string | undefined => {
 
 const hasOwn = (source: Record<string, unknown>, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(source, key);
+
+const normalizePluginSourceURL = (value: string): string => {
+  const url = value.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('invalid_plugin_source_url');
+  }
+  const protocol = parsed.protocol.toLowerCase();
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error('invalid_plugin_source_url');
+  }
+  return url;
+};
+
+const readPluginStoreSourcesFromYaml = (yamlContent: string): string[] => {
+  const parsed = parseYaml(yamlContent);
+  if (!isRecord(parsed)) return [];
+  const plugins = isRecord(parsed.plugins) ? parsed.plugins : {};
+  const sources = plugins['store-sources'];
+  if (!Array.isArray(sources)) return [];
+  return sources.map((item) => asString(item).trim()).filter(Boolean);
+};
+
+const ensureMapInDoc = (doc: YamlDocument, path: string[]): void => {
+  const current = doc.getIn(path, true);
+  if (isMap(current)) return;
+  doc.setIn(path, doc.createNode({}));
+};
 
 const normalizeConfigField = (value: unknown): PluginConfigField | null => {
   if (!isRecord(value)) return null;
@@ -153,6 +188,20 @@ const normalizeDeleteResult = (value: unknown): PluginDeleteResult => {
   };
 };
 
+const normalizeUploadResult = (value: unknown): PluginUploadResult => {
+  const source = isRecord(value) ? value : {};
+  return {
+    status: asString(source.status).trim(),
+    id: asString(source.id).trim(),
+    version: asString(source.version).trim(),
+    path: asString(source.path).trim(),
+    bytes: Number.isFinite(Number(source.bytes)) ? Number(source.bytes) : 0,
+    overwritten: asBoolean(source.overwritten),
+    pluginsEnabled: asBoolean(source.plugins_enabled),
+    restartRequired: asBoolean(source.restart_required),
+  };
+};
+
 const normalizeStoreEntry = (value: unknown): PluginStoreEntry | null => {
   if (!isRecord(value)) return null;
   const id = asString(value.id).trim();
@@ -252,6 +301,19 @@ export const pluginsApi = {
     return normalizeDeleteResult(data);
   },
 
+  async uploadPlugin(
+    file: File,
+    options: { overwrite?: boolean } = {}
+  ): Promise<PluginUploadResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (options.overwrite) {
+      formData.append('overwrite', 'true');
+    }
+    const data = await apiClient.postForm('/plugins/upload', formData);
+    return normalizeUploadResult(data);
+  },
+
   async getConfig(id: string): Promise<PluginConfigObject> {
     const data = await apiClient.get(`/plugins/${encodeURIComponent(id)}/config`);
     return normalizePluginConfig(data);
@@ -275,5 +337,29 @@ export const pluginStoreApi = {
     const query = sourceId ? `?${new URLSearchParams({ source: sourceId }).toString()}` : '';
     const data = await apiClient.post(`${path}${query}`);
     return normalizeInstallResult(data);
+  },
+
+  async addSource(url: string): Promise<{ url: string; added: boolean }> {
+    const normalizedURL = normalizePluginSourceURL(url);
+    const yamlContent = await configFileApi.fetchConfigYaml();
+    const currentSources = readPluginStoreSourcesFromYaml(yamlContent);
+    if (currentSources.some((source) => source.trim() === normalizedURL)) {
+      return { url: normalizedURL, added: false };
+    }
+
+    const doc = parseDocument(yamlContent);
+    if (doc.errors.length > 0) {
+      throw new Error(doc.errors[0]?.message || 'invalid_yaml');
+    }
+    if (!isMap(doc.contents)) {
+      doc.contents = doc.createNode({}) as unknown as typeof doc.contents;
+    }
+
+    ensureMapInDoc(doc, ['plugins']);
+    doc.setIn(['plugins', 'store-sources'], [...currentSources, normalizedURL]);
+    await configFileApi.saveConfigYaml(
+      doc.toString({ indent: 2, lineWidth: 120, minContentWidth: 0 })
+    );
+    return { url: normalizedURL, added: true };
   },
 };

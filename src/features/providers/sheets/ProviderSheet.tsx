@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Sheet } from '@/components/ui/Sheet';
 import { IconLoader2, IconPencil } from '@/components/ui/icons';
 import type { ProviderRecentUsageMap } from '@/components/providers/utils';
+import { useCredentialGroupsCatalog } from '@/hooks/useCredentialGroupsCatalog';
 import { useNotificationStore } from '@/stores';
 import { PROVIDER_DESCRIPTORS } from '../descriptors';
 import type { ProviderBrand, ProviderEntryFormInput, ProviderResource } from '../types';
@@ -50,6 +51,9 @@ export function ProviderSheet({
 }: ProviderSheetProps) {
   const { t } = useTranslation();
   const { showConfirmation } = useNotificationStore();
+  const { groups: credentialGroupOptions } = useCredentialGroupsCatalog({
+    enabled: state.open && state.mode !== 'detail' && workbench.connected,
+  });
   const formId = useId();
   const [submitting, setSubmitting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -147,13 +151,14 @@ export function ProviderSheet({
       );
     }
     return (
-      <BaseProviderForm
-        key={formKey}
-        brand={state.brand}
-        resource={state.resource}
-        mode={state.mode}
-        mutating={formMutating}
-        formId={formId}
+        <BaseProviderForm
+          key={formKey}
+          brand={state.brand}
+          resource={state.resource}
+          credentialGroupOptions={credentialGroupOptions}
+          mode={state.mode}
+          mutating={formMutating}
+          formId={formId}
         onSubmit={state.mode === 'create' ? handleCreate : handleUpdate}
         onDirtyChange={handleDirtyChange}
       />

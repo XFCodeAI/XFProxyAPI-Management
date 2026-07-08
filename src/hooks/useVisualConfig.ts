@@ -12,110 +12,17 @@ import type {
   PayloadParamValidationErrorCode,
 } from '@/types/visualConfig';
 import { DEFAULT_VISUAL_VALUES } from '@/types/visualConfig';
+import {
+  resolveApiKeysText,
+  resolveApiKeyCredentialGroups,
+  resolveCredentialGroupOptions,
+  serializeApiKeyEntriesForYaml,
+  normalizeCredentialGroupNames,
+} from './apiKeyBindings';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
-}
-
-type VisualApiKeyEntry = {
-  key: string;
-  allow: string[];
-};
-
-function extractApiKeyValue(raw: unknown): string | null {
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    return trimmed ? trimmed : null;
-  }
-
-  const record = asRecord(raw);
-  if (!record) return null;
-
-  const candidates = [record['api-key'], record.apiKey, record.key, record.Key];
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string') {
-      const trimmed = candidate.trim();
-      if (trimmed) return trimmed;
-    }
-  }
-
-  return null;
-}
-
-function parseApiKeyAllowList(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((item) => String(item ?? '').trim()).filter(Boolean);
-}
-
-function parseApiKeyEntries(raw: unknown): VisualApiKeyEntry[] {
-  if (!Array.isArray(raw)) return [];
-
-  const entries: VisualApiKeyEntry[] = [];
-  for (const item of raw) {
-    const key = extractApiKeyValue(item);
-    if (!key) continue;
-    const record = asRecord(item);
-    entries.push({ key, allow: parseApiKeyAllowList(record?.allow) });
-  }
-  return entries;
-}
-
-function resolveApiKeyEntries(parsed: Record<string, unknown>): VisualApiKeyEntry[] {
-  if (Object.prototype.hasOwnProperty.call(parsed, 'api-keys')) {
-    return parseApiKeyEntries(parsed['api-keys']);
-  }
-
-  const auth = asRecord(parsed.auth);
-  const providers = asRecord(auth?.providers);
-  const configApiKeyProvider = asRecord(providers?.['config-api-key']);
-  if (!configApiKeyProvider) return [];
-
-  if (Object.prototype.hasOwnProperty.call(configApiKeyProvider, 'api-key-entries')) {
-    return parseApiKeyEntries(configApiKeyProvider['api-key-entries']);
-  }
-
-  return parseApiKeyEntries(configApiKeyProvider['api-keys']);
-}
-
-function resolveApiKeysText(parsed: Record<string, unknown>): string {
-  return resolveApiKeyEntries(parsed)
-    .map((entry) => entry.key)
-    .join('\n');
-}
-
-function parseApiKeyTextLines(value: string): string[] {
-  return value
-    .split('\n')
-    .map((key) => key.trim())
-    .filter(Boolean);
-}
-
-function serializeApiKeyEntriesForYaml(
-  apiKeysText: string,
-  existingEntries: VisualApiKeyEntry[]
-): Array<string | { key: string; allow: string[] }> {
-  const nextKeys = parseApiKeyTextLines(apiKeysText);
-  const nextKeySet = new Set(nextKeys);
-  const entriesByKey = new Map<string, VisualApiKeyEntry[]>();
-  existingEntries.forEach((entry) => {
-    const entries = entriesByKey.get(entry.key) ?? [];
-    entries.push(entry);
-    entriesByKey.set(entry.key, entries);
-  });
-
-  return nextKeys.map((key, index) => {
-    let entry = entriesByKey.get(key)?.shift();
-    const positionalEntry = existingEntries[index];
-    if (!entry && positionalEntry && !nextKeySet.has(positionalEntry.key)) {
-      entry = positionalEntry;
-    }
-
-    if (!entry || entry.allow.length === 0) {
-      return key;
-    }
-    return { key, allow: [...entry.allow] };
-  });
 }
 
 type YamlDocument = ReturnType<typeof parseDocument>;
@@ -383,6 +290,22 @@ function areStringArraysEqual(left: string[] | undefined, right: string[] | unde
   if (leftItems.length !== rightItems.length) return false;
   for (let i = 0; i < leftItems.length; i += 1) {
     if (leftItems[i] !== rightItems[i]) return false;
+  }
+  return true;
+}
+
+// Compares key->credential-group maps for dirty tracking.
+function areApiKeyBindingsEqual(
+  left: Record<string, string[]>,
+  right: Record<string, string[]>
+): boolean {
+  if (left === right) return true;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  for (const key of leftKeys) {
+    if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+    if (!areStringArraysEqual(left[key], right[key])) return false;
   }
   return true;
 }
@@ -857,6 +780,20 @@ function getNextDirtyFields(
     );
   }
 
+  if (Object.prototype.hasOwnProperty.call(patch, 'credentialGroups')) {
+    updateDirty(
+      'credentialGroups',
+      areStringArraysEqual(nextValues.credentialGroups, baselineValues.credentialGroups)
+    );
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'apiKeyGroups')) {
+    updateDirty(
+      'apiKeyGroups',
+      areApiKeyBindingsEqual(nextValues.apiKeyGroups, baselineValues.apiKeyGroups)
+    );
+  }
+
   if (Object.prototype.hasOwnProperty.call(patch, 'payloadDefaultRules')) {
     updateDirty(
       'payloadDefaultRules',
@@ -1022,7 +959,10 @@ export function useVisualConfig() {
               : '',
 
         authDir: typeof parsed['auth-dir'] === 'string' ? parsed['auth-dir'] : '',
+        credentialGroups: normalizeCredentialGroupNames(parsed['credential-groups']),
         apiKeysText: resolveApiKeysText(parsed),
+        apiKeyGroups: resolveApiKeyCredentialGroups(parsed),
+        credentialGroupOptions: resolveCredentialGroupOptions(parsed),
         pluginsEnabled: Boolean(plugins?.enabled),
         pluginStoreSources: parseStringList(plugins?.['store-sources']),
 
@@ -1132,8 +1072,6 @@ export function useVisualConfig() {
         if (!isMap(doc.contents)) {
           doc.contents = doc.createNode({}) as unknown as typeof doc.contents;
         }
-        const parsedCurrent = asRecord(parseYaml(currentYaml)) ?? {};
-        const existingApiKeyEntries = resolveApiKeyEntries(parsedCurrent);
         const values = visualValues;
 
         setStringInDoc(doc, ['host'], values.host);
@@ -1181,10 +1119,12 @@ export function useVisualConfig() {
         }
 
         setStringInDoc(doc, ['auth-dir'], values.authDir);
-        const apiKeyEntries = serializeApiKeyEntriesForYaml(
-          values.apiKeysText,
-          existingApiKeyEntries
+        setStringListInDoc(
+          doc,
+          ['credential-groups'],
+          normalizeCredentialGroupNames(values.credentialGroups)
         );
+        const apiKeyEntries = serializeApiKeyEntriesForYaml(values.apiKeysText, values.apiKeyGroups);
         if (apiKeyEntries.length > 0) {
           doc.setIn(['api-keys'], apiKeyEntries);
         } else if (docHas(doc, ['api-keys'])) {

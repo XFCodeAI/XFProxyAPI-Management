@@ -1,5 +1,6 @@
 import { memo, useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CredentialGroupsField } from '@/components/credentialGroups/CredentialGroupsField';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
@@ -177,12 +178,18 @@ function buildProtocolOptions(
 
 export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
   value,
+  groups,
+  groupOptions,
   disabled,
   onChange,
+  onGroupsChange,
 }: {
   value: string;
+  groups: Record<string, string[]>;
+  groupOptions: string[];
   disabled?: boolean;
   onChange: (nextValue: string) => void;
+  onGroupsChange: (nextGroups: Record<string, string[]>) => void;
 }) {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
@@ -211,6 +218,7 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
   const [editingApiKeyId, setEditingApiKeyId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [formError, setFormError] = useState('');
+  const [apiKeyGroupSelection, setApiKeyGroupSelection] = useState<string[]>([]);
 
   function generateSecureApiKey(): string {
     const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -222,14 +230,18 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
   const openAddModal = () => {
     setEditingApiKeyId(null);
     setInputValue('');
+    setApiKeyGroupSelection([]);
     setFormError('');
     setModalOpen(true);
   };
 
   const openEditModal = (apiKeyId: string) => {
     const editingIndex = renderApiKeyIds.findIndex((id) => id === apiKeyId);
+    const key = apiKeys[editingIndex] ?? '';
+    const keyGroups = groups[key] ?? [];
     setEditingApiKeyId(apiKeyId);
-    setInputValue(apiKeys[editingIndex] ?? '');
+    setInputValue(key);
+    setApiKeyGroupSelection([...keyGroups]);
     setFormError('');
     setModalOpen(true);
   };
@@ -237,6 +249,7 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
   const closeModal = () => {
     setModalOpen(false);
     setInputValue('');
+    setApiKeyGroupSelection([]);
     setEditingApiKeyId(null);
     setFormError('');
   };
@@ -245,11 +258,31 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
     onChange(nextKeys.join('\n'));
   };
 
+  // Keeps a key-indexed string map restricted to the surviving API keys.
+  const rebuildStringMap = (
+    source: Record<string, string[]>,
+    keys: string[],
+    assignKey?: string,
+    assignRefs?: string[]
+  ): Record<string, string[]> => {
+    const next: Record<string, string[]> = {};
+    for (const key of keys) {
+      if (assignKey !== undefined && key === assignKey) {
+        if (assignRefs && assignRefs.length > 0) next[key] = [...assignRefs];
+        continue;
+      }
+      if (source[key] && source[key].length > 0) next[key] = [...source[key]];
+    }
+    return next;
+  };
+
   const handleDelete = (apiKeyId: string) => {
     const index = renderApiKeyIds.findIndex((id) => id === apiKeyId);
     if (index < 0) return;
     setApiKeyIds(renderApiKeyIds.filter((id) => id !== apiKeyId));
-    updateApiKeys(apiKeys.filter((_, i) => i !== index));
+    const nextKeys = apiKeys.filter((_, i) => i !== index);
+    updateApiKeys(nextKeys);
+    onGroupsChange(rebuildStringMap(groups, nextKeys));
   };
 
   const handleSave = () => {
@@ -274,6 +307,7 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
       setApiKeyIds([...renderApiKeyIds, makeClientId()]);
     }
     updateApiKeys(nextKeys);
+    onGroupsChange(rebuildStringMap(groups, nextKeys, trimmed, apiKeyGroupSelection));
     closeModal();
   };
 
@@ -290,6 +324,14 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
     setFormError('');
   };
 
+  const credentialGroupBadgeLabel = (key: string): string => {
+    const selected = groups[key] ?? [];
+    if (selected.length === 0) return t('config_management.visual.api_keys.all_credentials_badge');
+    return t('config_management.visual.api_keys.credential_group_badge', {
+      groups: selected.join(', '),
+    });
+  };
+
   return (
     <div className={fieldRootClass}>
       <div className={styles.blockHeaderRow}>
@@ -303,46 +345,50 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
         <div className={styles.emptyState}>{t('config_management.visual.api_keys.empty')}</div>
       ) : (
         <div className={cn(itemListClass, styles.compactItemList)}>
-          {apiKeys.map((key, index) => (
-            <div
-              key={renderApiKeyIds[index] ?? `${key}-${index}`}
-              className={cn(itemRowClass, styles.configItemRow)}
-            >
-              <div className={cn(itemMetaClass, styles.configItemMeta)}>
-                <div className={cn(pillClass, styles.configPill)}>#{index + 1}</div>
-                <div className={itemTitleClass}>
-                  {t('config_management.visual.api_keys.input_label')}
+          {apiKeys.map((key, index) => {
+            const groupBadge = credentialGroupBadgeLabel(key);
+            return (
+              <div
+                key={renderApiKeyIds[index] ?? `${key}-${index}`}
+                className={cn(itemRowClass, styles.configItemRow)}
+              >
+                <div className={cn(itemMetaClass, styles.configItemMeta)}>
+                  <div className={cn(pillClass, styles.configPill)}>#{index + 1}</div>
+                  <div className={itemTitleClass}>
+                    {t('config_management.visual.api_keys.input_label')}
+                  </div>
+                  <div className={itemSubtitleClass}>{maskApiKey(String(key || ''))}</div>
+                  <div className={cn(pillClass, styles.configPill)}>{groupBadge}</div>
                 </div>
-                <div className={itemSubtitleClass}>{maskApiKey(String(key || ''))}</div>
+                <div className={cn(itemActionsClass, styles.configItemActions)}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleCopy(key)}
+                    disabled={disabled}
+                  >
+                    {t('common.copy')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => openEditModal(renderApiKeyIds[index] ?? '')}
+                    disabled={disabled}
+                  >
+                    {t('config_management.visual.common.edit')}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDelete(renderApiKeyIds[index] ?? '')}
+                    disabled={disabled}
+                  >
+                    {t('config_management.visual.common.delete')}
+                  </Button>
+                </div>
               </div>
-              <div className={cn(itemActionsClass, styles.configItemActions)}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => handleCopy(key)}
-                  disabled={disabled}
-                >
-                  {t('common.copy')}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => openEditModal(renderApiKeyIds[index] ?? '')}
-                  disabled={disabled}
-                >
-                  {t('config_management.visual.common.edit')}
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => handleDelete(renderApiKeyIds[index] ?? '')}
-                  disabled={disabled}
-                >
-                  {t('config_management.visual.common.delete')}
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -402,6 +448,17 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
               {formError}
             </div>
           )}
+
+          <CredentialGroupsField
+            label={t('config_management.visual.api_keys.credential_groups_label')}
+            hint={t('config_management.visual.api_keys.credential_groups_hint')}
+            options={groupOptions}
+            selected={apiKeyGroupSelection}
+            onChange={setApiKeyGroupSelection}
+            disabled={disabled}
+            emptyText={t('config_management.visual.api_keys.credential_groups_empty')}
+            className={styles.apiKeyCredentialGroupField}
+          />
         </div>
       </Modal>
     </div>
@@ -1193,7 +1250,9 @@ export const PayloadRulesEditor = memo(function PayloadRulesEditor({
                     </Button>
                   </div>
                   {paramError && (
-                    <div className={cn(fieldErrorClass, styles.payloadParamError)}>{paramError}</div>
+                    <div className={cn(fieldErrorClass, styles.payloadParamError)}>
+                      {paramError}
+                    </div>
                   )}
                 </div>
               );

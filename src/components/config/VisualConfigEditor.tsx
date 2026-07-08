@@ -115,6 +115,22 @@ function Divider() {
   return <div className={styles.divider} />;
 }
 
+function mergeCaseInsensitiveStrings(...lists: string[][]): string[] {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    for (const item of list) {
+      const value = String(item ?? '').trim();
+      if (!value) continue;
+      const key = value.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(value);
+    }
+  }
+  return merged;
+}
+
 // Stable, stateless anchor around a searchable field. Search jumps target its DOM id
 // (see configSearchIndex.ts) and the highlight pulse is applied to it imperatively.
 function FieldAnchor({ fieldId, children }: { fieldId: string; children: ReactNode }) {
@@ -380,9 +396,22 @@ export function VisualConfigEditor({
     t,
     validationErrors?.['streaming.nonstreamKeepaliveInterval']
   );
+  const mergedCredentialGroupOptions = useMemo(
+    () =>
+      mergeCaseInsensitiveStrings(
+        values.credentialGroupOptions,
+        values.credentialGroups,
+        ...Object.values(values.apiKeyGroups)
+      ),
+    [values.apiKeyGroups, values.credentialGroupOptions, values.credentialGroups]
+  );
 
   const handleApiKeysTextChange = useCallback(
     (apiKeysText: string) => onChange({ apiKeysText }),
+    [onChange]
+  );
+  const handleApiKeyGroupsChange = useCallback(
+    (apiKeyGroups: Record<string, string[]>) => onChange({ apiKeyGroups }),
     [onChange]
   );
   const handlePluginStoreSourcesChange = useCallback(
@@ -561,15 +590,18 @@ export function VisualConfigEditor({
     });
   }, [activeSectionId, isCurrentLayer, isMobile, mode]);
 
-  const handleSectionJump = useCallback((sectionId: VisualSectionId) => {
-    lockSectionJumpTarget(sectionId);
-    setActiveSectionId(sectionId);
-    sectionRefs.current[sectionId]?.scrollIntoView({
-      behavior: 'auto',
-      block: 'nearest',
-      inline: 'start',
-    });
-  }, [lockSectionJumpTarget]);
+  const handleSectionJump = useCallback(
+    (sectionId: VisualSectionId) => {
+      lockSectionJumpTarget(sectionId);
+      setActiveSectionId(sectionId);
+      sectionRefs.current[sectionId]?.scrollIntoView({
+        behavior: 'auto',
+        block: 'nearest',
+        inline: 'start',
+      });
+    },
+    [lockSectionJumpTarget]
+  );
 
   // Shared high-frequency field blocks — reused verbatim by both the simple view and full mode
   // so the two layouts never drift apart.
@@ -616,8 +648,11 @@ export function VisualConfigEditor({
       <div className={styles.subsection}>
         <ApiKeysCardEditor
           value={values.apiKeysText}
+          groups={values.apiKeyGroups}
+          groupOptions={mergedCredentialGroupOptions}
           disabled={disabled}
           onChange={handleApiKeysTextChange}
+          onGroupsChange={handleApiKeyGroupsChange}
         />
       </div>
     </FieldAnchor>
@@ -896,7 +931,9 @@ export function VisualConfigEditor({
               </div>
             </div>
 
-            <div className={styles.simpleApiKeysPanel}>{apiKeysField}</div>
+            <div className={styles.simpleApiKeysPanel}>
+              <div className={styles.simpleApiKeysStack}>{apiKeysField}</div>
+            </div>
           </div>
 
           <button

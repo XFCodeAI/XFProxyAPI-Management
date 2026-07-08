@@ -29,6 +29,11 @@ const QuotaPage = lazy(() =>
     default: module.QuotaPage,
   }))
 );
+const CredentialGroupsPage = lazy(() =>
+  import('@/pages/CredentialGroupsPage').then((module) => ({
+    default: module.CredentialGroupsPage,
+  }))
+);
 const TwoFactorPage = lazy(() =>
   import('@/pages/TwoFactorPage').then((module) => ({
     default: module.TwoFactorPage,
@@ -81,6 +86,7 @@ const createMainRoutes = (supportsPlugin: boolean) => [
   { path: '/auth-files/oauth-excluded', element: <AuthFilesOAuthExcludedEditPage /> },
   { path: '/auth-files/oauth-model-alias', element: <AuthFilesOAuthModelAliasEditPage /> },
   { path: '/quota', element: <QuotaPage /> },
+  { path: '/credential-groups', element: <CredentialGroupsPage /> },
   { path: '/2fa', element: <TwoFactorPage /> },
   ...(supportsPlugin
     ? [

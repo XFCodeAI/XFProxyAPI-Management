@@ -9,6 +9,7 @@ import {
   parsePriorityValue,
   readCodexAuthFileWebsockets,
 } from '@/features/authFiles/constants';
+import { normalizeCredentialGroups } from '@/utils/credentialGroups';
 
 type AuthFileHeaders = Record<string, string>;
 type AuthFileHeadersErrorKey =
@@ -16,16 +17,10 @@ type AuthFileHeadersErrorKey =
   | 'auth_files.headers_invalid_object'
   | 'auth_files.headers_invalid_value';
 type AuthFileContentErrorKey =
-  | 'auth_files.prefix_proxy_invalid_json'
-  | 'auth_files.prefix_proxy_html_challenge';
+  'auth_files.prefix_proxy_invalid_json' | 'auth_files.prefix_proxy_html_challenge';
 
 export type PrefixProxyEditorField =
-  | 'prefix'
-  | 'proxyUrl'
-  | 'priority'
-  | 'websockets'
-  | 'note'
-  | 'headersText';
+  'prefix' | 'proxyUrl' | 'priority' | 'websockets' | 'note' | 'headersText';
 
 export type PrefixProxyEditorFieldValue = string | boolean;
 
@@ -40,6 +35,7 @@ export type PrefixProxyEditorState = {
   invalidContentPreview: string;
   json: Record<string, unknown> | null;
   providerKey: string;
+  groups: string[];
   prefix: string;
   proxyUrl: string;
   priority: string;
@@ -54,7 +50,7 @@ export type PrefixProxyEditorState = {
 
 export type UseAuthFilesPrefixProxyEditorOptions = {
   disableControls: boolean;
-  loadFiles: () => Promise<void>;
+  loadFiles: () => Promise<unknown>;
 };
 
 export type UseAuthFilesPrefixProxyEditorResult = {
@@ -288,6 +284,7 @@ const buildPrefixProxyUpdatedText = (
   if (!editor?.json) return editor?.rawText ?? '';
   const patch = buildAuthFileFieldsPatch(editor, resolveHeadersError);
   let next: Record<string, unknown> = { ...editor.json };
+
   if (patch.prefix !== undefined) {
     if (patch.prefix) {
       next.prefix = patch.prefix;
@@ -377,6 +374,7 @@ export function useAuthFilesPrefixProxyEditor(
       invalidContentPreview: '',
       json: null,
       providerKey: fileProviderKey,
+      groups: [],
       prefix: '',
       proxyUrl: '',
       priority: '',
@@ -423,6 +421,7 @@ export function useAuthFilesPrefixProxyEditor(
       const providerKey = normalizeProviderKey(
         String(json.type ?? json.provider ?? file.type ?? file.provider ?? '')
       );
+      const groups = normalizeCredentialGroups(json.groups);
       const prefix = typeof json.prefix === 'string' ? json.prefix : '';
       const proxyUrl = typeof json.proxy_url === 'string' ? json.proxy_url : '';
       const priority = parsePriorityValue(json.priority);
@@ -447,6 +446,7 @@ export function useAuthFilesPrefixProxyEditor(
           invalidContentPreview: '',
           json,
           providerKey,
+          groups,
           prefix,
           proxyUrl,
           priority: priority !== undefined ? String(priority) : '',

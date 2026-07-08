@@ -20,6 +20,7 @@ import {
   XAI_CONFIG,
 } from '@/components/quota';
 import { AuthFileModelsModal } from '@/features/authFiles/components/AuthFileModelsModal';
+import { AuthFilesGroupAssignmentModal } from '@/features/authFiles/components/AuthFilesGroupAssignmentModal';
 import { AuthImportModal } from '@/features/authFiles/components/AuthImportModal';
 import { AuthSessionImportResultModal } from '@/features/authFiles/components/AuthSessionImportResultModal';
 import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components/AuthFilesPrefixProxyEditorModal';
@@ -33,8 +34,9 @@ import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useOAuthProviderFlow } from '@/hooks/useOAuthProviderFlow';
 import { authFilesApi, pluginsApi } from '@/services/api';
 import { useAuthStore, useNotificationStore } from '@/stores';
-import type { AuthFileItem, PluginListEntry } from '@/types';
+import type { AuthFileItem, PluginListEntry, ProxySelection } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
+import { parseTimestampMs } from '@/utils/timestamp';
 import { readNavigationPreference, writeNavigationPreference } from '@/utils/navigationPreference';
 import { resolveAuthProvider } from '@/utils/quota';
 import styles from './QuotaPage.module.scss';
@@ -74,6 +76,66 @@ const createProviderFilter = (providerId: string) => (file: AuthFileItem) =>
   resolveAuthProvider(file) === providerId;
 
 const createPluginProviderId = (providerId: string) => `plugin:${providerId}`;
+
+const readAuthFileTime = (file: AuthFileItem): number => {
+  const candidates = [file.modified, file.modtime, file.updated_at, file.lastRefresh];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return candidate < 1e12 ? candidate * 1000 : candidate;
+    }
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (!trimmed) continue;
+      const numeric = Number(trimmed);
+      if (Number.isFinite(numeric)) {
+        return numeric < 1e12 ? numeric * 1000 : numeric;
+      }
+      const parsed = parseTimestampMs(trimmed);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+};
+
+const buildOAuthCredentialSignature = (file: AuthFileItem): string =>
+  JSON.stringify({
+    authIndex: file.authIndex ?? file.auth_index ?? null,
+    disabled: file.disabled ?? null,
+    modified: readAuthFileTime(file),
+    size: file.size ?? null,
+    status: file.status ?? null,
+    statusMessage: file.statusMessage ?? null,
+    unavailable: file.unavailable ?? null,
+  });
+
+const resolveOAuthGroupAssignmentTargets = (
+  provider: QuotaProviderDefinition,
+  beforeFiles: AuthFileItem[],
+  afterFiles: AuthFileItem[]
+): AuthFileItem[] => {
+  const beforeProviderFiles = beforeFiles.filter(provider.config.filterFn);
+  const afterProviderFiles = afterFiles
+    .filter(provider.config.filterFn)
+    .filter((file) => !isRuntimeOnlyAuthFile(file));
+  const beforeSignatures = new Map(
+    beforeProviderFiles.map((file) => [file.name, buildOAuthCredentialSignature(file)])
+  );
+  const changedFiles = afterProviderFiles.filter(
+    (file) => beforeSignatures.get(file.name) !== buildOAuthCredentialSignature(file)
+  );
+
+  if (changedFiles.length > 0) return changedFiles;
+  if (afterProviderFiles.length <= 1) return afterProviderFiles;
+
+  const [latest] = [...afterProviderFiles].sort(
+    (left, right) => readAuthFileTime(right) - readAuthFileTime(left)
+  );
+  return latest ? [latest] : [];
+};
 
 const QUOTA_PROVIDERS: BuiltInQuotaProviderDefinition[] = [
   {
@@ -175,6 +237,9 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     uploadProxyPoolsLoading,
     uploadProxyInspection,
     sessionImportResult,
+    groupAssignment,
+    groupAssigning,
+    groupAssignmentError,
     fileInputRef,
     loadFiles,
     beginFileImport,
@@ -195,6 +260,9 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     confirmUploadProxySelection,
     cancelUploadProxySelection,
     clearSessionImportResult,
+    openCredentialGroupAssignment,
+    closeCredentialGroupAssignment,
+    confirmCredentialGroupAssignment,
   } = useAuthFilesData();
   const [pluginProviders, setPluginProviders] = useState<PluginQuotaProviderDefinition[]>([]);
   const [pluginProvidersLoaded, setPluginProvidersLoaded] = useState(false);
@@ -210,6 +278,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     files: AuthFileItem[];
   }>({ providerId: '', files: EMPTY_AUTH_FILE_ITEMS });
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
+  const oauthCredentialSnapshotRef = useRef<Record<string, AuthFileItem[]>>({});
 
   const disableControls = connectionStatus !== 'connected';
   const {
@@ -311,7 +380,12 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   }, []);
 
   const refreshQuotaPage = useCallback(async () => {
-    await Promise.all([loadFiles(), loadPluginProviders(), loadExcludedModels()]);
+    const [nextFiles] = await Promise.all([
+      loadFiles(),
+      loadPluginProviders(),
+      loadExcludedModels(),
+    ]);
+    return nextFiles;
   }, [loadFiles, loadPluginProviders, loadExcludedModels]);
 
   const showCredentialModels = useCallback(
@@ -367,9 +441,23 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     [oauthProviderDetails, t]
   );
 
-  const handleOAuthSuccess = useCallback(() => {
-    void refreshQuotaPage();
-  }, [refreshQuotaPage]);
+  const handleOAuthSuccess = useCallback(
+    async (providerId: string) => {
+      const quotaProvider = providerSummaries.find(
+        (provider) => provider.oauthProviderId === providerId
+      );
+      const beforeFiles = oauthCredentialSnapshotRef.current[providerId] ?? files;
+      const nextFiles = await refreshQuotaPage();
+      delete oauthCredentialSnapshotRef.current[providerId];
+
+      if (!quotaProvider) return;
+      const targets = resolveOAuthGroupAssignmentTargets(quotaProvider, beforeFiles, nextFiles);
+      if (targets.length > 0) {
+        openCredentialGroupAssignment(targets, 'oauth');
+      }
+    },
+    [files, openCredentialGroupAssignment, providerSummaries, refreshQuotaPage]
+  );
 
   const handleVisibleQuotaCredentialsChange = useCallback(
     (items: AuthFileItem[]) => {
@@ -390,7 +478,11 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
 
   useActionBarHeightVar(floatingBatchActionsRef, '--quota-action-bar-height', selectionCount > 0);
 
-  useHeaderRefresh(refreshQuotaPage);
+  const handleHeaderRefresh = useCallback(async () => {
+    await refreshQuotaPage();
+  }, [refreshQuotaPage]);
+
+  useHeaderRefresh(handleHeaderRefresh);
 
   useEffect(() => {
     void refreshQuotaPage();
@@ -419,6 +511,13 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     selectQuotaProvider(provider.id);
     oauthFlow.resetProviderAttempt(provider.oauthProviderId);
     setOauthDialogProviderId(provider.id);
+  };
+
+  const startProviderOAuth = (provider: QuotaProviderSummary, selection?: ProxySelection) => {
+    oauthCredentialSnapshotRef.current[provider.oauthProviderId] = files.filter(
+      provider.config.filterFn
+    );
+    void oauthFlow.startAuth(provider.oauthProviderId, selection);
   };
 
   const openAuthSettings = () => {
@@ -691,9 +790,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           pluginProvider={isPluginProvider(oauthDialogProvider)}
           state={oauthFlow.states[oauthDialogProvider.oauthProviderId] || {}}
           onClose={closeOAuthDialog}
-          onStart={(selection) =>
-            void oauthFlow.startAuth(oauthDialogProvider.oauthProviderId, selection)
-          }
+          onStart={(selection) => startProviderOAuth(oauthDialogProvider, selection)}
           onCopyLink={(url) => void oauthFlow.copyLink(url)}
           onSubmitCallback={() =>
             void oauthFlow.submitCallback(oauthDialogProvider.oauthProviderId)
@@ -718,6 +815,14 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
         open={Boolean(sessionImportResult)}
         result={sessionImportResult}
         onClose={clearSessionImportResult}
+      />
+      <AuthFilesGroupAssignmentModal
+        assignment={groupAssignment}
+        open={Boolean(groupAssignment) && !sessionImportResult}
+        saving={groupAssigning}
+        error={groupAssignmentError}
+        onClose={closeCredentialGroupAssignment}
+        onConfirm={confirmCredentialGroupAssignment}
       />
       <ProxySelectionModal
         open={uploadProxyDialogOpen}

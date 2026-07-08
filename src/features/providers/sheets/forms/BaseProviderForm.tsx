@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CredentialGroupsField } from '@/components/credentialGroups/CredentialGroupsField';
 import {
   IconAlertTriangle,
   IconCheckCircle2,
@@ -43,6 +44,7 @@ export interface BaseProviderFormHandle {
 interface BaseProviderFormProps {
   brand: ProviderBrand;
   resource: ProviderResource | null;
+  credentialGroupOptions: string[];
   mode: 'create' | 'edit';
   mutating: boolean;
   formId: string;
@@ -53,7 +55,9 @@ interface BaseProviderFormProps {
 const emptyHeader = () => ({ key: '', value: '' });
 const emptyModel = (): ModelEntryInput => ({ name: '', alias: '' });
 const emptyApiKeyEntry = (): ApiKeyEntryInput => ({
+  name: '',
   apiKey: '',
+  groups: [],
   proxyUrl: '',
 });
 
@@ -71,25 +75,25 @@ interface ProviderFormLayout {
 
 const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
   gemini: {
-    primaryFields: ['apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
+    primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
     toggleFields: ['disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
   codex: {
-    primaryFields: ['apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
+    primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
     toggleFields: ['websockets', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
   claude: {
-    primaryFields: ['apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
+    primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
     toggleFields: ['disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels', 'cloak'],
     modelEntryMode: 'standard',
   },
   vertex: {
-    primaryFields: ['apiKey', 'baseUrl', 'proxyUrl', 'routing'],
+    primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing'],
     toggleFields: ['disabled'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
@@ -125,6 +129,7 @@ function buildInitialForm(
     return {
       apiKey: '',
       name: '',
+      groups: [],
       baseUrl: '',
       proxyUrl: '',
       prefix: '',
@@ -180,8 +185,10 @@ function buildInitialForm(
       testModel: cfg.testModel ?? '',
       apiKeyEntries: cfg.apiKeyEntries?.length
         ? cfg.apiKeyEntries.map((entry) => ({
+            name: entry.name ?? '',
             apiKey: '',
             existingApiKey: entry.apiKey,
+            groups: entry.groups ?? [],
             proxyUrl: entry.proxyUrl ?? '',
             authIndex: entry.authIndex,
           }))
@@ -198,7 +205,8 @@ function buildInitialForm(
     // overwrite it) and defeats the "leave empty = keep unchanged" contract; an
     // empty field is preserved on save via buildProviderKeyConfig's existing fallback.
     apiKey: '',
-    name: '',
+    name: cfg.name ?? '',
+    groups: cfg.groups ?? [],
     baseUrl: cfg.baseUrl ?? '',
     proxyUrl: cfg.proxyUrl ?? '',
     prefix: cfg.prefix ?? '',
@@ -261,6 +269,7 @@ function ConnectivityStatusIcon({ state }: { state: ConnectivityState }) {
 export function BaseProviderForm({
   brand,
   resource,
+  credentialGroupOptions,
   mode,
   mutating,
   formId,
@@ -270,6 +279,15 @@ export function BaseProviderForm({
   const { t } = useTranslation();
   const descriptor = PROVIDER_DESCRIPTORS[brand];
   const layout = PROVIDER_FORM_LAYOUTS[brand];
+  const isProviderNameRequired = brand === 'openaiCompatibility';
+  const nameFieldLabel = isProviderNameRequired
+    ? t('providersPage.form.name')
+    : t('providersPage.form.alias', { defaultValue: '别名' });
+  const nameFieldHint = isProviderNameRequired
+    ? ''
+    : t('providersPage.form.aliasHint', {
+        defaultValue: '用于展示和兼容旧的 allow 引用，可留空。',
+      });
   const hasPrimaryField = (field: PrimaryField) => layout.primaryFields.includes(field);
   const hasToggleField = (field: ToggleField) => layout.toggleFields.includes(field);
   const hasAdvancedSection = (section: AdvancedSection) =>
@@ -459,7 +477,7 @@ export function BaseProviderForm({
   };
 
   const validate = (): string | null => {
-    if (hasPrimaryField('name') && !form.name.trim()) {
+    if (hasPrimaryField('name') && isProviderNameRequired && !form.name.trim()) {
       return t('providersPage.form.validation.nameRequired');
     }
     if (hasPrimaryField('apiKey') && mode === 'create' && !form.apiKey.trim()) {
@@ -503,6 +521,15 @@ export function BaseProviderForm({
   );
   const actualApiKeyEntries = form.apiKeyEntries ?? [];
   const supportsOpenAIModelOptions = layout.modelEntryMode === 'openai';
+  const credentialGroupsLabel = t('providersPage.form.credentialGroups', {
+    defaultValue: '凭证分组',
+  });
+  const credentialGroupsHint = t('providersPage.form.credentialGroupsHint', {
+    defaultValue: '可多选，供下游 API Key 按分组绑定使用。',
+  });
+  const credentialGroupsEmpty = t('providersPage.form.credentialGroupsEmpty', {
+    defaultValue: '暂无可选分组，请先到配置面板的账号管理中创建。',
+  });
   const modelsSectionLabel = t(`providersPage.form.modelsSectionByBrand.${brand}`, {
     defaultValue: t('providersPage.form.modelsSection'),
   });
@@ -555,7 +582,8 @@ export function BaseProviderForm({
         {hasPrimaryField('name') ? (
           <div className={styles.field}>
             <label className={styles.label} htmlFor={`${fid}-name`}>
-              {t('providersPage.form.name')}
+              {nameFieldLabel}
+              {nameFieldHint ? <span className={styles.labelHint}> · {nameFieldHint}</span> : null}
             </label>
             <input
               id={`${fid}-name`}
@@ -729,6 +757,18 @@ export function BaseProviderForm({
           </div>
         ) : null}
 
+        {brand !== 'openaiCompatibility' ? (
+          <CredentialGroupsField
+            label={credentialGroupsLabel}
+            hint={credentialGroupsHint}
+            options={credentialGroupOptions}
+            selected={form.groups ?? []}
+            onChange={(next) => updateField('groups', next)}
+            disabled={mutating}
+            emptyText={credentialGroupsEmpty}
+          />
+        ) : null}
+
         {hasToggleField('websockets') ? (
           <SelectionCheckbox
             checked={form.websockets ?? false}
@@ -855,6 +895,47 @@ export function BaseProviderForm({
                       </button>
                     </div>
                   </div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>
+                      {t('providersPage.form.alias', { defaultValue: '别名' })}
+                      <span className={styles.labelHint}>
+                        {' '}
+                        ·{' '}
+                        {t('providersPage.form.aliasHint', {
+                          defaultValue: '用于展示和兼容旧的 allow 引用，可留空。',
+                        })}
+                      </span>
+                    </label>
+                    <input
+                      className={inputClass}
+                      value={entry.name ?? ''}
+                      onChange={(e) =>
+                        updateField(
+                          'apiKeyEntries',
+                          apiKeyEntries.map((it, i) =>
+                            i === realIdx ? { ...it, name: e.target.value } : it
+                          )
+                        )
+                      }
+                      disabled={mutating}
+                    />
+                  </div>
+                  <CredentialGroupsField
+                    label={credentialGroupsLabel}
+                    hint={credentialGroupsHint}
+                    options={credentialGroupOptions}
+                    selected={entry.groups ?? []}
+                    onChange={(next) =>
+                      updateField(
+                        'apiKeyEntries',
+                        apiKeyEntries.map((it, i) =>
+                          i === realIdx ? { ...it, groups: next } : it
+                        )
+                      )
+                    }
+                    disabled={mutating}
+                    emptyText={credentialGroupsEmpty}
+                  />
                   <div className={styles.field}>
                     <label className={styles.label}>{t('providersPage.form.apiKey')}</label>
                     <div className={styles.passwordField}>

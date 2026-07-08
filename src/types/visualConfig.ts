@@ -1,9 +1,7 @@
 export type PayloadParamValueType = 'string' | 'number' | 'boolean' | 'json';
 export type DisableImageGenerationMode = 'false' | 'true' | 'chat';
 export type PayloadParamValidationErrorCode =
-  | 'payload_invalid_number'
-  | 'payload_invalid_boolean'
-  | 'payload_invalid_json';
+  'payload_invalid_number' | 'payload_invalid_boolean' | 'payload_invalid_json';
 
 export type VisualConfigFieldPath =
   | 'port'
@@ -80,6 +78,14 @@ export type VisualConfigValues = {
   rmPanelRepo: string;
   authDir: string;
   apiKeysText: string;
+  // apiKeyGroups maps a downstream API key to cross-provider credential groups.
+  // Empty means the key is not restricted by credential groups.
+  apiKeyGroups: Record<string, string[]>;
+  // credentialGroups is the editable top-level `credential-groups` registry in YAML.
+  credentialGroups: string[];
+  // credentialGroupOptions is the read-only merged catalog of credential groups
+  // discovered from YAML and live auth files. Derived, never edited directly.
+  credentialGroupOptions: string[];
   pluginsEnabled: boolean;
   pluginStoreSources: string[];
   debug: boolean;
@@ -144,6 +150,9 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   rmPanelRepo: '',
   authDir: '',
   apiKeysText: '',
+  apiKeyGroups: {},
+  credentialGroups: [],
+  credentialGroupOptions: [],
   pluginsEnabled: false,
   pluginStoreSources: [],
   debug: false,
