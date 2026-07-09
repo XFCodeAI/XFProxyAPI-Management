@@ -598,14 +598,13 @@ export function CredentialGroupsPage() {
       setLoadError('');
 
       try {
-        const [nextGroups, authFilesResponse, nextApiKeyEntries, pluginResponse] =
-          await Promise.all([
-            credentialGroupsApi.list(),
-            authFilesApi.list(),
-            apiKeysApi.listEntries(),
-            pluginsApi.list().catch(() => ({ plugins: [] })),
-            fetchConfig(undefined, true),
-          ]);
+        const authFilesResponse = await authFilesApi.list();
+        const [nextGroups, nextApiKeyEntries, pluginResponse] = await Promise.all([
+          credentialGroupsApi.list(),
+          apiKeysApi.listEntries(),
+          pluginsApi.list().catch(() => ({ plugins: [] })),
+          fetchConfig(undefined, true),
+        ]);
         setGroups(nextGroups);
         setAuthFiles(authFilesResponse.files ?? []);
         setApiKeyEntries(nextApiKeyEntries);
