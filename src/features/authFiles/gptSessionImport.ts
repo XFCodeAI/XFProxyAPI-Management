@@ -13,6 +13,7 @@ export interface GptSessionCpaAuth extends JsonRecord {
   access_token: string;
   refresh_token: string;
   session_token?: string;
+  proxy_url?: string;
   last_refresh?: string;
   expired?: string;
   disabled?: true;
@@ -283,6 +284,9 @@ const readRefreshToken = (record: JsonRecord): string | undefined => {
   );
 };
 
+const readProxyURL = (record: JsonRecord): string | undefined =>
+  firstNonEmpty(record.proxy_url, record.proxyUrl);
+
 const readIdToken = (record: JsonRecord): string | undefined => {
   const tokens = getRecord(record, 'tokens');
   const token = getRecord(record, 'token');
@@ -467,6 +471,7 @@ export function convertGptSessionToCpa(
     access_token: accessToken,
     refresh_token: refreshToken || '',
     session_token: readSessionToken(record),
+    proxy_url: readProxyURL(record),
     last_refresh: normalizeTimestamp(now),
     expired: expiresAt,
     disabled: record.disabled === true ? true : undefined,

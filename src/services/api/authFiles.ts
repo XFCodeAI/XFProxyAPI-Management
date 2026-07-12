@@ -33,6 +33,7 @@ type AuthFileSessionValidationResponse = {
   status?: string;
   validated?: number;
   files?: unknown;
+  resolved?: unknown;
   failed?: unknown;
 };
 type AuthFileBatchDeleteResponse = {
@@ -47,10 +48,15 @@ type AuthFileBatchUploadResult = {
   files: string[];
   failed: AuthFileBatchFailure[];
 };
+export type AuthFileSessionValidationResolvedFile = {
+  name: string;
+  proxyUrl: string;
+};
 export type AuthFileSessionValidationResult = {
   status: string;
   validated: number;
   files: string[];
+  resolved: AuthFileSessionValidationResolvedFile[];
   failed: AuthFileBatchFailure[];
 };
 type AuthFileBatchDeleteResult = {
@@ -129,10 +135,24 @@ const normalizeSessionValidationResponse = (
 ): AuthFileSessionValidationResult => {
   const failed = normalizeBatchFailures(payload?.failed);
   const files = normalizeBatchFileNames(payload?.files);
+  const resolved = Array.isArray(payload?.resolved)
+    ? payload.resolved.reduce<AuthFileSessionValidationResolvedFile[]>((result, item) => {
+        if (!item || typeof item !== 'object') return result;
+        const entry = item as Record<string, unknown>;
+        const name = String(entry.name ?? '').trim();
+        if (!name) return result;
+        result.push({
+          name,
+          proxyUrl: typeof entry.proxy_url === 'string' ? entry.proxy_url.trim() : '',
+        });
+        return result;
+      }, [])
+    : [];
   return {
     status: payload?.status ?? (failed.length > 0 ? 'partial' : 'ok'),
     validated: payload?.validated ?? files.length,
     files,
+    resolved,
     failed,
   };
 };
@@ -407,7 +427,7 @@ export const authFilesApi = {
     proxySelection?: ProxySelection
   ): Promise<AuthFileSessionValidationResult> => {
     if (files.length === 0) {
-      return { status: 'ok', validated: 0, files: [], failed: [] };
+      return { status: 'ok', validated: 0, files: [], resolved: [], failed: [] };
     }
 
     const payload = {

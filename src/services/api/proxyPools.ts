@@ -1,5 +1,6 @@
 import { parse as parseYaml, parseDocument, isMap } from 'yaml';
 import type {
+  ProxyPoolAutoAssignResult,
   ProxyPoolEntry,
   ProxyPoolProtocol,
   ProxyPoolStatusEntry,
@@ -270,6 +271,26 @@ function normalizeStatusResponse(payload: unknown): ProxyPoolStatusEntry[] {
     .filter((item): item is ProxyPoolStatusEntry => item !== null);
 }
 
+function normalizeAutoAssignResult(payload: unknown): ProxyPoolAutoAssignResult {
+  const record = isRecord(payload) ? payload : {};
+  const failures = Array.isArray(record.failures)
+    ? record.failures.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const authId = readString(item, 'auth_id') || readString(item, 'authId');
+        const error = readString(item, 'error');
+        return authId && error ? [{ authId, error }] : [];
+      })
+    : [];
+  return {
+    status: record.status === 'partial' ? 'partial' : 'ok',
+    updated: readNumber(record, 'updated'),
+    skipped: readNumber(record, 'skipped'),
+    failed: readNumber(record, 'failed'),
+    failures,
+    pools: normalizeStatusResponse(record),
+  };
+}
+
 async function load(): Promise<ProxyPoolsConfigSnapshot> {
   const yamlContent = await configFileApi.fetchConfigYaml();
   return parseConfigSnapshot(yamlContent);
@@ -403,6 +424,13 @@ export const proxyPoolsApi = {
     normalizeStatusResponse(
       await apiClient.post('/proxy-pools/auto-assign', {
         auth_ids: authIds,
+      })
+    ),
+  autoAssignUnassigned: async (authIds: string[]) =>
+    normalizeAutoAssignResult(
+      await apiClient.post('/proxy-pools/auto-assign', {
+        auth_ids: authIds,
+        only_unassigned: true,
       })
     ),
 };

@@ -16,6 +16,7 @@ import {
   IconPencil,
   IconPlus,
   IconRefreshCw,
+  IconScale,
   IconTrash2,
 } from '@/components/ui/icons';
 import {
@@ -171,6 +172,7 @@ export function ProxyPoolsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [balancing, setBalancing] = useState(false);
   const [checkingID, setCheckingID] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -226,6 +228,17 @@ export function ProxyPoolsPage() {
   );
   const boundCredentialsCount = statusPools.reduce((sum, pool) => sum + pool.assignedCount, 0);
   const availableCount = statusPools.filter((pool) => pool.checked && pool.available).length;
+  const authFileIDs = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          authFiles
+            .map((file) => String(file.id || file.name || '').trim())
+            .filter((id) => id.length > 0)
+        )
+      ),
+    [authFiles]
+  );
 
   const loadProxyPools = useCallback(async () => {
     setLoading(true);
@@ -538,6 +551,47 @@ export function ProxyPoolsPage() {
     }
   };
 
+  const handleSmartBalance = async () => {
+    if (authFilesFailed || authFileIDs.length === 0) return;
+    setBalancing(true);
+    try {
+      const result = await proxyPoolsApi.autoAssignUnassigned(authFileIDs);
+      setStatusPools(result.pools);
+      setStatusFailed(false);
+      if (result.failed > 0) {
+        showNotification(
+          t('proxy_pools.balance_partial', {
+            defaultValue: '智能平衡完成，成功 {{updated}} 个，失败 {{failed}} 个',
+            updated: result.updated,
+            failed: result.failed,
+          }),
+          result.updated > 0 ? 'warning' : 'error'
+        );
+      } else if (result.updated === 0) {
+        showNotification(
+          t('proxy_pools.balance_noop', { defaultValue: '所有凭证均已配置代理' }),
+          'info'
+        );
+      } else {
+        showNotification(
+          t('proxy_pools.balance_success', {
+            defaultValue: '已为 {{count}} 个凭证智能分配代理',
+            count: result.updated,
+          }),
+          'success'
+        );
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '';
+      showNotification(
+        `${t('proxy_pools.balance_failed', { defaultValue: '智能平衡失败' })}${message ? `: ${message}` : ''}`,
+        'error'
+      );
+    } finally {
+      setBalancing(false);
+    }
+  };
+
   const togglePoolSelection = (poolID: string) => {
     setSelectedPoolIDs((current) => {
       const next = new Set(current);
@@ -682,7 +736,9 @@ export function ProxyPoolsPage() {
               ? t('config_management.status_loading', { defaultValue: '加载中' })
               : saving
                 ? t('config_management.status_saving', { defaultValue: '保存中' })
-                : t('config_management.status_loaded', { defaultValue: '已加载' })}
+                : balancing
+                  ? t('proxy_pools.balance_running', { defaultValue: '正在智能平衡' })
+                  : t('config_management.status_loaded', { defaultValue: '已加载' })}
           </div>
         </div>
         <div className={styles.headerActions}>
@@ -690,7 +746,7 @@ export function ProxyPoolsPage() {
             label={t('config_management.reload', { defaultValue: '重新加载' })}
             className={styles.iconButton}
             onClick={handleReload}
-            disabled={loading || saving}
+            disabled={loading || saving || balancing}
           >
             <IconRefreshCw size={16} />
           </TooltipIconButton>
@@ -699,7 +755,7 @@ export function ProxyPoolsPage() {
             variant="secondary"
             onClick={handleCheckAll}
             loading={checking}
-            disabled={disabled || loading || saving || pools.length === 0}
+            disabled={disabled || loading || saving || balancing || pools.length === 0}
           >
             <IconRefreshCw size={16} />
             {t('proxy_pools.check_all', { defaultValue: '检测全部' })}
@@ -707,8 +763,26 @@ export function ProxyPoolsPage() {
           <Button
             type="button"
             variant="secondary"
+            onClick={() => void handleSmartBalance()}
+            loading={balancing}
+            disabled={
+              disabled ||
+              loading ||
+              saving ||
+              checking ||
+              authFilesFailed ||
+              authFileIDs.length === 0 ||
+              pools.length === 0
+            }
+          >
+            <IconScale size={16} />
+            {t('proxy_pools.balance', { defaultValue: '智能平衡' })}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
             onClick={openCreateModal}
-            disabled={disabled || loading || saving}
+            disabled={disabled || loading || saving || balancing}
           >
             <IconPlus size={16} />
             {t('proxy_pools.add', { defaultValue: '新增代理' })}

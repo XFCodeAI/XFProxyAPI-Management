@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObj
 import { useTranslation } from 'react-i18next';
 import { authFilesApi, proxyPoolsApi } from '@/services/api';
 import { apiClient } from '@/services/api/client';
+import type { AuthFileSessionValidationResult } from '@/services/api/authFiles';
 import { useNotificationStore } from '@/stores';
 import type { AuthFileItem, ProxyPoolStatusEntry, ProxySelection } from '@/types';
 import { formatFileSize } from '@/utils/format';
@@ -19,7 +20,9 @@ import {
   loadingAuthFileProxyInspection,
   type AuthFileProxyInspection,
 } from '@/features/authFiles/proxyUploadInspection';
+import { resolveDefaultImportProxySelection } from '@/features/authFiles/proxySelectionDefault';
 import { normalizeCredentialGroups } from '@/utils/credentialGroups';
+import { isRecord } from '@/utils/helpers';
 
 type DeleteAllOptions = {
   filter: string;
@@ -172,6 +175,69 @@ const uniqueNames = (names: string[]): string[] => {
   return result;
 };
 
+const rewriteSessionAuthFileProxy = async (file: File, proxyURL: string): Promise<File> => {
+  const parsed = JSON.parse(await file.text()) as unknown;
+  if (!isRecord(parsed)) {
+    throw new Error('JSON must be an object');
+  }
+
+  const normalizedProxyURL = proxyURL.trim();
+  if (normalizedProxyURL) {
+    parsed.proxy_url = normalizedProxyURL;
+  } else {
+    delete parsed.proxy_url;
+  }
+  delete parsed.proxyUrl;
+
+  return new File([`${JSON.stringify(parsed, null, 2)}\n`], file.name, {
+    type: file.type || 'application/json',
+  });
+};
+
+const resolveSessionUploadFiles = async (
+  batch: File[],
+  validation: AuthFileSessionValidationResult,
+  selection: ProxySelection
+): Promise<{ files: File[]; selection: ProxySelection }> => {
+  const validNames = new Set(validation.files);
+  const fallbackFiles = batch.filter((file) => validNames.has(file.name));
+  if (validation.resolved.length === 0) {
+    return { files: fallbackFiles, selection };
+  }
+
+  const filesByName = new Map<string, File[]>();
+  batch.forEach((file) => {
+    const queue = filesByName.get(file.name);
+    if (queue) {
+      queue.push(file);
+    } else {
+      filesByName.set(file.name, [file]);
+    }
+  });
+
+  const resolvedFiles: File[] = [];
+  for (const resolved of validation.resolved) {
+    const file = filesByName.get(resolved.name)?.shift();
+    if (!file) continue;
+    if (selection.mode === 'direct') {
+      resolvedFiles.push(file);
+      continue;
+    }
+    if (!resolved.proxyUrl) {
+      return { files: fallbackFiles, selection };
+    }
+    resolvedFiles.push(await rewriteSessionAuthFileProxy(file, resolved.proxyUrl));
+  }
+
+  if (resolvedFiles.length !== validation.validated) {
+    return { files: fallbackFiles, selection };
+  }
+  return {
+    files: resolvedFiles,
+    selection: selection.mode === 'direct' ? selection : { mode: 'file' },
+  };
+};
+
 export function useAuthFilesData(): UseAuthFilesDataResult {
   const { t } = useTranslation();
   const { showNotification, showConfirmation } = useNotificationStore();
@@ -204,6 +270,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const batchStatusPendingRef = useRef(false);
   const uploadProxyInspectionSeqRef = useRef(0);
+  const uploadProxySelectionTouchedRef = useRef(false);
   const filesRef = useRef<AuthFileItem[]>([]);
   const pendingUploadGroupNamesRef = useRef<string[]>([]);
   const selectionCount = selectedFiles.size;
@@ -336,9 +403,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       .then((snapshot) => ({ pools: snapshot.pools }))
       .catch(() => ({ pools: [], compareFailed: true }));
     const inspection = await inspectAuthFileProxyUploads(validFiles, poolComparison);
-    if (uploadProxyInspectionSeqRef.current === seq) {
-      setUploadProxyInspection(inspection);
-    }
+    if (uploadProxyInspectionSeqRef.current !== seq) return null;
+    setUploadProxyInspection(inspection);
+    return inspection;
+  }, []);
+
+  const changeUploadProxySelection = useCallback((selection: ProxySelection) => {
+    uploadProxySelectionTouchedRef.current = true;
+    setUploadProxySelection(selection);
   }, []);
 
   const openCredentialGroupAssignment = useCallback(
@@ -515,6 +587,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
         for (const batch of chunkFiles(validFiles, SESSION_IMPORT_BATCH_SIZE)) {
           let filesToUpload: File[] = [];
+          let uploadSelection = selection;
 
           try {
             const validation = await authFilesApi.validateSessionFiles(batch, selection);
@@ -522,7 +595,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
             const validationFailedNames = new Set(
               validation.failed.map((item) => item.name).filter(Boolean)
             );
-            filesToUpload = batch.filter((file) => validNames.has(file.name));
+            const resolvedUpload = await resolveSessionUploadFiles(batch, validation, selection);
+            filesToUpload = resolvedUpload.files;
+            uploadSelection = resolvedUpload.selection;
             validatedCount += filesToUpload.length;
 
             validation.failed.forEach((item) => {
@@ -553,7 +628,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           }
 
           try {
-            const uploadResult = await authFilesApi.uploadFiles(filesToUpload, selection);
+            const uploadResult = await authFilesApi.uploadFiles(filesToUpload, uploadSelection);
             const uploadedNames = new Set(uploadResult.files);
             const uploadFailedNames = new Set(
               uploadResult.failed.map((item) => item.name).filter(Boolean)
@@ -677,8 +752,12 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
       setPendingUploadFiles(validFiles);
       setPendingUploadSource(options.source ?? 'file');
+      uploadProxySelectionTouchedRef.current = false;
       setUploadProxySelection({ mode: 'file' });
-      void inspectUploadProxyFiles(validFiles);
+      void inspectUploadProxyFiles(validFiles).then((inspection) => {
+        if (!inspection || uploadProxySelectionTouchedRef.current) return;
+        setUploadProxySelection(resolveDefaultImportProxySelection(inspection.filesWithProxy));
+      });
       setUploadProxyDialogOpen(true);
       void refreshUploadProxyPools();
       return true;
@@ -1104,6 +1183,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     uploadProxyInspectionSeqRef.current += 1;
     setPendingUploadFiles([]);
     setPendingUploadSource('file');
+    uploadProxySelectionTouchedRef.current = false;
     setUploadProxyInspection(emptyAuthFileProxyInspection());
     setUploadProxyDialogOpen(false);
     flushPendingUploadGroupAssignment(source);
@@ -1178,7 +1258,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     batchDownload,
     batchSetStatus,
     batchDelete,
-    setUploadProxySelection,
+    setUploadProxySelection: changeUploadProxySelection,
     refreshUploadProxyPools,
     confirmUploadProxySelection,
     cancelUploadProxySelection,

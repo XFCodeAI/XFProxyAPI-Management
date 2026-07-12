@@ -83,6 +83,24 @@ function testPreservesRefreshAndIdToken() {
   assert.equal(auth.account_id, 'chatgpt-account-2');
 }
 
+function testPreservesRootProxyURL() {
+  const result = parseGptSessionTextToCpa(
+    JSON.stringify({
+      email: 'proxied@example.com',
+      accessToken: 'access-token',
+      proxyUrl: '  socks5://user:pass@127.0.0.1:1080  ',
+      tokens: {
+        account_id: 'proxied-account',
+      },
+    }),
+    { now: fixedNow }
+  );
+
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0].cpa.proxy_url, 'socks5://user:pass@127.0.0.1:1080');
+  assert.equal(result.records[0].cpa.proxyUrl, undefined);
+}
+
 function testNestedMultipleSessionsUseAccessTokenExpiry() {
   const result = parseGptSessionTextToCpa(
     JSON.stringify({
@@ -369,6 +387,7 @@ function testConsumeKeepsParsedJsonWithoutSession() {
 
 testChatGptSessionConvertsToCpa();
 testPreservesRefreshAndIdToken();
+testPreservesRootProxyURL();
 testNestedMultipleSessionsUseAccessTokenExpiry();
 testInvalidInputReportsIssue();
 testLineDelimitedSessionsConvertIndependently();

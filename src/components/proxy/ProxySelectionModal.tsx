@@ -39,6 +39,17 @@ export function ProxySelectionModal({
   onConfirm,
 }: ProxySelectionModalProps) {
   const { t } = useTranslation();
+  const inspectionLoading = allowFileMode && inspection?.status === 'loading';
+  const needsSmartProxy =
+    value.mode === 'smart' ||
+    (value.mode === 'file' && inspection?.status === 'ready' && inspection.filesWithoutProxy > 0);
+  const hasSmartProxy = pools.some(
+    (pool) => pool.enabled && !pool.configError && (!pool.checked || pool.available)
+  );
+  const hasIncomingFileProxy =
+    value.mode === 'file' && inspection?.status === 'ready' && inspection.uniqueProxyCount > 0;
+  const smartProxyUnavailable =
+    needsSmartProxy && !loading && !hasSmartProxy && !hasIncomingFileProxy;
 
   return (
     <Modal
@@ -52,7 +63,12 @@ export function ProxySelectionModal({
           <Button type="button" variant="secondary" onClick={onCancel} disabled={confirming}>
             {t('common.cancel')}
           </Button>
-          <Button type="button" onClick={onConfirm} loading={confirming}>
+          <Button
+            type="button"
+            onClick={onConfirm}
+            loading={confirming}
+            disabled={inspectionLoading || (needsSmartProxy && loading) || smartProxyUnavailable}
+          >
             {t('common.confirm')}
           </Button>
         </div>
@@ -68,6 +84,13 @@ export function ProxySelectionModal({
           onChange={onChange}
           onRefresh={onRefresh}
         />
+        {smartProxyUnavailable ? (
+          <div className={styles.inspectionWarning}>
+            {t('proxy_selection.smart_unavailable', {
+              defaultValue: '没有可用于智能分配的代理，请刷新代理池或改用直连。',
+            })}
+          </div>
+        ) : null}
         {inspection && inspection.status !== 'idle' ? (
           <ProxyUploadInspectionSummary inspection={inspection} mode={value.mode} />
         ) : null}
@@ -159,6 +182,14 @@ function ProxyUploadInspectionSummary({
           groups={visibleNewProxies}
           moreCount={hiddenNewProxyCount}
         />
+      ) : null}
+
+      {useFileProxy && inspection.filesWithoutProxy > 0 ? (
+        <div className={styles.inspectionHint}>
+          {t('proxy_selection.file_proxy_smart_fallback_hint', {
+            defaultValue: '带代理文件将保留原地址，无代理文件将使用智能分配。',
+          })}
+        </div>
       ) : null}
 
       {!useFileProxy && inspection.filesWithProxy > 0 ? (

@@ -30,6 +30,20 @@ export interface ProxyPoolAssignment {
   email?: string;
 }
 
+export interface ProxyPoolAssignmentFailure {
+  authId: string;
+  error: string;
+}
+
+export interface ProxyPoolAutoAssignResult {
+  status: 'ok' | 'partial';
+  updated: number;
+  skipped: number;
+  failed: number;
+  failures: ProxyPoolAssignmentFailure[];
+  pools: ProxyPoolStatusEntry[];
+}
+
 export interface ProxyPoolStatusEntry {
   id: string;
   name: string;
