@@ -94,6 +94,7 @@ function providerKeyToResource(
     modelCount: config.models?.length ?? 0,
     models: collectModelNames(config.models),
     priority: normalizePriority(config.priority),
+    fallback: config.fallback === true,
     headerCount: countHeaders(config.headers),
     excludedModelCount: stripDisableAllModelsRule(config.excludedModels).length,
     apiKeyEntryCount: 0,
@@ -143,6 +144,7 @@ export function openaiToResource(config: OpenAIProviderConfig, index: number): P
     modelCount: config.models?.length ?? 0,
     models: collectModelNames(config.models),
     priority: normalizePriority(config.priority),
+    fallback: config.fallback === true,
     headerCount: countHeaders(config.headers),
     excludedModelCount: 0,
     apiKeyEntryCount: config.apiKeyEntries?.length ?? 0,
@@ -200,12 +202,19 @@ export function apiKeyFunToResource(raw: SponsorProviderRaw): ProviderResource |
     ...raw.codex.map((item) => normalizePriority(item.config.priority)),
     ...raw.claude.map((item) => normalizePriority(item.config.priority))
   );
+  const fallbackStates = [
+    ...raw.openai.map((item) => item.config.fallback === true),
+    ...raw.codex.map((item) => item.config.fallback === true),
+    ...raw.claude.map((item) => item.config.fallback === true),
+  ];
   const baseUrl = resolveApiKeyFunBaseUrl(
     raw.openai[0]?.config.baseUrl ?? raw.codex[0]?.config.baseUrl ?? raw.claude[0]?.config.baseUrl
   );
   const protocolUrls = getApiKeyFunProtocolUrls(baseUrl);
   const groups = collectCredentialGroups([
-    ...raw.openai.flatMap((item) => item.config.apiKeyEntries?.flatMap((entry) => entry.groups ?? []) ?? []),
+    ...raw.openai.flatMap(
+      (item) => item.config.apiKeyEntries?.flatMap((entry) => entry.groups ?? []) ?? []
+    ),
     ...raw.codex.flatMap((item) => item.config.groups ?? []),
     ...raw.claude.flatMap((item) => item.config.groups ?? []),
   ]);
@@ -234,6 +243,7 @@ export function apiKeyFunToResource(raw: SponsorProviderRaw): ProviderResource |
     modelCount: uniqueModels.length,
     models: uniqueModels,
     priority,
+    fallback: fallbackStates.length > 0 && fallbackStates.every(Boolean),
     headerCount,
     excludedModelCount:
       raw.codex.reduce(

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { TooltipIconButton } from '@/components/ui/TooltipControls';
 import { IconNetwork, IconRefreshCw } from '@/components/ui/icons';
+import { isProxyPoolSelectable, isProxyPoolSmartAssignable } from '@/services/api/proxyPools';
 import type { ProxyPoolStatusEntry, ProxySelection, ProxySelectionMode } from '@/types';
 import styles from './ProxySelectionControl.module.scss';
 
@@ -27,10 +28,6 @@ function poolLabel(pool: ProxyPoolStatusEntry): string {
   return `${pool.redactedUrl || `${pool.protocol}://${pool.host}:${pool.port}`}${suffix}`;
 }
 
-function selectablePool(pool: ProxyPoolStatusEntry): boolean {
-  return pool.enabled && !pool.configError;
-}
-
 export function ProxySelectionControl({
   value,
   pools,
@@ -41,7 +38,8 @@ export function ProxySelectionControl({
   onRefresh,
 }: ProxySelectionControlProps) {
   const { t } = useTranslation();
-  const availablePools = useMemo(() => pools.filter(selectablePool), [pools]);
+  const availablePools = useMemo(() => pools.filter(isProxyPoolSelectable), [pools]);
+  const smartPools = useMemo(() => pools.filter(isProxyPoolSmartAssignable), [pools]);
   const requestedProxyId = value.proxyId ?? '';
   const selectedProxyId = availablePools.some((pool) => pool.id === requestedProxyId)
     ? requestedProxyId
@@ -89,7 +87,7 @@ export function ProxySelectionControl({
           type="button"
           variant={value.mode === 'smart' ? 'primary' : 'secondary'}
           onClick={() => setMode('smart')}
-          disabled={disabled || availablePools.length === 0}
+          disabled={disabled || smartPools.length === 0}
         >
           {t('proxy_selection.smart', { defaultValue: '智能分配' })}
         </Button>

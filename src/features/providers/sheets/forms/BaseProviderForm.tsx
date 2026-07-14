@@ -62,7 +62,7 @@ const emptyApiKeyEntry = (): ApiKeyEntryInput => ({
 });
 
 type PrimaryField = 'name' | 'apiKey' | 'baseUrl' | 'proxyUrl' | 'routing' | 'testModel';
-type ToggleField = 'websockets' | 'disabled' | 'disableCooling';
+type ToggleField = 'websockets' | 'fallback' | 'disabled' | 'disableCooling';
 type AdvancedSection = 'apiKeyEntries' | 'headers' | 'models' | 'excludedModels' | 'cloak';
 type ModelEntryMode = 'standard' | 'openai';
 
@@ -76,31 +76,31 @@ interface ProviderFormLayout {
 const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
   gemini: {
     primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
-    toggleFields: ['disabled', 'disableCooling'],
+    toggleFields: ['fallback', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
   codex: {
     primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
-    toggleFields: ['websockets', 'disabled', 'disableCooling'],
+    toggleFields: ['websockets', 'fallback', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
   claude: {
     primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
-    toggleFields: ['disabled', 'disableCooling'],
+    toggleFields: ['fallback', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels', 'cloak'],
     modelEntryMode: 'standard',
   },
   vertex: {
     primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing'],
-    toggleFields: ['disabled'],
+    toggleFields: ['fallback', 'disabled'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
   openaiCompatibility: {
     primaryFields: ['name', 'baseUrl', 'routing', 'testModel'],
-    toggleFields: ['disabled', 'disableCooling'],
+    toggleFields: ['fallback', 'disabled', 'disableCooling'],
     advancedSections: ['apiKeyEntries', 'headers', 'models'],
     modelEntryMode: 'openai',
   },
@@ -135,6 +135,7 @@ function buildInitialForm(
       prefix: '',
       disabled: false,
       disableCooling: false,
+      fallback: false,
       priority: undefined,
       models: [emptyModel()],
       headers: [emptyHeader()],
@@ -167,6 +168,7 @@ function buildInitialForm(
       prefix: cfg.prefix ?? '',
       disabled: cfg.disabled === true,
       disableCooling: cfg.disableCooling === true,
+      fallback: cfg.fallback === true,
       priority: cfg.priority,
       models: cfg.models?.length
         ? cfg.models.map((m) => ({
@@ -212,6 +214,7 @@ function buildInitialForm(
     prefix: cfg.prefix ?? '',
     disabled,
     disableCooling: cfg.disableCooling === true,
+    fallback: cfg.fallback === true,
     priority: cfg.priority,
     models: cfg.models?.length
       ? cfg.models.map((m) => ({
@@ -800,6 +803,22 @@ export function BaseProviderForm({
           />
         ) : null}
 
+        {hasToggleField('fallback') ? (
+          <SelectionCheckbox
+            checked={form.fallback}
+            disabled={mutating}
+            onChange={(checked) => updateField('fallback', checked)}
+            className={styles.checkboxRow}
+            labelClassName={styles.checkboxText}
+            label={
+              <>
+                <span>{t('providersPage.form.fallback')}</span>
+                <small>{t('providersPage.form.fallbackHint')}</small>
+              </>
+            }
+          />
+        ) : null}
+
         {hasToggleField('disableCooling') ? (
           <SelectionCheckbox
             checked={form.disableCooling ?? false}
@@ -928,9 +947,7 @@ export function BaseProviderForm({
                     onChange={(next) =>
                       updateField(
                         'apiKeyEntries',
-                        apiKeyEntries.map((it, i) =>
-                          i === realIdx ? { ...it, groups: next } : it
-                        )
+                        apiKeyEntries.map((it, i) => (i === realIdx ? { ...it, groups: next } : it))
                       )
                     }
                     disabled={mutating}

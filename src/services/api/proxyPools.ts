@@ -3,11 +3,15 @@ import type {
   ProxyPoolAutoAssignResult,
   ProxyPoolEntry,
   ProxyPoolProtocol,
+  ProxyPoolRebalancePreview,
+  ProxyPoolRebalanceReason,
+  ProxyPoolRebalanceResult,
   ProxyPoolStatusEntry,
   ProxyPoolsConfigSnapshot,
   ProxyPoolUsage,
   ProxySelection,
 } from '@/types/proxyPool';
+import type { ApiError } from '@/types/api';
 import { generateId, isRecord } from '@/utils/helpers';
 import { apiClient } from './client';
 import { configFileApi } from './configFile';
@@ -56,6 +60,19 @@ function readNumber(record: Record<string, unknown>, key: string): number {
   return 0;
 }
 
+function readNumberAlias(record: Record<string, unknown>, ...keys: string[]): number {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Number(value.trim());
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return 0;
+}
+
 export function normalizeProxyPoolProtocol(value: unknown): ProxyPoolProtocol | null {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (PROXY_POOL_PROTOCOLS.includes(normalized as ProxyPoolProtocol)) {
@@ -80,6 +97,7 @@ function normalizePoolEntry(value: unknown, index: number): ProxyPoolEntry | nul
     id: `${name || 'pool'}-${index}-${generateId()}`,
     name,
     enabled: readBool(value, 'enabled', true),
+    excludeFromSmartAssignment: readBool(value, 'exclude-from-smart-assignment', false),
     protocol,
     host,
     port,
@@ -185,7 +203,7 @@ function collectProxyUsages(parsed: unknown): ProxyPoolUsage[] {
   return usages.concat(collectProviderProxyUsages(parsed));
 }
 
-function serializeProxyPool(pool: ProxyPoolEntry): Record<string, unknown> {
+export function serializeProxyPool(pool: ProxyPoolEntry): Record<string, unknown> {
   const normalizedPort = pool.port.trim();
   const entry: Record<string, unknown> = {
     name: pool.name.trim() || DEFAULT_PROXY_POOL_NAME,
@@ -194,13 +212,14 @@ function serializeProxyPool(pool: ProxyPoolEntry): Record<string, unknown> {
     host: pool.host.trim(),
     port: /^\d+$/.test(normalizedPort) ? Number(normalizedPort) : normalizedPort,
   };
+  if (pool.excludeFromSmartAssignment) entry['exclude-from-smart-assignment'] = true;
   if (pool.username.trim()) entry.username = pool.username.trim();
   if (pool.password) entry.password = pool.password;
   if (pool.note.trim()) entry.note = pool.note.trim();
   return entry;
 }
 
-function parseConfigSnapshot(yamlContent: string): ProxyPoolsConfigSnapshot {
+export function parseConfigSnapshot(yamlContent: string): ProxyPoolsConfigSnapshot {
   const parsed = parseYaml(yamlContent);
   const record = isRecord(parsed) ? parsed : {};
   return {
@@ -237,6 +256,11 @@ function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
     id,
     name: readString(value, 'name') || DEFAULT_PROXY_POOL_NAME,
     enabled: readBool(value, 'enabled', true),
+    excludeFromSmartAssignment: readBool(
+      value,
+      'exclude_from_smart_assignment',
+      readBool(value, 'excludeFromSmartAssignment', false)
+    ),
     protocol,
     host: readString(value, 'host'),
     port: readNumber(value, 'port'),
@@ -263,12 +287,24 @@ function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
   };
 }
 
-function normalizeStatusResponse(payload: unknown): ProxyPoolStatusEntry[] {
+export function normalizeStatusResponse(payload: unknown): ProxyPoolStatusEntry[] {
   const pools = isRecord(payload) ? payload.pools : payload;
   if (!Array.isArray(pools)) return [];
   return pools
     .map((item) => normalizeStatusEntry(item))
     .filter((item): item is ProxyPoolStatusEntry => item !== null);
+}
+
+export function isProxyPoolSelectable(
+  pool: Pick<ProxyPoolStatusEntry, 'enabled' | 'configError'>
+): boolean {
+  return pool.enabled && !pool.configError;
+}
+
+export function isProxyPoolSmartAssignable(
+  pool: Pick<ProxyPoolStatusEntry, 'enabled' | 'configError' | 'excludeFromSmartAssignment'>
+): boolean {
+  return isProxyPoolSelectable(pool) && !pool.excludeFromSmartAssignment;
 }
 
 function normalizeAutoAssignResult(payload: unknown): ProxyPoolAutoAssignResult {
@@ -288,6 +324,93 @@ function normalizeAutoAssignResult(payload: unknown): ProxyPoolAutoAssignResult 
     failed: readNumber(record, 'failed'),
     failures,
     pools: normalizeStatusResponse(record),
+  };
+}
+
+function normalizeRebalanceReason(value: unknown): ProxyPoolRebalanceReason {
+  switch (value) {
+    case 'worthwhile':
+    case 'within_threshold':
+    case 'already_balanced':
+    case 'no_movable_bindings':
+    case 'ineligible':
+      return value;
+    default:
+      return 'ineligible';
+  }
+}
+
+export function normalizeProxyPoolRebalancePreview(payload: unknown): ProxyPoolRebalancePreview {
+  const record = isRecord(payload) ? payload : {};
+  const pools = Array.isArray(record.pools)
+    ? record.pools.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const id = readString(item, 'id');
+        if (!id) return [];
+        return [
+          {
+            id,
+            name: readString(item, 'name'),
+            redactedUrl: readString(item, 'redacted_url') || readString(item, 'redactedUrl'),
+            eligible: readBool(item, 'eligible', false),
+            ineligibleReason:
+              readString(item, 'ineligible_reason') ||
+              readString(item, 'ineligibleReason') ||
+              undefined,
+            currentCount: readNumberAlias(item, 'current_count', 'currentCount'),
+            targetCount: readNumberAlias(item, 'target_count', 'targetCount'),
+            credentialCount: readNumberAlias(item, 'credential_count', 'credentialCount'),
+            providerApiKeyCount: readNumberAlias(
+              item,
+              'provider_api_key_count',
+              'providerApiKeyCount'
+            ),
+          },
+        ];
+      })
+    : [];
+  return {
+    eligible: readBool(record, 'eligible', false),
+    worthwhile: readBool(record, 'worthwhile', false),
+    reason: normalizeRebalanceReason(record.reason),
+    maxDifference: readNumberAlias(record, 'max_difference', 'maxDifference'),
+    currentDifference: readNumberAlias(record, 'current_difference', 'currentDifference'),
+    moveCount: readNumberAlias(record, 'move_count', 'moveCount'),
+    totalBindings: readNumberAlias(record, 'total_bindings', 'totalBindings'),
+    revision: readString(record, 'revision'),
+    pools,
+  };
+}
+
+export function normalizeProxyPoolRebalanceResult(payload: unknown): ProxyPoolRebalanceResult {
+  const record = isRecord(payload) ? payload : {};
+  const rawStatus = readString(record, 'status');
+  const status: ProxyPoolRebalanceResult['status'] = [
+    'ok',
+    'noop',
+    'stale',
+    'rolled_back',
+    'partial',
+    'failed',
+  ].includes(rawStatus)
+    ? (rawStatus as ProxyPoolRebalanceResult['status'])
+    : 'failed';
+  const failures = Array.isArray(record.failures)
+    ? record.failures.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const resourceId = readString(item, 'resource_id') || readString(item, 'resourceId');
+        const error = readString(item, 'error');
+        if (!resourceId || !error) return [];
+        return [{ resourceId, kind: readString(item, 'kind'), error }];
+      })
+    : [];
+  return {
+    status,
+    moved: readNumber(record, 'moved'),
+    skipped: readNumber(record, 'skipped'),
+    failed: readNumber(record, 'failed'),
+    failures,
+    preview: normalizeProxyPoolRebalancePreview(record.preview),
   };
 }
 
@@ -358,6 +481,7 @@ export function parseProxyPoolURL(raw: string): Omit<ProxyPoolEntry, 'id' | 'not
   return {
     name: DEFAULT_PROXY_POOL_NAME,
     enabled: true,
+    excludeFromSmartAssignment: false,
     protocol,
     host: parsed.hostname.trim(),
     port: parsed.port.trim() || defaultProxyPort(protocol),
@@ -433,6 +557,30 @@ export const proxyPoolsApi = {
         only_unassigned: true,
       })
     ),
+  previewRebalance: async (proxyIds: string[], maxDifference: number) =>
+    normalizeProxyPoolRebalancePreview(
+      await apiClient.post('/proxy-pools/rebalance/preview', {
+        proxy_ids: proxyIds,
+        max_difference: maxDifference,
+      })
+    ),
+  rebalance: async (proxyIds: string[], maxDifference: number, revision: string) => {
+    try {
+      return normalizeProxyPoolRebalanceResult(
+        await apiClient.post('/proxy-pools/rebalance', {
+          proxy_ids: proxyIds,
+          max_difference: maxDifference,
+          revision,
+        })
+      );
+    } catch (error: unknown) {
+      const apiError = error as ApiError;
+      if (isRecord(apiError.data) && typeof apiError.data.status === 'string') {
+        return normalizeProxyPoolRebalanceResult(apiError.data);
+      }
+      throw error;
+    }
+  },
 };
 
 export function proxySelectionParams(selection?: ProxySelection): Record<string, string> {

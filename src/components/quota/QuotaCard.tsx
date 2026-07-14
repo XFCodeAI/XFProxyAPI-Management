@@ -254,6 +254,9 @@ export function QuotaCard<TState extends QuotaStatusState>({
                   {typeLabel}
                 </span>
                 <span className={`${authStyles.stateBadge} ${stateBadgeClass}`}>{stateLabel}</span>
+                {item.fallback === true && (
+                  <span className={authStyles.fallbackBadge}>{t('auth_files.fallback_badge')}</span>
+                )}
               </div>
               <span className={authStyles.fileName} title={item.name}>
                 {item.name}

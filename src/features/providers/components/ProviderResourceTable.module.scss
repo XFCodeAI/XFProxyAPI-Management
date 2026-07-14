@@ -17,13 +17,37 @@
   min-width: 0;
 }
 
+.primaryTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .primaryName {
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 500;
   color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 220px;
+}
+
+.fallbackBadge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--warning, #d97706) 34%, var(--border));
+  background: color-mix(in srgb, var(--warning, #d97706) 10%, var(--card));
+  color: var(--warning, #d97706);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
 .primarySub {
@@ -266,5 +290,13 @@
   &:hover:not(:disabled) {
     background: color-mix(in srgb, var(--destructive) 10%, var(--card));
     color: var(--destructive);
+  }
+}
+
+@media (max-width: 700px) {
+  .actionsHead,
+  .actionsCell {
+    position: static;
+    box-shadow: none;
   }
 }

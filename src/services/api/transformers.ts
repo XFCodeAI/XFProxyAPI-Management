@@ -178,6 +178,8 @@ const normalizeProviderKeyConfig = (item: unknown): ProviderKeyConfig | null => 
       config.priority = parsed;
     }
   }
+  const fallback = normalizeBoolean(record?.fallback);
+  if (fallback !== undefined) config.fallback = fallback;
   const prefix = normalizePrefix(record?.prefix);
   if (prefix) config.prefix = prefix;
   const baseUrl = record?.['base-url'];
@@ -250,6 +252,8 @@ const normalizeGeminiKeyConfig = (item: unknown): GeminiKeyConfig | null => {
       config.priority = parsed;
     }
   }
+  const fallback = normalizeBoolean(record?.fallback);
+  if (fallback !== undefined) config.fallback = fallback;
   const prefix = normalizePrefix(record?.prefix);
   if (prefix) config.prefix = prefix;
   const baseUrl = record?.['base-url'];
@@ -294,6 +298,8 @@ const normalizeOpenAIProvider = (provider: unknown): OpenAIProviderConfig | null
 
   const disabled = normalizeBoolean(provider.disabled);
   if (disabled !== undefined) result.disabled = disabled;
+  const fallback = normalizeBoolean(provider.fallback);
+  if (fallback !== undefined) result.fallback = fallback;
   const disableCooling = normalizeBoolean(provider['disable-cooling']);
   if (disableCooling !== undefined) result.disableCooling = disableCooling;
   const prefix = normalizePrefix(provider.prefix);

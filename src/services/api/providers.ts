@@ -27,6 +27,7 @@ const PROVIDER_COMMON_KEY_FIELDS = [
   'api-key',
   'groups',
   'priority',
+  'fallback',
   'prefix',
   'base-url',
   'proxy-url',
@@ -48,6 +49,7 @@ const VERTEX_KEY_FIELDS = [
   'api-key',
   'groups',
   'priority',
+  'fallback',
   'prefix',
   'base-url',
   'proxy-url',
@@ -59,6 +61,7 @@ const VERTEX_KEY_FIELDS = [
 const OPENAI_PROVIDER_FIELDS = [
   'name',
   'priority',
+  'fallback',
   'disabled',
   'prefix',
   'base-url',
@@ -315,6 +318,7 @@ const serializeProviderKey = (config: ProviderKeyConfig) => {
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
+  if (config.fallback) payload.fallback = true;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
   if (config.websockets !== undefined) payload.websockets = config.websockets;
@@ -366,6 +370,7 @@ const serializeVertexKey = (config: ProviderKeyConfig) => {
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
+  if (config.fallback) payload.fallback = true;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
   if (config.proxyUrl) payload['proxy-url'] = config.proxyUrl;
@@ -384,6 +389,7 @@ const serializeGeminiKey = (config: GeminiKeyConfig) => {
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
+  if (config.fallback) payload.fallback = true;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
   if (config.proxyUrl) payload['proxy-url'] = config.proxyUrl;
@@ -413,6 +419,7 @@ const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
   const models = serializeModelAliases(provider.models, true);
   if (models && models.length) payload.models = models;
   if (provider.priority !== undefined) payload.priority = provider.priority;
+  if (provider.fallback) payload.fallback = true;
   if (provider.testModel) payload['test-model'] = provider.testModel;
   if (provider.disableCooling) payload['disable-cooling'] = true;
   return payload;

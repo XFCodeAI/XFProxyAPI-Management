@@ -353,6 +353,12 @@
   }
 }
 
+.proxyCell .manualOnlyBadge {
+  color: var(--warning, #d97706);
+  border-color: color-mix(in srgb, var(--warning, #d97706) 32%, var(--border));
+  background: color-mix(in srgb, var(--warning, #d97706) 9%, var(--background));
+}
+
 .batchActionBar {
   position: fixed;
   left: var(--content-center-x, 50%);
@@ -360,7 +366,7 @@
   z-index: 50;
   display: flex;
   box-sizing: border-box;
-  width: min(920px, calc(100vw - 32px));
+  width: min(1180px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
   transform: translateX(-50%);
   align-items: center;
@@ -371,6 +377,14 @@
   border-radius: var(--radius-lg);
   background: var(--popover);
   box-shadow: var(--shadow-lg);
+}
+
+.batchSelectionGroup {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 12px;
 }
 
 .batchSelectionText {
@@ -387,6 +401,168 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.rebalanceControls {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.rebalanceThresholdField {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+
+  input {
+    width: 64px;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--input);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    text-align: center;
+    outline: none;
+
+    &:focus {
+      border-color: var(--ring);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 22%, transparent);
+    }
+
+    &[aria-invalid='true'] {
+      border-color: var(--destructive);
+    }
+  }
+}
+
+.rebalanceStatus {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &[data-error='true'] {
+    color: var(--destructive);
+  }
+}
+
+.rebalancePanel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rebalanceSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+}
+
+.rebalanceMetric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0 14px;
+  border-left: 1px solid var(--border);
+
+  &:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  span {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  strong {
+    color: var(--foreground);
+    font-size: 20px;
+    font-weight: 750;
+    line-height: 1.2;
+  }
+}
+
+.rebalanceTable {
+  display: flex;
+  min-width: 0;
+  max-height: min(420px, 52vh);
+  flex-direction: column;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.rebalanceRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1fr) 70px 70px;
+  min-height: 46px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--foreground);
+  font-size: 13px;
+
+  &:first-child {
+    border-top: 0;
+  }
+
+  > strong:first-child,
+  > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  > span:nth-last-child(-n + 2),
+  > strong:last-child {
+    text-align: right;
+  }
+}
+
+.rebalanceTableHead {
+  min-height: 36px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.rebalanceBindingBreakdown {
+  color: var(--muted-foreground);
+}
+
+.rebalanceCount::before {
+  display: none;
+}
+
+@media (max-width: 1120px) {
+  .batchActionBar {
+    flex-wrap: wrap;
+  }
+
+  .batchSelectionGroup,
+  .batchActionButtons {
+    flex: 1 1 100%;
+  }
 }
 
 .monoValue {
@@ -784,11 +960,70 @@
     align-items: stretch;
   }
 
+  .batchSelectionGroup,
+  .rebalanceControls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rebalanceThresholdField {
+    justify-content: space-between;
+  }
+
+  .rebalanceStatus {
+    white-space: normal;
+  }
+
   .batchActionButtons {
     justify-content: stretch;
 
     > button {
       flex: 1 1 auto;
+    }
+  }
+
+  .rebalanceSummary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .rebalanceMetric {
+    padding: 10px 0 0;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+
+    &:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+  }
+
+  .rebalanceTableHead {
+    display: none;
+  }
+
+  .rebalanceRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+
+    > strong:first-child,
+    .rebalanceBindingBreakdown {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .rebalanceCount {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    &::before {
+      display: inline;
+      color: var(--muted-foreground);
+      content: attr(data-label);
+      font-size: 12px;
+      font-weight: 650;
     }
   }
 }

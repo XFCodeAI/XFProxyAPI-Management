@@ -21,10 +21,14 @@ export function ResourceDetailView({ resource, usageByProvider }: ResourceDetail
 
   const primary: Array<[string, string]> = [
     ['identifier', resource.identifier],
-    ['groups', resource.groups.length > 0 ? resource.groups.join(', ') : t('providersPage.status.none')],
+    [
+      'groups',
+      resource.groups.length > 0 ? resource.groups.join(', ') : t('providersPage.status.none'),
+    ],
     ['baseUrl', resource.baseUrl ?? t('providersPage.status.notSet')],
     ['proxyUrl', resource.proxyUrl ?? t('providersPage.status.notSet')],
     ['prefix', resource.prefix ?? t('providersPage.status.none')],
+    ['fallback', resource.fallback ? t('common.yes') : t('common.no')],
     ['models', String(resource.modelCount)],
     ['headers', String(resource.headerCount)],
   ];

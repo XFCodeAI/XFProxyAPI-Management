@@ -30,7 +30,13 @@ import {
 } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
-import type { AuthFileItem, ProxyPoolEntry, ProxyPoolStatusEntry, ProxyPoolUsage } from '@/types';
+import type {
+  AuthFileItem,
+  ProxyPoolEntry,
+  ProxyPoolRebalancePreview,
+  ProxyPoolStatusEntry,
+  ProxyPoolUsage,
+} from '@/types';
 import { generateId } from '@/utils/helpers';
 import { readNavigationPreference, writeNavigationPreference } from '@/utils/navigationPreference';
 import styles from './ProxyPoolsPage.module.scss';
@@ -51,6 +57,7 @@ function createEmptyPool(name = DEFAULT_PROXY_POOL_NAME): ProxyPoolEntry {
     id: generateId(),
     name,
     enabled: true,
+    excludeFromSmartAssignment: false,
     protocol: 'http',
     host: '',
     port: '',
@@ -157,6 +164,35 @@ function proxyPoolRegion(status?: ProxyPoolStatusEntry): string {
   return [status.country, status.region, status.city].filter(Boolean).join(' / ');
 }
 
+function parseRebalanceThreshold(value: string): number | null {
+  if (!/^\d+$/.test(value.trim())) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function rebalanceIneligibleReasonLabel(
+  reason: string | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
+  switch (reason) {
+    case 'disabled':
+      return t('proxy_pools.rebalance.ineligible_disabled', { defaultValue: '已停用' });
+    case 'manual_only':
+      return t('proxy_pools.rebalance.ineligible_manual_only', { defaultValue: '仅允许手动绑定' });
+    case 'invalid_config':
+    case 'missing_concrete_url':
+      return t('proxy_pools.rebalance.ineligible_invalid', { defaultValue: '配置无效' });
+    case 'unavailable':
+      return t('proxy_pools.rebalance.ineligible_unavailable', { defaultValue: '检测不可用' });
+    case 'pending_assignment':
+      return t('proxy_pools.rebalance.ineligible_pending', {
+        defaultValue: '存在待完成认证',
+      });
+    default:
+      return t('proxy_pools.rebalance.ineligible_unknown', { defaultValue: '当前不可参与' });
+  }
+}
+
 export function ProxyPoolsPage() {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
@@ -191,6 +227,14 @@ export function ProxyPoolsPage() {
       'proxies'
   );
   const [selectedPoolIDs, setSelectedPoolIDs] = useState<Set<string>>(new Set());
+  const [rebalanceThreshold, setRebalanceThreshold] = useState('1');
+  const [rebalancePreview, setRebalancePreview] = useState<ProxyPoolRebalancePreview | null>(null);
+  const [rebalancePreviewLoading, setRebalancePreviewLoading] = useState(false);
+  const [rebalancePreviewError, setRebalancePreviewError] = useState('');
+  const [rebalanceConfirmOpen, setRebalanceConfirmOpen] = useState(false);
+  const [rebalancingSelected, setRebalancingSelected] = useState(false);
+  const [rebalanceRefreshVersion, setRebalanceRefreshVersion] = useState(0);
+  const rebalancePreviewRequestRef = useRef(0);
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
 
   const disabled = connectionStatus !== 'connected';
@@ -226,6 +270,30 @@ export function ProxyPoolsPage() {
         .filter((status): status is ProxyPoolStatusEntry => Boolean(status)),
     [selectedPoolRows]
   );
+  const selectedRebalanceProxyIDs = useMemo(
+    () => selectedPoolStatuses.map((status) => status.id).sort(),
+    [selectedPoolStatuses]
+  );
+  const selectedRebalanceProxyIDsKey = selectedRebalanceProxyIDs.join('|');
+  const selectedRebalanceStatusSignature = useMemo(
+    () =>
+      selectedPoolStatuses
+        .map((status) =>
+          [
+            status.id,
+            status.assignedCount,
+            status.enabled,
+            status.excludeFromSmartAssignment,
+            status.checked,
+            status.available,
+            status.configError || '',
+          ].join(':')
+        )
+        .sort()
+        .join('|'),
+    [selectedPoolStatuses]
+  );
+  const parsedRebalanceThreshold = parseRebalanceThreshold(rebalanceThreshold);
   const boundCredentialsCount = statusPools.reduce((sum, pool) => sum + pool.assignedCount, 0);
   const availableCount = statusPools.filter((pool) => pool.checked && pool.available).length;
   const authFileIDs = useMemo(
@@ -275,6 +343,7 @@ export function ProxyPoolsPage() {
         setAuthFiles([]);
         setAuthFilesFailed(true);
       }
+      setRebalanceRefreshVersion((current) => current + 1);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('notification.refresh_failed');
       setError(message);
@@ -294,6 +363,7 @@ export function ProxyPoolsPage() {
         try {
           setStatusPools(await proxyPoolsApi.loadStatus());
           setStatusFailed(false);
+          setRebalanceRefreshVersion((current) => current + 1);
         } catch {
           setStatusPools([]);
           setStatusFailed(true);
@@ -332,11 +402,129 @@ export function ProxyPoolsPage() {
     });
   }, [pools]);
 
+  useEffect(() => {
+    const requestID = ++rebalancePreviewRequestRef.current;
+    setRebalanceConfirmOpen(false);
+    if (selectedPoolCount < 2) {
+      setRebalancePreview(null);
+      setRebalancePreviewError('');
+      setRebalancePreviewLoading(false);
+      return;
+    }
+    if (parsedRebalanceThreshold === null) {
+      setRebalancePreview(null);
+      setRebalancePreviewError(
+        t('proxy_pools.rebalance.threshold_invalid', {
+          defaultValue: '最大差值必须是大于或等于 0 的整数',
+        })
+      );
+      setRebalancePreviewLoading(false);
+      return;
+    }
+    if (selectedRebalanceProxyIDs.length !== selectedPoolCount) {
+      setRebalancePreview(null);
+      setRebalancePreviewError(
+        t('proxy_pools.rebalance.status_unavailable', {
+          defaultValue: '部分代理状态尚未加载',
+        })
+      );
+      setRebalancePreviewLoading(false);
+      return;
+    }
+
+    setRebalancePreviewLoading(true);
+    setRebalancePreviewError('');
+    const timer = setTimeout(() => {
+      void proxyPoolsApi
+        .previewRebalance(selectedRebalanceProxyIDs, parsedRebalanceThreshold)
+        .then((preview) => {
+          if (rebalancePreviewRequestRef.current !== requestID) return;
+          setRebalancePreview(preview);
+        })
+        .catch((err: unknown) => {
+          if (rebalancePreviewRequestRef.current !== requestID) return;
+          setRebalancePreview(null);
+          setRebalancePreviewError(
+            err instanceof Error
+              ? err.message
+              : t('proxy_pools.rebalance.preview_failed', {
+                  defaultValue: '无法比较所选代理',
+                })
+          );
+        })
+        .finally(() => {
+          if (rebalancePreviewRequestRef.current === requestID) {
+            setRebalancePreviewLoading(false);
+          }
+        });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [
+    parsedRebalanceThreshold,
+    rebalanceRefreshVersion,
+    selectedPoolCount,
+    selectedRebalanceProxyIDs,
+    selectedRebalanceProxyIDsKey,
+    selectedRebalanceStatusSignature,
+    t,
+  ]);
+
   useActionBarHeightVar(
     floatingBatchActionsRef,
     '--proxy-pools-action-bar-height',
     selectedPoolCount > 0
   );
+
+  const rebalanceStatusText = useMemo(() => {
+    if (selectedPoolCount < 2) return '';
+    if (parsedRebalanceThreshold === null) {
+      return t('proxy_pools.rebalance.threshold_invalid', {
+        defaultValue: '最大差值必须是大于或等于 0 的整数',
+      });
+    }
+    if (rebalancePreviewLoading) {
+      return t('proxy_pools.rebalance.comparing', { defaultValue: '正在比较绑定数量' });
+    }
+    if (rebalancePreviewError) return rebalancePreviewError;
+    if (!rebalancePreview) return '';
+    if (!rebalancePreview.eligible) {
+      const entries = rebalancePreview.pools
+        .filter((pool) => !pool.eligible)
+        .map(
+          (pool) =>
+            `${pool.redactedUrl || pool.name || pool.id}: ${rebalanceIneligibleReasonLabel(pool.ineligibleReason, t)}`
+        );
+      return t('proxy_pools.rebalance.ineligible_summary', {
+        defaultValue: '不可参与：{{items}}',
+        items: entries.join('、'),
+      });
+    }
+    switch (rebalancePreview.reason) {
+      case 'worthwhile':
+        return t('proxy_pools.rebalance.worthwhile', {
+          defaultValue: '当前差值 {{difference}}，预计迁移 {{moves}} 个绑定',
+          difference: rebalancePreview.currentDifference,
+          moves: rebalancePreview.moveCount,
+        });
+      case 'within_threshold':
+        return t('proxy_pools.rebalance.within_threshold', {
+          defaultValue: '当前差值 {{difference}}，已在允许范围 {{allowed}} 内',
+          difference: rebalancePreview.currentDifference,
+          allowed: rebalancePreview.maxDifference,
+        });
+      case 'no_movable_bindings':
+        return t('proxy_pools.rebalance.no_bindings', { defaultValue: '没有可重新分配的绑定' });
+      default:
+        return t('proxy_pools.rebalance.already_balanced', { defaultValue: '当前已是最均衡分配' });
+    }
+  }, [
+    parsedRebalanceThreshold,
+    rebalancePreview,
+    rebalancePreviewError,
+    rebalancePreviewLoading,
+    selectedPoolCount,
+    t,
+  ]);
 
   const openCreateModal = () => {
     setEditingID(null);
@@ -651,6 +839,96 @@ export function ProxyPoolsPage() {
     }
   };
 
+  const openRebalanceConfirmation = () => {
+    if (!rebalancePreview?.worthwhile || rebalancePreviewLoading || rebalancingSelected) return;
+    setRebalanceConfirmOpen(true);
+  };
+
+  const closeRebalanceConfirmation = () => {
+    if (rebalancingSelected) return;
+    setRebalanceConfirmOpen(false);
+  };
+
+  const handleRebalanceSelected = async () => {
+    if (
+      !rebalancePreview?.worthwhile ||
+      parsedRebalanceThreshold === null ||
+      selectedRebalanceProxyIDs.length < 2
+    ) {
+      return;
+    }
+    setRebalancingSelected(true);
+    try {
+      const result = await proxyPoolsApi.rebalance(
+        selectedRebalanceProxyIDs,
+        parsedRebalanceThreshold,
+        rebalancePreview.revision
+      );
+      setRebalancePreview(result.preview);
+      setRebalanceConfirmOpen(false);
+      switch (result.status) {
+        case 'ok':
+          showNotification(
+            t('proxy_pools.rebalance.success', {
+              defaultValue: '已重新分配 {{count}} 个绑定',
+              count: result.moved,
+            }),
+            'success'
+          );
+          await loadProxyPools();
+          setSelectedPoolIDs(new Set());
+          break;
+        case 'stale':
+          showNotification(
+            t('proxy_pools.rebalance.stale', {
+              defaultValue: '绑定状态已变化，请确认新的比较结果',
+            }),
+            'warning'
+          );
+          await loadProxyPools();
+          break;
+        case 'noop':
+          showNotification(
+            t('proxy_pools.rebalance.noop', { defaultValue: '当前无需重新平衡' }),
+            'info'
+          );
+          break;
+        case 'rolled_back':
+          showNotification(
+            t('proxy_pools.rebalance.rolled_back', {
+              defaultValue: '重新分配失败，所有变更已回滚',
+            }),
+            'error'
+          );
+          await loadProxyPools();
+          break;
+        case 'partial':
+          showNotification(
+            t('proxy_pools.rebalance.partial', {
+              defaultValue: '重新分配未完整回滚，请检查最新绑定状态',
+            }),
+            'error'
+          );
+          await loadProxyPools();
+          break;
+        default:
+          showNotification(
+            t('proxy_pools.rebalance.failed', { defaultValue: '重新智能平衡失败' }),
+            'error'
+          );
+          await loadProxyPools();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '';
+      showNotification(
+        `${t('proxy_pools.rebalance.failed', { defaultValue: '重新智能平衡失败' })}${message ? `: ${message}` : ''}`,
+        'error'
+      );
+    } finally {
+      setRebalancingSelected(false);
+    }
+  };
+
   const handleBatchDeleteSelected = () => {
     if (selectedPoolCount === 0) return;
     showConfirmation({
@@ -889,6 +1167,11 @@ export function ProxyPoolsPage() {
                       <div className={styles.proxyCell}>
                         <strong>{buildProxyPoolURL(pool)}</strong>
                         <span>{pool.protocol.toUpperCase()}</span>
+                        {pool.excludeFromSmartAssignment ? (
+                          <span className={styles.manualOnlyBadge}>
+                            {t('proxy_pools.manual_only', { defaultValue: '仅手动' })}
+                          </span>
+                        ) : null}
                       </div>
                       <div className={styles.healthCell}>
                         <span
@@ -994,13 +1277,57 @@ export function ProxyPoolsPage() {
       {selectedPoolCount > 0 && typeof document !== 'undefined'
         ? createPortal(
             <div className={styles.batchActionBar} ref={floatingBatchActionsRef}>
-              <span className={styles.batchSelectionText}>
-                {t('proxy_pools.batch_selected', {
-                  defaultValue: '已选 {{count}} 个代理',
-                  count: selectedPoolCount,
-                })}
-              </span>
+              <div className={styles.batchSelectionGroup}>
+                <span className={styles.batchSelectionText}>
+                  {t('proxy_pools.batch_selected', {
+                    defaultValue: '已选 {{count}} 个代理',
+                    count: selectedPoolCount,
+                  })}
+                </span>
+                {selectedPoolCount >= 2 ? (
+                  <div className={styles.rebalanceControls}>
+                    <label className={styles.rebalanceThresholdField}>
+                      <span>
+                        {t('proxy_pools.rebalance.threshold_label', {
+                          defaultValue: '允许最大差值',
+                        })}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        inputMode="numeric"
+                        value={rebalanceThreshold}
+                        onChange={(event) => setRebalanceThreshold(event.target.value)}
+                        aria-invalid={parsedRebalanceThreshold === null}
+                      />
+                    </label>
+                    <span
+                      className={styles.rebalanceStatus}
+                      title={rebalanceStatusText}
+                      data-error={Boolean(
+                        rebalancePreviewError || parsedRebalanceThreshold === null
+                      )}
+                    >
+                      {rebalanceStatusText}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
               <div className={styles.batchActionButtons}>
+                {rebalancePreview?.worthwhile ? (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={openRebalanceConfirmation}
+                    loading={rebalancePreviewLoading || rebalancingSelected}
+                    disabled={disabled || saving || checking || rebalancingSelected}
+                  >
+                    <IconScale size={16} />
+                    {t('proxy_pools.rebalance.action', { defaultValue: '重新智能平衡' })}
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="secondary"
@@ -1037,6 +1364,92 @@ export function ProxyPoolsPage() {
             document.body
           )
         : null}
+
+      <Modal
+        open={rebalanceConfirmOpen}
+        onClose={closeRebalanceConfirmation}
+        closeDisabled={rebalancingSelected}
+        title={t('proxy_pools.rebalance.title', { defaultValue: '重新智能平衡' })}
+        width={760}
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={closeRebalanceConfirmation}
+              disabled={rebalancingSelected}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleRebalanceSelected()}
+              loading={rebalancingSelected}
+              disabled={!rebalancePreview?.worthwhile}
+            >
+              <IconScale size={16} />
+              {t('proxy_pools.rebalance.confirm', { defaultValue: '确认重新分配' })}
+            </Button>
+          </>
+        }
+      >
+        {rebalancePreview ? (
+          <div className={styles.rebalancePanel}>
+            <div className={styles.rebalanceSummary}>
+              <div className={styles.rebalanceMetric}>
+                <span>
+                  {t('proxy_pools.rebalance.selected_count', { defaultValue: '所选代理' })}
+                </span>
+                <strong>{rebalancePreview.pools.length}</strong>
+              </div>
+              <div className={styles.rebalanceMetric}>
+                <span>
+                  {t('proxy_pools.rebalance.current_difference', {
+                    defaultValue: '当前差值',
+                  })}
+                </span>
+                <strong>{rebalancePreview.currentDifference}</strong>
+              </div>
+              <div className={styles.rebalanceMetric}>
+                <span>{t('proxy_pools.rebalance.move_count', { defaultValue: '预计迁移' })}</span>
+                <strong>{rebalancePreview.moveCount}</strong>
+              </div>
+            </div>
+            <div className={styles.rebalanceTable}>
+              <div className={`${styles.rebalanceRow} ${styles.rebalanceTableHead}`}>
+                <span>{t('proxy_pools.rebalance.address', { defaultValue: '代理' })}</span>
+                <span>{t('proxy_pools.rebalance.breakdown', { defaultValue: '绑定构成' })}</span>
+                <span>{t('proxy_pools.rebalance.current', { defaultValue: '当前' })}</span>
+                <span>{t('proxy_pools.rebalance.target', { defaultValue: '调整后' })}</span>
+              </div>
+              {rebalancePreview.pools.map((pool) => (
+                <div className={styles.rebalanceRow} key={pool.id}>
+                  <strong title={pool.redactedUrl}>{pool.redactedUrl || pool.name || '-'}</strong>
+                  <span className={styles.rebalanceBindingBreakdown}>
+                    {t('proxy_pools.rebalance.binding_breakdown', {
+                      defaultValue: '凭证 {{credentials}} / API {{providerKeys}}',
+                      credentials: pool.credentialCount,
+                      providerKeys: pool.providerApiKeyCount,
+                    })}
+                  </span>
+                  <span
+                    className={styles.rebalanceCount}
+                    data-label={t('proxy_pools.rebalance.current', { defaultValue: '当前' })}
+                  >
+                    {pool.currentCount}
+                  </span>
+                  <strong
+                    className={styles.rebalanceCount}
+                    data-label={t('proxy_pools.rebalance.target', { defaultValue: '调整后' })}
+                  >
+                    {pool.targetCount}
+                  </strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={modalOpen}
@@ -1177,6 +1590,19 @@ export function ProxyPoolsPage() {
               onChange={(event) => updateForm('enabled', event.target.checked)}
             />
             <span>{t('proxy_pools.form.enabled', { defaultValue: '启用这个代理' })}</span>
+          </label>
+
+          <label className={styles.toggleField}>
+            <input
+              type="checkbox"
+              checked={form.excludeFromSmartAssignment}
+              onChange={(event) => updateForm('excludeFromSmartAssignment', event.target.checked)}
+            />
+            <span>
+              {t('proxy_pools.form.exclude_from_smart_assignment', {
+                defaultValue: '不参与智能分配',
+              })}
+            </span>
           </label>
 
           <label className={styles.noteField}>

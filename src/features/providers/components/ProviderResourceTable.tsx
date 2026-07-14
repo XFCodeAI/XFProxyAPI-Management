@@ -151,7 +151,12 @@ export function ProviderResourceTable({
     if (r.brand === 'apikeyFun') {
       return (
         <div className={styles.primaryCell}>
-          <span className={styles.primaryName}>{r.name ?? r.identifier}</span>
+          <div className={styles.primaryTitleRow}>
+            <span className={styles.primaryName}>{r.name ?? r.identifier}</span>
+            {r.fallback ? (
+              <span className={styles.fallbackBadge}>{t('providersPage.table.fallbackTag')}</span>
+            ) : null}
+          </div>
           <span className={styles.primarySub}>
             {r.apiKeyPreview ?? t('providersPage.status.notConfigured')}
           </span>
@@ -174,7 +179,12 @@ export function ProviderResourceTable({
       const extra = r.apiKeyEntryCount > 1 ? ` · +${r.apiKeyEntryCount - 1}` : '';
       return (
         <div className={styles.primaryCell}>
-          <span className={styles.primaryName}>{r.name ?? r.identifier}</span>
+          <div className={styles.primaryTitleRow}>
+            <span className={styles.primaryName}>{r.name ?? r.identifier}</span>
+            {r.fallback ? (
+              <span className={styles.fallbackBadge}>{t('providersPage.table.fallbackTag')}</span>
+            ) : null}
+          </div>
           <span className={styles.primarySub}>{(r.apiKeyPreview ?? '—') + extra}</span>
           {visibleGroups.length > 0 ? (
             <div className={styles.groupList}>
@@ -193,7 +203,12 @@ export function ProviderResourceTable({
     }
     return (
       <div className={styles.primaryCell}>
-        <span className={styles.primaryName}>{r.apiKeyPreview ?? '—'}</span>
+        <div className={styles.primaryTitleRow}>
+          <span className={styles.primaryName}>{r.apiKeyPreview ?? '—'}</span>
+          {r.fallback ? (
+            <span className={styles.fallbackBadge}>{t('providersPage.table.fallbackTag')}</span>
+          ) : null}
+        </div>
         {r.authIndex ? <span className={styles.primarySub}>auth: {r.authIndex}</span> : null}
         {visibleGroups.length > 0 ? (
           <div className={styles.groupList}>
@@ -202,7 +217,9 @@ export function ProviderResourceTable({
                 {group}
               </span>
             ))}
-            {hiddenGroupCount > 0 ? <span className={styles.groupChip}>+{hiddenGroupCount}</span> : null}
+            {hiddenGroupCount > 0 ? (
+              <span className={styles.groupChip}>+{hiddenGroupCount}</span>
+            ) : null}
           </div>
         ) : null}
       </div>

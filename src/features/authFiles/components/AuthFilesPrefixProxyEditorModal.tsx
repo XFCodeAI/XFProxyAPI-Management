@@ -150,6 +150,22 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                       disabled={disableControls || editor.saving || !editor.json}
                       onChange={(e) => onChange('priority', e.target.value)}
                     />
+                    <div
+                      className={cn(
+                        fieldRootClass,
+                        styles.prefixProxyToggleField,
+                        styles.prefixProxyFullField
+                      )}
+                    >
+                      <label className={fieldLabelClass}>{t('auth_files.fallback_label')}</label>
+                      <ToggleSwitch
+                        checked={editor.fallback}
+                        onChange={(value) => onChange('fallback', value)}
+                        disabled={disableControls || editor.saving || !editor.json}
+                        ariaLabel={t('auth_files.fallback_label')}
+                      />
+                      <div className={fieldHintClass}>{t('auth_files.fallback_hint')}</div>
+                    </div>
                     {editor.providerKey === 'codex' && (
                       <div
                         className={cn(

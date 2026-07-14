@@ -29,6 +29,7 @@ export interface AuthFileItem {
   size?: number;
   authIndex?: string | number | null;
   runtimeOnly?: boolean | string;
+  fallback?: boolean;
   disabled?: boolean;
   unavailable?: boolean;
   status?: string;

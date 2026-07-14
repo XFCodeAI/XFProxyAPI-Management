@@ -6,6 +6,7 @@ import type {
   AuthFileProxyInspection,
   AuthFileProxyInspectionGroup,
 } from '@/features/authFiles/proxyUploadInspection';
+import { isProxyPoolSmartAssignable } from '@/services/api/proxyPools';
 import { ProxySelectionControl } from './ProxySelectionControl';
 import styles from './ProxySelectionModal.module.scss';
 
@@ -44,7 +45,7 @@ export function ProxySelectionModal({
     value.mode === 'smart' ||
     (value.mode === 'file' && inspection?.status === 'ready' && inspection.filesWithoutProxy > 0);
   const hasSmartProxy = pools.some(
-    (pool) => pool.enabled && !pool.configError && (!pool.checked || pool.available)
+    (pool) => isProxyPoolSmartAssignable(pool) && (!pool.checked || pool.available)
   );
   const hasIncomingFileProxy =
     value.mode === 'file' && inspection?.status === 'ready' && inspection.uniqueProxyCount > 0;

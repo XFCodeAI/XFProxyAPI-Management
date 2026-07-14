@@ -32,6 +32,7 @@ export interface GeminiKeyConfig {
   apiKey: string;
   groups?: string[];
   priority?: number;
+  fallback?: boolean;
   prefix?: string;
   baseUrl?: string;
   proxyUrl?: string;
@@ -47,6 +48,7 @@ export interface ProviderKeyConfig {
   apiKey: string;
   groups?: string[];
   priority?: number;
+  fallback?: boolean;
   prefix?: string;
   baseUrl?: string;
   websockets?: boolean;
@@ -69,6 +71,7 @@ export interface OpenAIProviderConfig {
   headers?: Record<string, string>;
   models?: ModelAlias[];
   priority?: number;
+  fallback?: boolean;
   testModel?: string;
   disableCooling?: boolean;
   authIndex?: string;

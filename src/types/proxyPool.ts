@@ -4,6 +4,7 @@ export interface ProxyPoolEntry {
   id: string;
   name: string;
   enabled: boolean;
+  excludeFromSmartAssignment: boolean;
   protocol: ProxyPoolProtocol;
   host: string;
   port: string;
@@ -44,10 +45,53 @@ export interface ProxyPoolAutoAssignResult {
   pools: ProxyPoolStatusEntry[];
 }
 
+export type ProxyPoolRebalanceReason =
+  'worthwhile' | 'within_threshold' | 'already_balanced' | 'no_movable_bindings' | 'ineligible';
+
+export interface ProxyPoolRebalancePreviewEntry {
+  id: string;
+  name: string;
+  redactedUrl: string;
+  eligible: boolean;
+  ineligibleReason?: string;
+  currentCount: number;
+  targetCount: number;
+  credentialCount: number;
+  providerApiKeyCount: number;
+}
+
+export interface ProxyPoolRebalancePreview {
+  eligible: boolean;
+  worthwhile: boolean;
+  reason: ProxyPoolRebalanceReason;
+  maxDifference: number;
+  currentDifference: number;
+  moveCount: number;
+  totalBindings: number;
+  revision: string;
+  pools: ProxyPoolRebalancePreviewEntry[];
+}
+
+export interface ProxyPoolRebalanceFailure {
+  resourceId: string;
+  kind: string;
+  error: string;
+}
+
+export interface ProxyPoolRebalanceResult {
+  status: 'ok' | 'noop' | 'stale' | 'rolled_back' | 'partial' | 'failed';
+  moved: number;
+  skipped: number;
+  failed: number;
+  failures: ProxyPoolRebalanceFailure[];
+  preview: ProxyPoolRebalancePreview;
+}
+
 export interface ProxyPoolStatusEntry {
   id: string;
   name: string;
   enabled: boolean;
+  excludeFromSmartAssignment: boolean;
   protocol: ProxyPoolProtocol;
   host: string;
   port: number;

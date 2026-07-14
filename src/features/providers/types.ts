@@ -45,6 +45,7 @@ export interface ProviderResource {
   modelCount: number;
   models: string[];
   priority: number;
+  fallback: boolean;
   headerCount: number;
   excludedModelCount: number;
   apiKeyEntryCount: number;
@@ -90,6 +91,7 @@ export interface SponsorKeyEntryInput {
   prefix: string;
   disabled: boolean;
   disableCooling?: boolean;
+  fallback?: boolean;
   priority?: number;
   models: ModelEntryInput[];
 }
@@ -119,6 +121,7 @@ export interface ProviderEntryFormInput {
   prefix: string;
   disabled: boolean;
   disableCooling?: boolean;
+  fallback: boolean;
   priority?: number;
 
   models: ModelEntryInput[];

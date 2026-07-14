@@ -85,6 +85,7 @@ const emptySponsorKeyEntry = (protocol: SponsorProtocol = 'codex'): SponsorKeyEn
   prefix: '',
   disabled: false,
   disableCooling: false,
+  fallback: false,
   priority: undefined,
   models: [emptyModel()],
 });
@@ -97,6 +98,7 @@ const emptySponsorForm = (): ProviderEntryFormInput => ({
   prefix: '',
   disabled: false,
   disableCooling: false,
+  fallback: false,
   priority: undefined,
   models: [],
   headers: [],
@@ -169,6 +171,7 @@ const sponsorEntryFromProviderKey = (
   prefix: config.prefix ?? '',
   disabled: hasDisableAllModelsRule(config.excludedModels),
   disableCooling: config.disableCooling === true,
+  fallback: config.fallback === true,
   priority: config.priority,
   models: modelsFromConfig(config.models),
 });
@@ -185,6 +188,7 @@ const sponsorEntryFromOpenAI = (
     prefix: config.prefix ?? '',
     disabled: config.disabled === true,
     disableCooling: config.disableCooling === true,
+    fallback: config.fallback === true,
     priority: config.priority,
     models: modelsFromConfig(config.models),
   };
@@ -677,6 +681,20 @@ function SponsorKeyEntryCard({
               <>
                 <span>{t('providersPage.form.disabled')}</span>
                 <small>{t('providersPage.form.disabledHint')}</small>
+              </>
+            }
+          />
+
+          <SelectionCheckbox
+            checked={entry.fallback ?? false}
+            disabled={mutating}
+            onChange={(checked) => updateEntry({ fallback: checked })}
+            className={styles.checkboxRow}
+            labelClassName={styles.checkboxText}
+            label={
+              <>
+                <span>{t('providersPage.form.fallback')}</span>
+                <small>{t('providersPage.form.fallbackHint')}</small>
               </>
             }
           />

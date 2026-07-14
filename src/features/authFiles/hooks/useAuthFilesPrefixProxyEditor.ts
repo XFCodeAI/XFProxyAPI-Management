@@ -20,7 +20,7 @@ type AuthFileContentErrorKey =
   'auth_files.prefix_proxy_invalid_json' | 'auth_files.prefix_proxy_html_challenge';
 
 export type PrefixProxyEditorField =
-  'prefix' | 'proxyUrl' | 'priority' | 'websockets' | 'note' | 'headersText';
+  'prefix' | 'proxyUrl' | 'priority' | 'fallback' | 'websockets' | 'note' | 'headersText';
 
 export type PrefixProxyEditorFieldValue = string | boolean;
 
@@ -39,6 +39,7 @@ export type PrefixProxyEditorState = {
   prefix: string;
   proxyUrl: string;
   priority: string;
+  fallback: boolean;
   websockets: boolean;
   websocketsTouched: boolean;
   note: string;
@@ -244,6 +245,11 @@ const buildAuthFileFieldsPatch = (
     }
   }
 
+  const originalFallback = original.fallback === true;
+  if (editor.fallback !== originalFallback) {
+    patch.fallback = editor.fallback;
+  }
+
   if (editor.noteTouched) {
     const originalNote = normalizeTextField(original.note);
     const nextNote = editor.note.trim();
@@ -306,6 +312,10 @@ const buildPrefixProxyUpdatedText = (
     } else {
       next.priority = patch.priority;
     }
+  }
+
+  if (patch.fallback !== undefined) {
+    next.fallback = patch.fallback;
   }
 
   if (patch.note !== undefined) {
@@ -378,6 +388,7 @@ export function useAuthFilesPrefixProxyEditor(
       prefix: '',
       proxyUrl: '',
       priority: '',
+      fallback: false,
       websockets: false,
       websocketsTouched: false,
       note: '',
@@ -425,6 +436,7 @@ export function useAuthFilesPrefixProxyEditor(
       const prefix = typeof json.prefix === 'string' ? json.prefix : '';
       const proxyUrl = typeof json.proxy_url === 'string' ? json.proxy_url : '';
       const priority = parsePriorityValue(json.priority);
+      const fallback = json.fallback === true;
       const websockets = providerKey === 'codex' ? readCodexAuthFileWebsockets(json) : false;
       const note = typeof json.note === 'string' ? json.note : '';
       const headers = json.headers;
@@ -450,6 +462,7 @@ export function useAuthFilesPrefixProxyEditor(
           prefix,
           proxyUrl,
           priority: priority !== undefined ? String(priority) : '',
+          fallback,
           websockets,
           websocketsTouched: false,
           note,
@@ -479,6 +492,7 @@ export function useAuthFilesPrefixProxyEditor(
       if (field === 'prefix') return { ...prev, prefix: String(value) };
       if (field === 'proxyUrl') return { ...prev, proxyUrl: String(value) };
       if (field === 'priority') return { ...prev, priority: String(value) };
+      if (field === 'fallback') return { ...prev, fallback: Boolean(value) };
       if (field === 'websockets') {
         return { ...prev, websockets: Boolean(value), websocketsTouched: true };
       }

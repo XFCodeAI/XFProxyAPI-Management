@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/Modal';
 import { getStatusBadgeClass } from '@/components/ui/statusStyles';
 import { supportsOAuthCallback, type OAuthProviderState } from '@/hooks/useOAuthProviderFlow';
 import { IconExternalLink } from '@/components/ui/icons';
-import { proxyPoolsApi } from '@/services/api';
+import { isProxyPoolSmartAssignable, proxyPoolsApi } from '@/services/api';
 import type { ProxyPoolStatusEntry, ProxySelection } from '@/types';
 import styles from './QuotaOAuthDialog.module.scss';
 
@@ -22,10 +22,6 @@ interface QuotaOAuthDialogProps {
   onCopyLink: (url?: string) => void;
   onSubmitCallback: () => void;
   onCallbackUrlChange: (value: string) => void;
-}
-
-function hasSelectableProxy(pool: ProxyPoolStatusEntry): boolean {
-  return pool.enabled && !pool.configError;
 }
 
 export function QuotaOAuthDialog({
@@ -77,7 +73,7 @@ export function QuotaOAuthDialog({
     try {
       const nextPools = await proxyPoolsApi.loadStatus();
       setProxyPools(nextPools);
-      if (!nextPools.some(hasSelectableProxy)) {
+      if (!nextPools.some(isProxyPoolSmartAssignable)) {
         setProxySelection((current) => (current.mode === 'smart' ? { mode: 'direct' } : current));
       }
     } catch {
