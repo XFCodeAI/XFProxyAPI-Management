@@ -28,6 +28,12 @@ import {
   proxyPoolsApi,
   redactProxyURL,
 } from '@/services/api';
+import {
+  createStatusSnapshotCoordinator,
+  reconcileBindingSelection,
+  startStatusPolling,
+  type StatusSnapshotCoordinator,
+} from '@/features/proxyPools/statusRefresh';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import type {
@@ -236,6 +242,31 @@ export function ProxyPoolsPage() {
   const [rebalanceRefreshVersion, setRebalanceRefreshVersion] = useState(0);
   const rebalancePreviewRequestRef = useRef(0);
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
+  const statusPoolsRef = useRef<ProxyPoolStatusEntry[]>([]);
+  const statusCoordinatorRef = useRef<StatusSnapshotCoordinator<ProxyPoolStatusEntry[]> | null>(
+    null
+  );
+  if (statusCoordinatorRef.current === null) {
+    statusCoordinatorRef.current = createStatusSnapshotCoordinator({
+      load: () => proxyPoolsApi.loadStatus(),
+      onSnapshot: (snapshot) => {
+        statusPoolsRef.current = snapshot;
+        setStatusPools(snapshot);
+        setStatusFailed(false);
+        setRebalanceRefreshVersion((current) => current + 1);
+      },
+      onError: () => setStatusFailed(true),
+    });
+  }
+
+  const refreshProxyPoolStatus = useCallback(() => statusCoordinatorRef.current!.refresh(), []);
+  const refreshLatestProxyPoolStatus = useCallback(
+    () => statusCoordinatorRef.current!.refreshLatest(),
+    []
+  );
+  const publishProxyPoolStatus = useCallback((snapshot: ProxyPoolStatusEntry[]) => {
+    statusCoordinatorRef.current!.publish(snapshot);
+  }, []);
 
   const disabled = connectionStatus !== 'connected';
   const enabledCount = pools.filter((pool) => pool.enabled).length;
@@ -312,12 +343,11 @@ export function ProxyPoolsPage() {
     setLoading(true);
     setError('');
     setAuthFilesFailed(false);
-    setStatusFailed(false);
 
     try {
-      const [snapshotResult, statusResult, authFileResult] = await Promise.allSettled([
+      const [snapshotResult, , authFileResult] = await Promise.allSettled([
         proxyPoolsApi.load(),
-        proxyPoolsApi.loadStatus(),
+        refreshProxyPoolStatus(),
         authFilesApi.list(),
       ]);
 
@@ -330,27 +360,19 @@ export function ProxyPoolsPage() {
       setGlobalProxyUrl(snapshot.globalProxyUrl);
       setConfigUsages(snapshot.usages);
 
-      if (statusResult.status === 'fulfilled') {
-        setStatusPools(statusResult.value);
-      } else {
-        setStatusPools([]);
-        setStatusFailed(true);
-      }
-
       if (authFileResult.status === 'fulfilled') {
         setAuthFiles(authFileResult.value.files);
       } else {
         setAuthFiles([]);
         setAuthFilesFailed(true);
       }
-      setRebalanceRefreshVersion((current) => current + 1);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('notification.refresh_failed');
       setError(message);
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [refreshProxyPoolStatus, t]);
 
   const persistPools = useCallback(
     async (nextPools: ProxyPoolEntry[], successMessage: string) => {
@@ -361,11 +383,8 @@ export function ProxyPoolsPage() {
         setGlobalProxyUrl(snapshot.globalProxyUrl);
         setConfigUsages(snapshot.usages);
         try {
-          setStatusPools(await proxyPoolsApi.loadStatus());
-          setStatusFailed(false);
-          setRebalanceRefreshVersion((current) => current + 1);
+          await refreshLatestProxyPoolStatus();
         } catch {
-          setStatusPools([]);
           setStatusFailed(true);
         }
         try {
@@ -387,12 +406,44 @@ export function ProxyPoolsPage() {
         setSaving(false);
       }
     },
-    [showNotification, t]
+    [refreshLatestProxyPoolStatus, showNotification, t]
   );
+
+  useEffect(() => {
+    statusCoordinatorRef.current?.resume();
+    return () => {
+      statusCoordinatorRef.current?.dispose();
+    };
+  }, []);
 
   useEffect(() => {
     void loadProxyPools();
   }, [loadProxyPools]);
+
+  useEffect(() => {
+    if (connectionStatus !== 'connected') return;
+    return startStatusPolling({ refresh: refreshProxyPoolStatus });
+  }, [connectionStatus, refreshProxyPoolStatus]);
+
+  useEffect(() => {
+    if (!bindingTarget) return;
+    const nextTarget = statusPools.find((status) => status.id === bindingTarget.id);
+    if (!nextTarget) {
+      setBindingTarget(null);
+      setBindingSelected(new Set());
+      return;
+    }
+    setBindingSelected((current) =>
+      reconcileBindingSelection(
+        current,
+        bindingTarget.assignedTo.map((assignment) => assignment.id),
+        nextTarget.assignedTo.map((assignment) => assignment.id)
+      )
+    );
+    if (nextTarget !== bindingTarget) {
+      setBindingTarget(nextTarget);
+    }
+  }, [bindingTarget, statusPools]);
 
   useEffect(() => {
     setSelectedPoolIDs((current) => {
@@ -704,8 +755,7 @@ export function ProxyPoolsPage() {
   const handleCheckAll = async () => {
     setChecking(true);
     try {
-      setStatusPools(await proxyPoolsApi.checkAll());
-      setStatusFailed(false);
+      publishProxyPoolStatus(await proxyPoolsApi.checkAll());
       showNotification(t('proxy_pools.check_success', { defaultValue: '代理检测完成' }), 'success');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
@@ -723,11 +773,10 @@ export function ProxyPoolsPage() {
     try {
       const [nextStatus] = await proxyPoolsApi.checkOne(status.id);
       if (nextStatus) {
-        setStatusPools((current) =>
-          current.map((item) => (item.id === nextStatus.id ? nextStatus : item))
+        publishProxyPoolStatus(
+          statusPoolsRef.current.map((item) => (item.id === nextStatus.id ? nextStatus : item))
         );
       }
-      setStatusFailed(false);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
       showNotification(
@@ -744,8 +793,7 @@ export function ProxyPoolsPage() {
     setBalancing(true);
     try {
       const result = await proxyPoolsApi.autoAssignUnassigned(authFileIDs);
-      setStatusPools(result.pools);
-      setStatusFailed(false);
+      publishProxyPoolStatus(result.pools);
       if (result.failed > 0) {
         showNotification(
           t('proxy_pools.balance_partial', {
@@ -815,8 +863,9 @@ export function ProxyPoolsPage() {
 
       if (nextStatuses.length > 0) {
         const statusByID = new Map(nextStatuses.map((status) => [status.id, status]));
-        setStatusPools((current) => current.map((item) => statusByID.get(item.id) ?? item));
-        setStatusFailed(false);
+        publishProxyPoolStatus(
+          statusPoolsRef.current.map((item) => statusByID.get(item.id) ?? item)
+        );
       }
 
       const successCount = fulfilledResults.length;
@@ -986,7 +1035,9 @@ export function ProxyPoolsPage() {
     if (!bindingTarget) return;
     setBindingSaving(true);
     try {
-      setStatusPools(await proxyPoolsApi.assign(bindingTarget.id, Array.from(bindingSelected)));
+      publishProxyPoolStatus(
+        await proxyPoolsApi.assign(bindingTarget.id, Array.from(bindingSelected))
+      );
       showNotification(
         t('proxy_pools.binding_success', { defaultValue: '凭证绑定已更新' }),
         'success'

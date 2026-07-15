@@ -73,6 +73,24 @@ function readNumberAlias(record: Record<string, unknown>, ...keys: string[]): nu
   return 0;
 }
 
+function readOptionalNumberAlias(
+  record: Record<string, unknown>,
+  ...keys: string[]
+): number | undefined {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+      if (!normalized) continue;
+      const parsed = Number(normalized);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
 export function normalizeProxyPoolProtocol(value: unknown): ProxyPoolProtocol | null {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (PROXY_POOL_PROTOCOLS.includes(normalized as ProxyPoolProtocol)) {
@@ -251,7 +269,9 @@ function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
   const id = readString(value, 'id');
   if (!id) return null;
   const protocol = normalizeProtocol(value.protocol);
-  const assignedTo = normalizeAssignments(value.assigned_to ?? value.assignedTo);
+  const reportedAssignedCount = readOptionalNumberAlias(value, 'assigned_count', 'assignedCount');
+  const assignedTo =
+    reportedAssignedCount === 0 ? [] : normalizeAssignments(value.assigned_to ?? value.assignedTo);
   return {
     id,
     name: readString(value, 'name') || DEFAULT_PROXY_POOL_NAME,
@@ -279,10 +299,7 @@ function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
     location: readString(value, 'location') || undefined,
     org: readString(value, 'org') || undefined,
     timezone: readString(value, 'timezone') || undefined,
-    assignedCount:
-      readNumber(value, 'assigned_count') ||
-      readNumber(value, 'assignedCount') ||
-      assignedTo.length,
+    assignedCount: assignedTo.length,
     assignedTo,
   };
 }

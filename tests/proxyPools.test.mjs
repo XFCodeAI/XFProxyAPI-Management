@@ -9,6 +9,7 @@ const server = await createServer({
 
 try {
   const proxyPools = await server.ssrLoadModule('/src/services/api/proxyPools.ts');
+  const statusRefresh = await server.ssrLoadModule('/src/features/proxyPools/statusRefresh.ts');
 
   const legacy = proxyPools.parseConfigSnapshot(`
 proxy-pools:
@@ -54,6 +55,52 @@ proxy-pools:
   assert.equal(status.excludeFromSmartAssignment, true);
   assert.equal(proxyPools.isProxyPoolSelectable(status), true);
   assert.equal(proxyPools.isProxyPoolSmartAssignable(status), false);
+  assert.equal(status.assignedCount, 0);
+  assert.deepEqual(status.assignedTo, []);
+
+  const [explicitZero] = proxyPools.normalizeStatusResponse({
+    pools: [
+      {
+        id: 'explicit-zero',
+        assigned_count: 0,
+        assigned_to: [{ id: 'deleted-auth', provider: 'codex' }],
+      },
+    ],
+  });
+  assert.equal(explicitZero.assignedCount, 0);
+  assert.deepEqual(explicitZero.assignedTo, []);
+
+  const [missingCount] = proxyPools.normalizeStatusResponse({
+    pools: [
+      {
+        id: 'missing-count',
+        assigned_to: [{ id: 'auth-1', provider: 'codex' }],
+      },
+    ],
+  });
+  assert.equal(missingCount.assignedCount, 1);
+
+  const [inconsistentCount] = proxyPools.normalizeStatusResponse({
+    pools: [
+      {
+        id: 'inconsistent-count',
+        assigned_count: 9,
+        assigned_to: [{ id: 'auth-1', provider: 'codex' }],
+      },
+    ],
+  });
+  assert.equal(inconsistentCount.assignedCount, 1);
+
+  const [emptyCount] = proxyPools.normalizeStatusResponse({
+    pools: [
+      {
+        id: 'empty-count',
+        assigned_count: '',
+        assigned_to: [{ id: 'auth-1', provider: 'codex' }],
+      },
+    ],
+  });
+  assert.equal(emptyCount.assignedCount, 1);
 
   assert.equal(
     proxyPools.parseProxyPoolURL('http://127.0.0.1:7890').excludeFromSmartAssignment,
@@ -135,6 +182,121 @@ proxy-pools:
       error: 'rollback failed',
     },
   ]);
+
+  let resolveStaleRequest;
+  let loadCount = 0;
+  const snapshots = [];
+  const coordinator = statusRefresh.createStatusSnapshotCoordinator({
+    load: () => {
+      loadCount += 1;
+      return new Promise((resolve) => {
+        resolveStaleRequest = resolve;
+      });
+    },
+    onSnapshot: (snapshot) => snapshots.push(snapshot),
+  });
+  const firstRequest = coordinator.refresh();
+  assert.equal(coordinator.refresh(), firstRequest);
+  assert.equal(loadCount, 1);
+  coordinator.publish([]);
+  resolveStaleRequest([{ id: 'stale' }]);
+  await firstRequest;
+  assert.deepEqual(snapshots, [[]]);
+
+  const deferred = [];
+  let activeLoads = 0;
+  let maxActiveLoads = 0;
+  const latestSnapshots = [];
+  const latestCoordinator = statusRefresh.createStatusSnapshotCoordinator({
+    load: () => {
+      activeLoads += 1;
+      maxActiveLoads = Math.max(maxActiveLoads, activeLoads);
+      return new Promise((resolve) => {
+        deferred.push((value) => {
+          activeLoads -= 1;
+          resolve(value);
+        });
+      });
+    },
+    onSnapshot: (snapshot) => latestSnapshots.push(snapshot),
+  });
+  const oldRequest = latestCoordinator.refresh();
+  const latestRequest = latestCoordinator.refreshLatest();
+  assert.equal(deferred.length, 1);
+  deferred.shift()([{ id: 'old' }]);
+  await oldRequest;
+  await Promise.resolve();
+  assert.equal(deferred.length, 1);
+  deferred.shift()([]);
+  await latestRequest;
+  assert.equal(maxActiveLoads, 1);
+  assert.deepEqual(latestSnapshots, [[]]);
+
+  const selectedBindings = new Set(['removed-auth', 'new-unsaved-auth']);
+  const reconciledBindings = statusRefresh.reconcileBindingSelection(
+    selectedBindings,
+    ['removed-auth', 'still-assigned-auth'],
+    ['still-assigned-auth']
+  );
+  assert.deepEqual(Array.from(reconciledBindings), ['new-unsaved-auth']);
+
+  let intervalDelay = 0;
+
+  let visibility = 'visible';
+  let online = true;
+  let intervalCallback = null;
+  let cleared = false;
+  const windowListeners = new Map();
+  let visibilityListener = null;
+  let refreshCount = 0;
+  const stopPolling = statusRefresh.startStatusPolling({
+    refresh: async () => {
+      refreshCount += 1;
+    },
+    environment: {
+      visibilityState: () => visibility,
+      isOnline: () => online,
+      setInterval: (callback, delay) => {
+        intervalCallback = callback;
+        intervalDelay = delay;
+        return 1;
+      },
+      clearInterval: () => {
+        cleared = true;
+      },
+      addWindowListener: (type, listener) => windowListeners.set(type, listener),
+      removeWindowListener: (type) => windowListeners.delete(type),
+      addVisibilityListener: (listener) => {
+        visibilityListener = listener;
+      },
+      removeVisibilityListener: () => {
+        visibilityListener = null;
+      },
+    },
+  });
+  assert.equal(refreshCount, 1);
+  assert.equal(intervalDelay, statusRefresh.PROXY_POOL_STATUS_POLL_INTERVAL_MS);
+  intervalCallback();
+  assert.equal(refreshCount, 2);
+  visibility = 'hidden';
+  intervalCallback();
+  assert.equal(refreshCount, 2);
+  visibility = 'visible';
+  visibilityListener();
+  assert.equal(refreshCount, 3);
+  online = false;
+  windowListeners.get('focus')();
+  intervalCallback();
+  assert.equal(refreshCount, 3);
+  online = true;
+  windowListeners.get('online')();
+  assert.equal(refreshCount, 4);
+  stopPolling();
+  intervalCallback();
+  assert.equal(refreshCount, 4);
+  assert.equal(cleared, true);
+  assert.equal(windowListeners.size, 0);
+  assert.equal(visibilityListener, null);
 } finally {
   await server.close();
 }
