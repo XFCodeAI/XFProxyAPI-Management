@@ -67,6 +67,29 @@ type AuthFileBatchDeleteResult = {
   failed: AuthFileBatchFailure[];
 };
 
+export type AuthFileReconciliationCounts = {
+  credentials: number;
+  proxyBindings: number;
+  groupBindings: number;
+  apiKeyBindings: number;
+  runtimeRecords: number;
+  cleanupEntries: number;
+};
+
+export type AuthFileReconciliationResult = {
+  status: 'completed' | 'partial';
+  inventoryId: string;
+  revision: number;
+  scanned: AuthFileReconciliationCounts;
+  preserved: AuthFileReconciliationCounts;
+  removed: AuthFileReconciliationCounts;
+  repaired: AuthFileReconciliationCounts;
+  pending: AuthFileReconciliationCounts;
+  failed: AuthFileReconciliationCounts;
+  startedAt: string;
+  completedAt: string;
+};
+
 export const AUTH_FILE_INVALID_JSON_OBJECT_ERROR = 'AUTH_FILE_INVALID_JSON_OBJECT';
 
 const getStatusCode = (err: unknown): number | undefined => {
@@ -171,6 +194,45 @@ const normalizeBatchDeleteResponse = (
     deleted: payload?.deleted ?? (inferFromRequest ? requestedNames.length : 0),
     files: filesFromPayload.length ? filesFromPayload : inferFromRequest ? [...requestedNames] : [],
     failed,
+  };
+};
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const normalizeCount = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+};
+
+const normalizeReconciliationCounts = (value: unknown): AuthFileReconciliationCounts => {
+  const record = asRecord(value);
+  return {
+    credentials: normalizeCount(record.credentials),
+    proxyBindings: normalizeCount(record.proxy_bindings),
+    groupBindings: normalizeCount(record.group_bindings),
+    apiKeyBindings: normalizeCount(record.api_key_bindings),
+    runtimeRecords: normalizeCount(record.runtime_records),
+    cleanupEntries: normalizeCount(record.cleanup_entries),
+  };
+};
+
+export const normalizeAuthFileReconciliationResult = (
+  payload: unknown
+): AuthFileReconciliationResult => {
+  const record = asRecord(payload);
+  return {
+    status: record.status === 'completed' ? 'completed' : 'partial',
+    inventoryId: typeof record.inventory_id === 'string' ? record.inventory_id.trim() : '',
+    revision: normalizeCount(record.revision),
+    scanned: normalizeReconciliationCounts(record.scanned),
+    preserved: normalizeReconciliationCounts(record.preserved),
+    removed: normalizeReconciliationCounts(record.removed),
+    repaired: normalizeReconciliationCounts(record.repaired),
+    pending: normalizeReconciliationCounts(record.pending),
+    failed: normalizeReconciliationCounts(record.failed),
+    startedAt: typeof record.started_at === 'string' ? record.started_at : '',
+    completedAt: typeof record.completed_at === 'string' ? record.completed_at : '',
   };
 };
 
@@ -393,6 +455,9 @@ const OAUTH_MODEL_ALIAS_ENDPOINT = '/oauth-model-alias';
 
 export const authFilesApi = {
   list: async () => dedupeAuthFilesResponse(await apiClient.get<AuthFilesResponse>('/auth-files')),
+
+  reconcileBindings: async () =>
+    normalizeAuthFileReconciliationResult(await apiClient.post('/auth-files/reconcile')),
 
   setStatus: (name: string, disabled: boolean) =>
     apiClient.patch<AuthFileStatusResponse>('/auth-files/status', { name, disabled }),

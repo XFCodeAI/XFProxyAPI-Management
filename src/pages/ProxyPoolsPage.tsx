@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { ListRestart } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { Select } from '@/components/ui/Select';
-import { TooltipIconButton } from '@/components/ui/TooltipControls';
+import { TooltipButton, TooltipIconButton } from '@/components/ui/TooltipControls';
 import {
   IconAlertTriangle,
   IconCheckCircle2,
@@ -20,6 +21,7 @@ import {
   IconTrash2,
 } from '@/components/ui/icons';
 import {
+  authFilesApi,
   buildProxyPoolURL,
   DEFAULT_PROXY_POOL_NAME,
   parseProxyPoolURL,
@@ -27,6 +29,7 @@ import {
   proxyPoolsApi,
   redactProxyURL,
 } from '@/services/api';
+import type { AuthFileReconciliationCounts } from '@/services/api';
 import {
   createStatusSnapshotCoordinator,
   reconcileBindingSelection,
@@ -202,6 +205,17 @@ function rebalanceIneligibleReasonLabel(
   }
 }
 
+function reconciliationFailureCount(counts: AuthFileReconciliationCounts): number {
+  return Math.max(
+    counts.credentials,
+    counts.proxyBindings,
+    counts.groupBindings,
+    counts.apiKeyBindings,
+    counts.runtimeRecords,
+    counts.cleanupEntries
+  );
+}
+
 export function ProxyPoolsPage() {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
@@ -219,6 +233,7 @@ export function ProxyPoolsPage() {
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
   const [balancing, setBalancing] = useState(false);
+  const [syncingBindings, setSyncingBindings] = useState(false);
   const [checkingID, setCheckingID] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -245,6 +260,7 @@ export function ProxyPoolsPage() {
   const [rebalancingSelected, setRebalancingSelected] = useState(false);
   const [rebalanceRefreshVersion, setRebalanceRefreshVersion] = useState(0);
   const rebalancePreviewRequestRef = useRef(0);
+  const syncingBindingsRef = useRef(false);
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
   const statusPoolsRef = useRef<ProxyPoolStatusEntry[]>([]);
   const statusCoordinatorRef = useRef<StatusSnapshotCoordinator<ProxyPoolStatusEntry[]> | null>(
@@ -405,6 +421,71 @@ export function ProxyPoolsPage() {
     },
     [refreshLatestProxyPoolStatus, showNotification, t]
   );
+
+  const handleSyncBindings = useCallback(async () => {
+    if (syncingBindingsRef.current) return;
+    syncingBindingsRef.current = true;
+    setSyncingBindings(true);
+    try {
+      const result = await authFilesApi.reconcileBindings();
+      const [, statusResult] = await Promise.allSettled([
+        refreshAuthFiles(),
+        refreshLatestProxyPoolStatus(),
+      ]);
+      if (statusResult.status === 'rejected') {
+        setStatusFailed(true);
+      }
+
+      const removedCredentials = result.removed.credentials;
+      const repairedBindings =
+        result.removed.proxyBindings +
+        result.removed.groupBindings +
+        result.removed.apiKeyBindings +
+        result.repaired.cleanupEntries;
+      const unresolved = Math.max(
+        result.pending.cleanupEntries,
+        reconciliationFailureCount(result.failed)
+      );
+      if (result.status === 'partial' || unresolved > 0) {
+        showNotification(
+          t('proxy_pools.sync_bindings_partial', {
+            defaultValue:
+              '同步完成：扫描 {{scanned}} 个凭证，移除 {{removed}} 个失效凭证，修复 {{repaired}} 项引用，仍有 {{pending}} 项待重试',
+            scanned: result.scanned.credentials,
+            removed: removedCredentials,
+            repaired: repairedBindings,
+            pending: unresolved,
+          }),
+          'warning'
+        );
+      } else if (removedCredentials === 0 && repairedBindings === 0) {
+        showNotification(
+          t('proxy_pools.sync_bindings_noop', { defaultValue: '绑定已同步，无需修复' }),
+          'success'
+        );
+      } else {
+        showNotification(
+          t('proxy_pools.sync_bindings_success', {
+            defaultValue:
+              '同步完成：扫描 {{scanned}} 个凭证，移除 {{removed}} 个失效凭证，修复 {{repaired}} 项引用',
+            scanned: result.scanned.credentials,
+            removed: removedCredentials,
+            repaired: repairedBindings,
+          }),
+          'success'
+        );
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '';
+      showNotification(
+        `${t('proxy_pools.sync_bindings_failed', { defaultValue: '同步绑定失败' })}${message ? `: ${message}` : ''}`,
+        'error'
+      );
+    } finally {
+      syncingBindingsRef.current = false;
+      setSyncingBindings(false);
+    }
+  }, [refreshAuthFiles, refreshLatestProxyPoolStatus, showNotification, t]);
 
   useEffect(() => {
     statusCoordinatorRef.current?.resume();
@@ -1068,11 +1149,13 @@ export function ProxyPoolsPage() {
           <div className={styles.statusLine}>
             {loading
               ? t('config_management.status_loading', { defaultValue: '加载中' })
-              : saving
-                ? t('config_management.status_saving', { defaultValue: '保存中' })
-                : balancing
-                  ? t('proxy_pools.balance_running', { defaultValue: '正在智能平衡' })
-                  : t('config_management.status_loaded', { defaultValue: '已加载' })}
+              : syncingBindings
+                ? t('proxy_pools.sync_bindings_running', { defaultValue: '正在同步历史绑定' })
+                : saving
+                  ? t('config_management.status_saving', { defaultValue: '保存中' })
+                  : balancing
+                    ? t('proxy_pools.balance_running', { defaultValue: '正在智能平衡' })
+                    : t('config_management.status_loaded', { defaultValue: '已加载' })}
           </div>
         </div>
         <div className={styles.headerActions}>
@@ -1080,16 +1163,31 @@ export function ProxyPoolsPage() {
             label={t('config_management.reload', { defaultValue: '重新加载' })}
             className={styles.iconButton}
             onClick={handleReload}
-            disabled={loading || saving || balancing}
+            disabled={loading || saving || balancing || syncingBindings}
           >
             <IconRefreshCw size={16} />
           </TooltipIconButton>
+          <TooltipButton
+            label={t('proxy_pools.sync_bindings', { defaultValue: '同步绑定' })}
+            variant="secondary"
+            className={styles.syncButton}
+            onClick={() => void handleSyncBindings()}
+            loading={syncingBindings}
+            disabled={disabled || loading || saving || checking || balancing}
+          >
+            {!syncingBindings && <ListRestart size={16} aria-hidden="true" />}
+            <span className={styles.syncButtonLabel}>
+              {t('proxy_pools.sync_bindings', { defaultValue: '同步绑定' })}
+            </span>
+          </TooltipButton>
           <Button
             type="button"
             variant="secondary"
             onClick={handleCheckAll}
             loading={checking}
-            disabled={disabled || loading || saving || balancing || pools.length === 0}
+            disabled={
+              disabled || loading || saving || balancing || syncingBindings || pools.length === 0
+            }
           >
             <IconRefreshCw size={16} />
             {t('proxy_pools.check_all', { defaultValue: '检测全部' })}
@@ -1104,6 +1202,7 @@ export function ProxyPoolsPage() {
               loading ||
               saving ||
               checking ||
+              syncingBindings ||
               authFilesFailed ||
               authFileIDs.length === 0 ||
               pools.length === 0
@@ -1116,7 +1215,7 @@ export function ProxyPoolsPage() {
             type="button"
             variant="secondary"
             onClick={openCreateModal}
-            disabled={disabled || loading || saving || balancing}
+            disabled={disabled || loading || saving || balancing || syncingBindings}
           >
             <IconPlus size={16} />
             {t('proxy_pools.add', { defaultValue: '新增代理' })}
@@ -1272,7 +1371,7 @@ export function ProxyPoolsPage() {
                           label={t('proxy_pools.bind_credentials', { defaultValue: '绑定凭证' })}
                           className={styles.rowIconButton}
                           onClick={() => status && openBindingModal(status)}
-                          disabled={disabled || saving || !status}
+                          disabled={disabled || saving || syncingBindings || !status}
                         >
                           <IconKey size={16} />
                         </TooltipIconButton>
@@ -1280,7 +1379,13 @@ export function ProxyPoolsPage() {
                           label={t('proxy_pools.check_one', { defaultValue: '检测' })}
                           className={styles.rowIconButton}
                           onClick={() => status && void handleCheckOne(status)}
-                          disabled={disabled || saving || !status || checkingID === status.id}
+                          disabled={
+                            disabled ||
+                            saving ||
+                            syncingBindings ||
+                            !status ||
+                            checkingID === status.id
+                          }
                         >
                           <IconRefreshCw size={16} />
                         </TooltipIconButton>
@@ -1288,7 +1393,7 @@ export function ProxyPoolsPage() {
                           label={t('common.edit', { defaultValue: '编辑' })}
                           className={styles.rowIconButton}
                           onClick={() => openEditModal(pool)}
-                          disabled={disabled || saving}
+                          disabled={disabled || saving || syncingBindings}
                         >
                           <IconPencil size={16} />
                         </TooltipIconButton>
@@ -1296,7 +1401,7 @@ export function ProxyPoolsPage() {
                           label={t('common.delete', { defaultValue: '删除' })}
                           className={styles.rowIconButton}
                           onClick={() => handleDelete(pool)}
-                          disabled={disabled || saving}
+                          disabled={disabled || saving || syncingBindings}
                         >
                           <IconTrash2 size={16} />
                         </TooltipIconButton>
@@ -1378,7 +1483,9 @@ export function ProxyPoolsPage() {
                     size="sm"
                     onClick={openRebalanceConfirmation}
                     loading={rebalancePreviewLoading || rebalancingSelected}
-                    disabled={disabled || saving || checking || rebalancingSelected}
+                    disabled={
+                      disabled || saving || checking || syncingBindings || rebalancingSelected
+                    }
                   >
                     <IconScale size={16} />
                     {t('proxy_pools.rebalance.action', { defaultValue: '重新智能平衡' })}
@@ -1399,7 +1506,9 @@ export function ProxyPoolsPage() {
                   size="sm"
                   onClick={() => void handleBatchCheckSelected()}
                   loading={checking}
-                  disabled={disabled || saving || selectedPoolStatuses.length === 0}
+                  disabled={
+                    disabled || saving || syncingBindings || selectedPoolStatuses.length === 0
+                  }
                 >
                   {t('proxy_pools.batch_check', { defaultValue: '检测选中' })}
                 </Button>
@@ -1408,7 +1517,7 @@ export function ProxyPoolsPage() {
                   variant="danger"
                   size="sm"
                   onClick={handleBatchDeleteSelected}
-                  disabled={disabled || saving}
+                  disabled={disabled || saving || syncingBindings}
                 >
                   {t('common.delete')}
                 </Button>

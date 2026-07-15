@@ -63,6 +63,25 @@
   }
 }
 
+.syncButton {
+  min-width: 0;
+}
+
+.syncButtonLabel {
+  display: inline;
+}
+
+@media (min-width: 769px) and (max-width: $breakpoint-desktop) {
+  .syncButton {
+    width: 40px;
+    padding: 0;
+  }
+
+  .syncButtonLabel {
+    display: none;
+  }
+}
+
 .iconButton,
 .rowIconButton {
   @include button-reset;

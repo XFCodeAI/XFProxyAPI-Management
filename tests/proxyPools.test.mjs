@@ -9,7 +9,35 @@ const server = await createServer({
 
 try {
   const proxyPools = await server.ssrLoadModule('/src/services/api/proxyPools.ts');
+  const authFiles = await server.ssrLoadModule('/src/services/api/authFiles.ts');
   const statusRefresh = await server.ssrLoadModule('/src/features/proxyPools/statusRefresh.ts');
+
+  const reconciliation = authFiles.normalizeAuthFileReconciliationResult({
+    status: 'completed',
+    inventory_id: 'inventory-1',
+    revision: 7,
+    scanned: { credentials: 3, proxy_bindings: 2 },
+    removed: { credentials: 1, proxy_bindings: 1, group_bindings: 2 },
+    repaired: { cleanup_entries: 1 },
+    pending: { cleanup_entries: 0 },
+    failed: {},
+  });
+  assert.equal(reconciliation.status, 'completed');
+  assert.equal(reconciliation.inventoryId, 'inventory-1');
+  assert.equal(reconciliation.revision, 7);
+  assert.equal(reconciliation.scanned.credentials, 3);
+  assert.equal(reconciliation.removed.groupBindings, 2);
+  assert.equal(reconciliation.repaired.cleanupEntries, 1);
+  assert.equal(reconciliation.pending.cleanupEntries, 0);
+
+  const malformedReconciliation = authFiles.normalizeAuthFileReconciliationResult({
+    status: 'unexpected',
+    revision: -1,
+    failed: { cleanup_entries: '2' },
+  });
+  assert.equal(malformedReconciliation.status, 'partial');
+  assert.equal(malformedReconciliation.revision, 0);
+  assert.equal(malformedReconciliation.failed.cleanupEntries, 2);
 
   const legacy = proxyPools.parseConfigSnapshot(`
 proxy-pools:
