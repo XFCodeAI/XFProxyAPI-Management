@@ -10,14 +10,14 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { IconInfo } from '@/components/ui/icons';
 import { SecondaryScreenShell } from '@/components/common/SecondaryScreenShell';
 import { useEdgeSwipeBack } from '@/hooks/useEdgeSwipeBack';
-import { useAuthStore, useNotificationStore } from '@/stores';
+import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
 import { authFilesApi } from '@/services/api';
 import {
   buildOAuthProviderOptions,
   getTypeLabel,
   normalizeProviderKey,
 } from '@/features/authFiles/constants';
-import type { AuthFileItem, OAuthModelAliasEntry } from '@/types';
+import type { OAuthModelAliasEntry } from '@/types';
 import styles from './AuthFilesOAuthExcludedEditPage.module.scss';
 
 type AuthFileModelItem = { id: string; display_name?: string; type?: string; owned_by?: string };
@@ -50,7 +50,8 @@ export function AuthFilesOAuthExcludedEditPage({
     : (searchParams.get('provider') ?? '');
 
   const [provider, setProvider] = useState(providerFromParams);
-  const [files, setFiles] = useState<AuthFileItem[]>([]);
+  const files = useAuthInventoryStore((state) => state.files);
+  const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [excluded, setExcluded] = useState<Record<string, string[]>>({});
   const [modelAlias, setModelAlias] = useState<Record<string, OAuthModelAliasEntry[]>>({});
   const [initialLoading, setInitialLoading] = useState(true);
@@ -128,17 +129,13 @@ export function AuthFilesOAuthExcludedEditPage({
       setInitialLoading(true);
       setExcludedUnsupported(false);
       try {
-        const [filesResult, excludedResult, aliasResult] = await Promise.allSettled([
-          authFilesApi.list(),
+        const [, excludedResult, aliasResult] = await Promise.allSettled([
+          refreshAuthFiles(),
           authFilesApi.getOauthExcludedModels(),
           authFilesApi.getOauthModelAlias(),
         ]);
 
         if (cancelled) return;
-
-        if (filesResult.status === 'fulfilled') {
-          setFiles(filesResult.value?.files ?? []);
-        }
 
         if (aliasResult.status === 'fulfilled') {
           setModelAlias(aliasResult.value ?? {});
@@ -175,7 +172,7 @@ export function AuthFilesOAuthExcludedEditPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshAuthFiles]);
 
   useEffect(() => {
     if (!resolvedProviderKey) {

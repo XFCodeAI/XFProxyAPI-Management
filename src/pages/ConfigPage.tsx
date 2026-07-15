@@ -20,10 +20,15 @@ import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useVisualConfig } from '@/hooks/useVisualConfig';
 import { resolveCredentialGroupOptions } from '@/hooks/apiKeyBindings';
-import { useNotificationStore, useAuthStore, useThemeStore, useConfigStore } from '@/stores';
+import {
+  useAuthInventoryStore,
+  useNotificationStore,
+  useAuthStore,
+  useThemeStore,
+  useConfigStore,
+} from '@/stores';
 import { configApi } from '@/services/api/config';
 import { configFileApi } from '@/services/api/configFile';
-import { authFilesApi } from '@/services/api/authFiles';
 import type { AuthFileItem } from '@/types';
 import styles from './ConfigPage.module.scss';
 
@@ -108,6 +113,8 @@ export function ConfigPage() {
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
+  const authFiles = useAuthInventoryStore((state) => state.files);
+  const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const isMobile = useMediaQuery('(max-width: 768px)');
 
@@ -178,7 +185,7 @@ export function ConfigPage() {
 
   const refreshVisualReferenceOptions = useCallback(
     async (yamlContent: string) => {
-      const authFilesResult = await authFilesApi.list().catch(() => null);
+      const authFilesResult = await refreshAuthFiles().catch(() => null);
       setVisualValues({
         credentialGroupOptions: buildVisualCredentialGroupOptions(
           yamlContent,
@@ -186,7 +193,7 @@ export function ConfigPage() {
         ),
       });
     },
-    [setVisualValues]
+    [refreshAuthFiles, setVisualValues]
   );
 
   const loadConfig = useCallback(async () => {
@@ -195,7 +202,7 @@ export function ConfigPage() {
     try {
       const [data, authFilesResult] = await Promise.all([
         configFileApi.fetchConfigYaml(),
-        authFilesApi.list().catch(() => null),
+        refreshAuthFiles().catch(() => null),
       ]);
       setContent(data);
       setDirty(false);
@@ -217,7 +224,14 @@ export function ConfigPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadVisualValuesFromYaml, setVisualValues, t]);
+  }, [loadVisualValuesFromYaml, refreshAuthFiles, setVisualValues, t]);
+
+  useEffect(() => {
+    if (activeTab !== 'visual' || !content) return;
+    setVisualValues({
+      credentialGroupOptions: buildVisualCredentialGroupOptions(content, authFiles),
+    });
+  }, [activeTab, authFiles, content, setVisualValues]);
 
   useEffect(() => {
     loadConfig();

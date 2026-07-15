@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { authFilesApi, proxyPoolsApi } from '@/services/api';
 import { apiClient } from '@/services/api/client';
 import type { AuthFileSessionValidationResult } from '@/services/api/authFiles';
-import { useNotificationStore } from '@/stores';
+import { useAuthInventoryStore, useNotificationStore } from '@/stores';
 import type { AuthFileItem, ProxyPoolStatusEntry, ProxySelection } from '@/types';
 import { formatFileSize } from '@/utils/format';
 import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
@@ -242,7 +242,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const { t } = useTranslation();
   const { showNotification, showConfirmation } = useNotificationStore();
 
-  const [files, setFiles] = useState<AuthFileItem[]>([]);
+  const files = useAuthInventoryStore((state) => state.files);
+  const setFiles = useAuthInventoryStore((state) => state.setFiles);
+  const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -326,26 +328,29 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     setSelectedFiles(new Set());
   }, []);
 
-  const applyDeletedFiles = useCallback((names: string[]) => {
-    const deletedNames = Array.from(new Set(names.map((name) => name.trim()).filter(Boolean)));
-    if (deletedNames.length === 0) return;
+  const applyDeletedFiles = useCallback(
+    (names: string[]) => {
+      const deletedNames = Array.from(new Set(names.map((name) => name.trim()).filter(Boolean)));
+      if (deletedNames.length === 0) return;
 
-    const deletedSet = new Set(deletedNames);
-    setFiles((prev) => prev.filter((file) => !deletedSet.has(file.name)));
-    setSelectedFiles((prev) => {
-      if (prev.size === 0) return prev;
-      let changed = false;
-      const next = new Set<string>();
-      prev.forEach((name) => {
-        if (deletedSet.has(name)) {
-          changed = true;
-        } else {
-          next.add(name);
-        }
+      const deletedSet = new Set(deletedNames);
+      setFiles((prev) => prev.filter((file) => !deletedSet.has(file.name)));
+      setSelectedFiles((prev) => {
+        if (prev.size === 0) return prev;
+        let changed = false;
+        const next = new Set<string>();
+        prev.forEach((name) => {
+          if (deletedSet.has(name)) {
+            changed = true;
+          } else {
+            next.add(name);
+          }
+        });
+        return changed ? next : prev;
       });
-      return changed ? next : prev;
-    });
-  }, []);
+    },
+    [setFiles]
+  );
 
   useEffect(() => {
     if (selectedFiles.size === 0) return;
@@ -368,7 +373,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     setLoading(true);
     setError('');
     try {
-      const data = await authFilesApi.list();
+      const data = await refreshAuthFiles();
       const nextFiles = data?.files || [];
       filesRef.current = nextFiles;
       setFiles(nextFiles);
@@ -380,7 +385,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [refreshAuthFiles, setFiles, t]);
 
   const refreshUploadProxyPools = useCallback(async () => {
     setUploadProxyPoolsLoading(true);
@@ -946,7 +951,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         },
       });
     },
-    [applyDeletedFiles, deselectAll, files, showConfirmation, showNotification, t]
+    [applyDeletedFiles, deselectAll, files, setFiles, showConfirmation, showNotification, t]
   );
 
   const handleDownload = useCallback(
@@ -1002,7 +1007,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         });
       }
     },
-    [showNotification, t]
+    [setFiles, showNotification, t]
   );
 
   const batchSetStatus = useCallback(
@@ -1097,7 +1102,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         });
       }
     },
-    [deselectAll, files, showNotification, statusUpdating, t]
+    [deselectAll, files, setFiles, showNotification, statusUpdating, t]
   );
 
   const batchDownload = useCallback(

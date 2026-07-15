@@ -5,7 +5,7 @@ import { ConfirmationModal } from '@/components/common/ConfirmationModal';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { ProtectedRoute } from '@/router/ProtectedRoute';
-import { useLanguageStore, useThemeStore } from '@/stores';
+import { useAuthInventoryStore, useAuthStore, useLanguageStore, useThemeStore } from '@/stores';
 
 const LoginPage = lazy(() =>
   import('@/pages/LoginPage').then((module) => ({ default: module.LoginPage }))
@@ -23,6 +23,35 @@ function AppFallback() {
 }
 
 function RootShell() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const connectionStatus = useAuthStore((state) => state.connectionStatus);
+  const startInventory = useAuthInventoryStore((state) => state.start);
+  const stopInventory = useAuthInventoryStore((state) => state.stop);
+  const refreshInventory = useAuthInventoryStore((state) => state.refresh);
+
+  useEffect(() => {
+    if (!isAuthenticated || connectionStatus !== 'connected') {
+      stopInventory(true);
+      return;
+    }
+    startInventory();
+    return () => stopInventory(false);
+  }, [connectionStatus, isAuthenticated, startInventory, stopInventory]);
+
+  useEffect(() => {
+    if (!isAuthenticated || connectionStatus !== 'connected') return;
+    const refresh = () => void refreshInventory().catch(() => undefined);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [connectionStatus, isAuthenticated, refreshInventory]);
+
   return (
     <>
       <NotificationContainer />

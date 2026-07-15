@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight } from 'lucide-react';
 import { IconKey, IconBot, IconFileText, IconSatellite } from '@/components/ui/icons';
-import { useAuthStore, useConfigStore, useModelsStore } from '@/stores';
-import { authFilesApi } from '@/services/api';
+import { useAuthInventoryStore, useAuthStore, useConfigStore, useModelsStore } from '@/stores';
 import { useApiKeysForModels } from '@/hooks/useApiKeysForModels';
 import { formatDateValue } from '@/utils/format';
 import styles from './DashboardPage.module.scss';
@@ -41,8 +40,9 @@ export function DashboardPage() {
   const modelsLoading = useModelsStore((state) => state.loading);
   const fetchModelsFromStore = useModelsStore((state) => state.fetchModels);
 
-  const [authFilesCount, setAuthFilesCount] = useState<number | null>(null);
-  const [authFilesLoading, setAuthFilesLoading] = useState(false);
+  const authFiles = useAuthInventoryStore((state) => state.files);
+  const authFilesLoading = useAuthInventoryStore((state) => state.loading);
+  const authFilesCount = connectionStatus === 'connected' ? authFiles.length : null;
 
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(getTimeOfDay);
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -76,27 +76,8 @@ export function DashboardPage() {
       return;
     }
 
-    let cancelled = false;
-
-    const loadAuthFiles = async () => {
-      setAuthFilesLoading(true);
-      try {
-        const res = await authFilesApi.list();
-        if (!cancelled) setAuthFilesCount(res.files.length);
-      } catch {
-        if (!cancelled) setAuthFilesCount(null);
-      } finally {
-        setAuthFilesLoading(false);
-      }
-    };
-
     fetchConfig().catch(() => undefined);
     fetchModels();
-    void loadAuthFiles();
-
-    return () => {
-      cancelled = true;
-    };
   }, [connectionStatus, fetchConfig, fetchModels]);
 
   const configLoading = !config;

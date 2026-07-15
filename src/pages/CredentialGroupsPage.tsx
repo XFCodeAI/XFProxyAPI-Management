@@ -15,7 +15,7 @@ import {
   providersApi,
 } from '@/services/api';
 import { getPluginTitle } from '@/features/plugins/pluginResources';
-import { useConfigStore, useNotificationStore } from '@/stores';
+import { useAuthInventoryStore, useConfigStore, useNotificationStore } from '@/stores';
 import type {
   ApiError,
   AuthFileItem,
@@ -421,7 +421,9 @@ export function CredentialGroupsPage() {
   const fetchConfig = useConfigStore((state) => state.fetchConfig);
   const updateConfigValue = useConfigStore((state) => state.updateConfigValue);
   const [groups, setGroups] = useState<string[]>([]);
-  const [authFiles, setAuthFiles] = useState<AuthFileItem[]>([]);
+  const authFiles = useAuthInventoryStore((state) => state.files);
+  const setAuthFiles = useAuthInventoryStore((state) => state.setFiles);
+  const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [apiKeyEntries, setApiKeyEntries] = useState<ManagedApiKeyEntry[]>([]);
   const [plugins, setPlugins] = useState<PluginListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -570,22 +572,11 @@ export function CredentialGroupsPage() {
     () =>
       apiKeyEntries
         .map((entry, index) => ({ entry, index }))
-        .filter(({ entry }) =>
-          matchesQuery(
-            query,
-            entry.key,
-            entry.groups.join(' ')
-          )
-        )
+        .filter(({ entry }) => matchesQuery(query, entry.key, entry.groups.join(' ')))
         .filter(({ entry }) =>
           matchesBindingFilter(entry.groups, resolvedActiveGroup, apiKeysFilter)
         ),
-    [
-      apiKeyEntries,
-      apiKeysFilter,
-      query,
-      resolvedActiveGroup,
-    ]
+    [apiKeyEntries, apiKeysFilter, query, resolvedActiveGroup]
   );
 
   const loadGroups = useCallback(
@@ -598,13 +589,14 @@ export function CredentialGroupsPage() {
       setLoadError('');
 
       try {
-        const authFilesResponse = await authFilesApi.list();
-        const [nextGroups, nextApiKeyEntries, pluginResponse] = await Promise.all([
-          credentialGroupsApi.list(),
-          apiKeysApi.listEntries(),
-          pluginsApi.list().catch(() => ({ plugins: [] })),
-          fetchConfig(undefined, true),
-        ]);
+        const [authFilesResponse, nextGroups, nextApiKeyEntries, pluginResponse] =
+          await Promise.all([
+            refreshAuthFiles(),
+            credentialGroupsApi.list(),
+            apiKeysApi.listEntries(),
+            pluginsApi.list().catch(() => ({ plugins: [] })),
+            fetchConfig(undefined, true),
+          ]);
         setGroups(nextGroups);
         setAuthFiles(authFilesResponse.files ?? []);
         setApiKeyEntries(nextApiKeyEntries);
@@ -623,7 +615,7 @@ export function CredentialGroupsPage() {
         }
       }
     },
-    [fetchConfig, showNotification, t]
+    [fetchConfig, refreshAuthFiles, setAuthFiles, showNotification, t]
   );
 
   useEffect(() => {

@@ -20,7 +20,6 @@ import {
   IconTrash2,
 } from '@/components/ui/icons';
 import {
-  authFilesApi,
   buildProxyPoolURL,
   DEFAULT_PROXY_POOL_NAME,
   parseProxyPoolURL,
@@ -34,10 +33,14 @@ import {
   startStatusPolling,
   type StatusSnapshotCoordinator,
 } from '@/features/proxyPools/statusRefresh';
-import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
+import {
+  useAuthInventoryStore,
+  useAuthStore,
+  useConfigStore,
+  useNotificationStore,
+} from '@/stores';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import type {
-  AuthFileItem,
   ProxyPoolEntry,
   ProxyPoolRebalancePreview,
   ProxyPoolStatusEntry,
@@ -208,8 +211,9 @@ export function ProxyPoolsPage() {
   const [statusPools, setStatusPools] = useState<ProxyPoolStatusEntry[]>([]);
   const [globalProxyUrl, setGlobalProxyUrl] = useState('');
   const [configUsages, setConfigUsages] = useState<ProxyPoolUsage[]>([]);
-  const [authFiles, setAuthFiles] = useState<AuthFileItem[]>([]);
-  const [authFilesFailed, setAuthFilesFailed] = useState(false);
+  const authFiles = useAuthInventoryStore((state) => state.files);
+  const authFilesError = useAuthInventoryStore((state) => state.error);
+  const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [statusFailed, setStatusFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -269,6 +273,7 @@ export function ProxyPoolsPage() {
   }, []);
 
   const disabled = connectionStatus !== 'connected';
+  const authFilesFailed = authFiles.length === 0 && Boolean(authFilesError);
   const enabledCount = pools.filter((pool) => pool.enabled).length;
   const usageRows = useMemo(
     () => configUsages.filter((usage) => usage.kind === 'global' || usage.kind === 'provider-key'),
@@ -342,13 +347,12 @@ export function ProxyPoolsPage() {
   const loadProxyPools = useCallback(async () => {
     setLoading(true);
     setError('');
-    setAuthFilesFailed(false);
 
     try {
-      const [snapshotResult, , authFileResult] = await Promise.allSettled([
+      const [snapshotResult] = await Promise.allSettled([
         proxyPoolsApi.load(),
         refreshProxyPoolStatus(),
-        authFilesApi.list(),
+        refreshAuthFiles(),
       ]);
 
       if (snapshotResult.status !== 'fulfilled') {
@@ -359,20 +363,13 @@ export function ProxyPoolsPage() {
       setPools(snapshot.pools);
       setGlobalProxyUrl(snapshot.globalProxyUrl);
       setConfigUsages(snapshot.usages);
-
-      if (authFileResult.status === 'fulfilled') {
-        setAuthFiles(authFileResult.value.files);
-      } else {
-        setAuthFiles([]);
-        setAuthFilesFailed(true);
-      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('notification.refresh_failed');
       setError(message);
     } finally {
       setLoading(false);
     }
-  }, [refreshProxyPoolStatus, t]);
+  }, [refreshAuthFiles, refreshProxyPoolStatus, t]);
 
   const persistPools = useCallback(
     async (nextPools: ProxyPoolEntry[], successMessage: string) => {
@@ -444,6 +441,14 @@ export function ProxyPoolsPage() {
       setBindingTarget(nextTarget);
     }
   }, [bindingTarget, statusPools]);
+
+  useEffect(() => {
+    const available = new Set(authFileIDs);
+    setBindingSelected((current) => {
+      const next = new Set(Array.from(current).filter((id) => available.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [authFileIDs]);
 
   useEffect(() => {
     setSelectedPoolIDs((current) => {

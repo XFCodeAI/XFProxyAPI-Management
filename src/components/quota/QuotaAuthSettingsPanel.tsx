@@ -6,9 +6,7 @@ import { IconRefreshCw } from '@/components/ui/icons';
 import { OAuthExcludedCard } from '@/features/authFiles/components/OAuthExcludedCard';
 import { OAuthModelAliasCard } from '@/features/authFiles/components/OAuthModelAliasCard';
 import { useAuthFilesOauth } from '@/features/authFiles/hooks/useAuthFilesOauth';
-import { authFilesApi } from '@/services/api';
-import { useAuthStore } from '@/stores';
-import type { AuthFileItem } from '@/types';
+import { useAuthInventoryStore, useAuthStore } from '@/stores';
 import { AuthFilesOAuthExcludedEditPage } from '@/pages/AuthFilesOAuthExcludedEditPage';
 import { AuthFilesOAuthModelAliasEditPage } from '@/pages/AuthFilesOAuthModelAliasEditPage';
 import styles from './QuotaAuthSettingsPanel.module.scss';
@@ -16,8 +14,7 @@ import styles from './QuotaAuthSettingsPanel.module.scss';
 type ViewMode = 'diagram' | 'list';
 
 type AuthSettingsEditor =
-  | { kind: 'excluded'; provider?: string }
-  | { kind: 'modelAlias'; provider?: string };
+  { kind: 'excluded'; provider?: string } | { kind: 'modelAlias'; provider?: string };
 
 interface QuotaAuthSettingsPanelProps {
   onHeaderActionChange?: (action: ReactNode | null) => void;
@@ -27,7 +24,8 @@ export function QuotaAuthSettingsPanel({ onHeaderActionChange }: QuotaAuthSettin
   const { t } = useTranslation();
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
 
-  const [files, setFiles] = useState<AuthFileItem[]>([]);
+  const files = useAuthInventoryStore((state) => state.files);
+  const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -54,7 +52,6 @@ export function QuotaAuthSettingsPanel({ onHeaderActionChange }: QuotaAuthSettin
 
   const refreshSettings = useCallback(async () => {
     if (connectionStatus !== 'connected') {
-      setFiles([]);
       setError('');
       setLoading(false);
       return;
@@ -65,13 +62,12 @@ export function QuotaAuthSettingsPanel({ onHeaderActionChange }: QuotaAuthSettin
 
     try {
       const [filesResult] = await Promise.allSettled([
-        authFilesApi.list(),
+        refreshAuthFiles(),
         loadExcluded(),
         loadModelAlias(),
       ]);
 
       if (filesResult.status === 'fulfilled') {
-        setFiles(filesResult.value?.files ?? []);
         return;
       }
 
@@ -83,7 +79,7 @@ export function QuotaAuthSettingsPanel({ onHeaderActionChange }: QuotaAuthSettin
     } finally {
       setLoading(false);
     }
-  }, [connectionStatus, loadExcluded, loadModelAlias, t]);
+  }, [connectionStatus, loadExcluded, loadModelAlias, refreshAuthFiles, t]);
 
   useEffect(() => {
     void refreshSettings();

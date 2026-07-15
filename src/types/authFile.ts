@@ -46,4 +46,6 @@ export interface AuthFileItem {
 export interface AuthFilesResponse {
   files: AuthFileItem[];
   total?: number;
+  revision?: number;
+  inventory_id?: string;
 }
