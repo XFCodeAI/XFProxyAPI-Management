@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { alertClass, alertDestructiveClass, alertInfoClass } from '@/components/ui/alertStyles';
@@ -754,7 +747,7 @@ export function PluginsPage() {
             <span className={styles.statusLabel}>{t('plugin_management.plugins_dir')}</span>
             <span
               className={`${styles.statusValue} ${styles.statusPathValue}`}
-              title={data.pluginsDir || 'plugins'}
+              title={data.pluginsDirPath || data.pluginsDir || 'plugins'}
             >
               {data.pluginsDir || 'plugins'}
             </span>
@@ -774,6 +767,13 @@ export function PluginsPage() {
             <span className={styles.statusValue}>
               {pluginStats.effective}/{pluginStats.registered}
             </span>
+          </div>
+
+          <span className={styles.statusDivider} />
+
+          <div className={styles.statusPill}>
+            <span className={styles.statusLabel}>{t('plugin_management.owned_auth_files')}</span>
+            <span className={styles.statusValue}>{data.ownershipRecords}</span>
           </div>
         </div>
       ) : null}
@@ -872,6 +872,18 @@ export function PluginsPage() {
                           ? t('plugin_management.configured')
                           : t('plugin_management.not_configured')}
                       </span>
+                      {plugin.missingBinary ? (
+                        <span className={styles.badgeWarning}>
+                          {t('plugin_management.missing_binary')}
+                        </span>
+                      ) : null}
+                      {plugin.ownedAuthFiles > 0 ? (
+                        <span className={styles.badge}>
+                          {t('plugin_management.owned_auth_count', {
+                            count: plugin.ownedAuthFiles,
+                          })}
+                        </span>
+                      ) : null}
                       {plugin.supportsOAuth ? (
                         <span className={styles.badge}>{t('plugin_management.oauth')}</span>
                       ) : null}

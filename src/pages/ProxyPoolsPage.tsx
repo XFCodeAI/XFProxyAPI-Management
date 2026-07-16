@@ -227,6 +227,7 @@ export function ProxyPoolsPage() {
   const [configUsages, setConfigUsages] = useState<ProxyPoolUsage[]>([]);
   const authFiles = useAuthInventoryStore((state) => state.files);
   const authFilesError = useAuthInventoryStore((state) => state.error);
+  const maintenanceFiles = useAuthInventoryStore((state) => state.maintenanceFiles);
   const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [statusFailed, setStatusFailed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -353,6 +354,7 @@ export function ProxyPoolsPage() {
       Array.from(
         new Set(
           authFiles
+            .filter((file) => file.assignable !== false)
             .map((file) => String(file.id || file.name || '').trim())
             .filter((id) => id.length > 0)
         )
@@ -1256,6 +1258,10 @@ export function ProxyPoolsPage() {
           <span>{t('proxy_pools.summary.bound_credentials', { defaultValue: '绑定凭证' })}</span>
           <strong>{boundCredentialsCount}</strong>
         </div>
+        <div className={styles.summaryItem}>
+          <span>{t('proxy_pools.summary.maintenance_files', { defaultValue: '待维护文件' })}</span>
+          <strong>{maintenanceFiles}</strong>
+        </div>
       </div>
 
       <section className={styles.managementPanel}>
@@ -1820,26 +1826,28 @@ export function ProxyPoolsPage() {
               <div className={styles.emptyState}>
                 {t('proxy_pools.auth_files_failed', { defaultValue: '认证文件读取失败' })}
               </div>
-            ) : authFiles.length === 0 ? (
+            ) : authFileIDs.length === 0 ? (
               <div className={styles.emptyState}>
                 {t('proxy_pools.no_auth_files', { defaultValue: '暂无认证文件' })}
               </div>
             ) : (
-              authFiles.map((file) => {
-                const name = String(file.name || '').trim();
-                const provider = String(file.provider || file.type || 'Auth').trim();
-                return (
-                  <label className={styles.bindingRow} key={name}>
-                    <input
-                      type="checkbox"
-                      checked={bindingSelected.has(name)}
-                      onChange={() => toggleBindingAuth(name)}
-                    />
-                    <span className={styles.bindingName}>{name}</span>
-                    <span className={styles.bindingProvider}>{provider}</span>
-                  </label>
-                );
-              })
+              authFiles
+                .filter((file) => file.assignable !== false)
+                .map((file) => {
+                  const name = String(file.name || '').trim();
+                  const provider = String(file.provider || file.type || 'Auth').trim();
+                  return (
+                    <label className={styles.bindingRow} key={name}>
+                      <input
+                        type="checkbox"
+                        checked={bindingSelected.has(name)}
+                        onChange={() => toggleBindingAuth(name)}
+                      />
+                      <span className={styles.bindingName}>{name}</span>
+                      <span className={styles.bindingProvider}>{provider}</span>
+                    </label>
+                  );
+                })
             )}
           </div>
         </div>

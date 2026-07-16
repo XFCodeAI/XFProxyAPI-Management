@@ -1,11 +1,5 @@
 export type PluginConfigFieldType =
-  | 'string'
-  | 'number'
-  | 'integer'
-  | 'boolean'
-  | 'enum'
-  | 'array'
-  | 'object';
+  'string' | 'number' | 'integer' | 'boolean' | 'enum' | 'array' | 'object';
 
 export interface PluginConfigField {
   name: string;
@@ -44,11 +38,17 @@ export interface PluginListEntry {
   configFields: PluginConfigField[];
   menus: PluginMenu[];
   metadata: PluginMetadata | null;
+  ownedAuthFiles: number;
+  missingBinary: boolean;
+  status: string;
 }
 
 export interface PluginListResponse {
   pluginsEnabled: boolean;
   pluginsDir: string;
+  pluginsDirPath: string;
+  pluginsDirExists: boolean;
+  ownershipRecords: number;
   plugins: PluginListEntry[];
 }
 

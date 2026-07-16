@@ -21,7 +21,7 @@ import {
   itemTitleClass,
   pillClass,
 } from '@/components/ui/listStyles';
-import { useNotificationStore } from '@/stores';
+import { useAuthStore, useNotificationStore } from '@/stores';
 import styles from './VisualConfigEditor.module.scss';
 import { copyToClipboard } from '@/utils/clipboard';
 import { cn } from '@/lib/utils';
@@ -42,6 +42,8 @@ import {
 } from '@/hooks/useVisualConfig';
 import { maskApiKey } from '@/utils/format';
 import { isValidApiKeyCharset } from '@/utils/validation';
+import { IconCode } from '@/components/ui/icons';
+import { CodexProviderProfileModal } from './CodexProviderProfileModal';
 
 /** Minimum character count before the expand/collapse toggle appears. */
 const EXPAND_THRESHOLD = 30;
@@ -193,6 +195,7 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
 }) {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
+  const apiBase = useAuthStore((state) => state.apiBase);
   const apiKeys = useMemo(
     () =>
       value
@@ -219,6 +222,7 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
   const [inputValue, setInputValue] = useState('');
   const [formError, setFormError] = useState('');
   const [apiKeyGroupSelection, setApiKeyGroupSelection] = useState<string[]>([]);
+  const [profileApiKey, setProfileApiKey] = useState<string | null>(null);
 
   function generateSecureApiKey(): string {
     const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -364,6 +368,15 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
                   <Button
                     variant="secondary"
                     size="sm"
+                    onClick={() => setProfileApiKey(key)}
+                    disabled={disabled || !apiBase}
+                  >
+                    <IconCode size={16} />
+                    {t('config_management.visual.api_keys.codex_profile_action')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => handleCopy(key)}
                     disabled={disabled}
                   >
@@ -461,6 +474,13 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
           />
         </div>
       </Modal>
+
+      <CodexProviderProfileModal
+        open={profileApiKey !== null}
+        apiKey={profileApiKey ?? ''}
+        apiBase={apiBase}
+        onClose={() => setProfileApiKey(null)}
+      />
     </div>
   );
 });

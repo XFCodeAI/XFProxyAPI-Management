@@ -32,6 +32,8 @@ export interface AuthFileItem {
   fallback?: boolean;
   disabled?: boolean;
   unavailable?: boolean;
+  assignable?: boolean;
+  admission?: 'builtin' | 'plugin' | string;
   status?: string;
   statusMessage?: string;
   lastRefresh?: string | number;
@@ -48,4 +50,7 @@ export interface AuthFilesResponse {
   total?: number;
   revision?: number;
   inventory_id?: string;
+  maintenance_files?: number;
+  maintenance_unclassified?: number;
+  maintenance_confirmation?: string;
 }

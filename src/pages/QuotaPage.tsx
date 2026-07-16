@@ -33,7 +33,7 @@ import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useOAuthProviderFlow } from '@/hooks/useOAuthProviderFlow';
 import { authFilesApi, pluginsApi } from '@/services/api';
-import { useAuthStore, useNotificationStore } from '@/stores';
+import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
 import type { AuthFileItem, PluginListEntry, ProxySelection } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
 import { parseTimestampMs } from '@/utils/timestamp';
@@ -219,6 +219,7 @@ interface QuotaPageProps {
 export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
+  const maintenanceFiles = useAuthInventoryStore((state) => state.maintenanceFiles);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
 
@@ -665,7 +666,23 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     <div className={`${styles.container} ${embedded ? styles.embeddedContainer : ''}`}>
       {!embedded && (
         <div className={styles.pageHeader}>
-          <h1 className={styles.pageTitle}>{t('quota_management.title')}</h1>
+          <div className={styles.titleWrapper}>
+            <h1 className={styles.pageTitle}>{t('quota_management.title')}</h1>
+            {maintenanceFiles > 0 ? (
+              <span
+                className={styles.countBadge}
+                aria-label={t('quota_management.maintenance_files', {
+                  defaultValue: '{{count}} 个待维护文件',
+                  count: maintenanceFiles,
+                })}
+              >
+                {t('quota_management.maintenance_badge', {
+                  defaultValue: '维护 {{count}}',
+                  count: maintenanceFiles,
+                })}
+              </span>
+            ) : null}
+          </div>
         </div>
       )}
 

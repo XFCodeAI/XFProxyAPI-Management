@@ -32,6 +32,130 @@
   border-radius: var(--radius-sm);
 }
 
+.codexProfileModalBody {
+  min-height: 260px;
+}
+
+.codexProfileState {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+
+.codexProfileError {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--destructive);
+  font-size: 14px;
+  text-align: center;
+}
+
+.codexProfileContent {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.codexProfileFields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 22px;
+
+  @include mobile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.codexProfileField {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--border);
+
+  &:nth-child(n + 3) {
+    padding-top: 14px;
+  }
+
+  @include mobile {
+    padding-top: 14px;
+
+    &:first-child {
+      padding-top: 0;
+    }
+  }
+}
+
+.codexProfileFieldLabel {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.codexProfileFieldValueRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.codexProfileFieldValue {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codexProfileConfigSection {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.codexProfileConfigHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.codexProfileCode {
+  max-height: min(320px, 42vh);
+  min-width: 0;
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  tab-size: 2;
+  white-space: pre;
+}
+
 .expandableInputWrapper {
   position: relative;
   display: flex;

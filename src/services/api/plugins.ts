@@ -155,6 +155,9 @@ const normalizePluginEntry = (value: unknown): PluginListEntry | null => {
     configFields: configFields.length > 0 ? configFields : (metadata?.configFields ?? []),
     menus: normalizeMenus(value.menus),
     metadata,
+    ownedAuthFiles: Math.max(0, Math.floor(Number(value.owned_auth_files) || 0)),
+    missingBinary: asBoolean(value.missing_binary),
+    status: asString(value.status).trim(),
   };
 };
 
@@ -169,6 +172,9 @@ const normalizePluginList = (value: unknown): PluginListResponse => {
   return {
     pluginsEnabled: asBoolean(source.plugins_enabled),
     pluginsDir: asString(source.plugins_dir).trim() || 'plugins',
+    pluginsDirPath: asString(source.plugins_dir_path).trim(),
+    pluginsDirExists: asBoolean(source.plugins_dir_exists),
+    ownershipRecords: Math.max(0, Math.floor(Number(source.ownership_records) || 0)),
     plugins,
   };
 };
