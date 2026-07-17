@@ -19,9 +19,6 @@ type AuthInventoryState = {
   files: AuthFileItem[];
   inventoryId: string;
   revision: number;
-  maintenanceFiles: number;
-  maintenanceUnclassified: number;
-  maintenanceConfirmation: string;
   loading: boolean;
   error: string;
   streamConnected: boolean;
@@ -193,9 +190,6 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
   files: [],
   inventoryId: '',
   revision: 0,
-  maintenanceFiles: 0,
-  maintenanceUnclassified: 0,
-  maintenanceConfirmation: '',
   loading: false,
   error: '',
   streamConnected: false,
@@ -226,9 +220,6 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
             files: response.files ?? [],
             inventoryId: inventoryId || state.inventoryId,
             revision,
-            maintenanceFiles: normalizeRevision(response.maintenance_files),
-            maintenanceUnclassified: normalizeRevision(response.maintenance_unclassified),
-            maintenanceConfirmation: String(response.maintenance_confirmation ?? '').trim(),
             loading: false,
             error: '',
           };
@@ -312,9 +303,6 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
         files: [],
         inventoryId: '',
         revision: 0,
-        maintenanceFiles: 0,
-        maintenanceUnclassified: 0,
-        maintenanceConfirmation: '',
         loading: false,
         error: '',
         streamConnected: false,

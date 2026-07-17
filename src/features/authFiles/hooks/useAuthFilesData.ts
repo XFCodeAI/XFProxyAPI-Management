@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObj
 import { useTranslation } from 'react-i18next';
 import { authFilesApi, proxyPoolsApi } from '@/services/api';
 import { apiClient } from '@/services/api/client';
-import type { AuthFileSessionValidationResult } from '@/services/api/authFiles';
+import type {
+  AuthFileBatchDeleteResult,
+  AuthFileSessionValidationResult,
+} from '@/services/api/authFiles';
 import { useAuthInventoryStore, useNotificationStore } from '@/stores';
 import type { AuthFileItem, ProxyPoolStatusEntry, ProxySelection } from '@/types';
 import { formatFileSize } from '@/utils/format';
@@ -132,6 +135,9 @@ const chunkFiles = (files: File[], size: number): File[][] => {
 
 const getErrorMessage = (err: unknown): string =>
   err instanceof Error && err.message ? err.message : 'Unknown error';
+
+const unresolvedDeleteCount = (result: AuthFileBatchDeleteResult): number =>
+  result.pending.length + result.conflicts.length + result.failed.length;
 
 const normalizeAssignmentTargets = (targets: AuthFileItem[]): AuthFileGroupAssignmentTarget[] => {
   const normalized: AuthFileGroupAssignmentTarget[] = [];
@@ -796,8 +802,22 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           setDeleting(name);
           try {
             const result = await authFilesApi.deleteFile(name);
-            showNotification(t('auth_files.delete_success'), 'success');
-            applyDeletedFiles(result.files.length > 0 ? result.files : [name]);
+            applyDeletedFiles(result.files);
+            if (unresolvedDeleteCount(result) === 0) {
+              showNotification(t('auth_files.delete_success'), 'success');
+            } else {
+              showNotification(
+                t('auth_files.delete_pending_result', {
+                  defaultValue:
+                    '已删除 {{deleted}} 项，待重试 {{pending}} 项，需确认 {{conflicts}} 项，失败 {{failed}} 项',
+                  deleted: result.deleted,
+                  pending: result.pending.length,
+                  conflicts: result.conflicts.length,
+                  failed: result.failed.length,
+                }),
+                'warning'
+              );
+            }
           } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : '';
             showNotification(`${t('notification.delete_failed')}: ${errorMessage}`, 'error');
@@ -847,9 +867,23 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           setDeletingAll(true);
           try {
             if (!isFiltered && !isProblemOnly && !isDisabledOnly && !isEnabledOnly) {
-              await authFilesApi.deleteAll();
-              showNotification(t('auth_files.delete_all_success'), 'success');
-              setFiles((prev) => prev.filter((file) => isRuntimeOnlyAuthFile(file)));
+              const result = await authFilesApi.deleteAll();
+              applyDeletedFiles(result.files);
+              if (unresolvedDeleteCount(result) === 0) {
+                showNotification(t('auth_files.delete_all_success'), 'success');
+              } else {
+                showNotification(
+                  t('auth_files.delete_pending_result', {
+                    defaultValue:
+                      '已删除 {{deleted}} 项，待重试 {{pending}} 项，需确认 {{conflicts}} 项，失败 {{failed}} 项',
+                    deleted: result.deleted,
+                    pending: result.pending.length,
+                    conflicts: result.conflicts.length,
+                    failed: result.failed.length,
+                  }),
+                  'warning'
+                );
+              }
               deselectAll();
             } else {
               const filesToDelete = files.filter((file) => {
@@ -882,7 +916,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
               const result = await authFilesApi.deleteFiles(filesToDelete.map((file) => file.name));
               const success = result.deleted;
-              const failed = result.failed.length;
+              const failed = unresolvedDeleteCount(result);
 
               applyDeletedFiles(result.files);
 
@@ -951,7 +985,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         },
       });
     },
-    [applyDeletedFiles, deselectAll, files, setFiles, showConfirmation, showNotification, t]
+    [applyDeletedFiles, deselectAll, files, showConfirmation, showNotification, t]
   );
 
   const handleDownload = useCallback(
@@ -1157,7 +1191,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
             const result = await authFilesApi.deleteFiles(uniqueNames);
             applyDeletedFiles(result.files);
 
-            if (result.failed.length === 0) {
+            const unresolved = unresolvedDeleteCount(result);
+            if (unresolved === 0) {
               showNotification(
                 `${t('auth_files.delete_all_success')} (${result.deleted})`,
                 'success'
@@ -1166,7 +1201,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
               showNotification(
                 t('auth_files.delete_filtered_partial', {
                   success: result.deleted,
-                  failed: result.failed.length,
+                  failed: unresolved,
                   type: t('auth_files.filter_all'),
                 }),
                 'warning'

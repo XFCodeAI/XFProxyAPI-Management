@@ -50,7 +50,4 @@ export interface AuthFilesResponse {
   total?: number;
   revision?: number;
   inventory_id?: string;
-  maintenance_files?: number;
-  maintenance_unclassified?: number;
-  maintenance_confirmation?: string;
 }

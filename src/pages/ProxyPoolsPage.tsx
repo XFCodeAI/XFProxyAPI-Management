@@ -212,7 +212,8 @@ function reconciliationFailureCount(counts: AuthFileReconciliationCounts): numbe
     counts.groupBindings,
     counts.apiKeyBindings,
     counts.runtimeRecords,
-    counts.cleanupEntries
+    counts.cleanupEntries,
+    counts.cleanupConflicts
   );
 }
 
@@ -227,7 +228,6 @@ export function ProxyPoolsPage() {
   const [configUsages, setConfigUsages] = useState<ProxyPoolUsage[]>([]);
   const authFiles = useAuthInventoryStore((state) => state.files);
   const authFilesError = useAuthInventoryStore((state) => state.error);
-  const maintenanceFiles = useAuthInventoryStore((state) => state.maintenanceFiles);
   const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [statusFailed, setStatusFailed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -1257,10 +1257,6 @@ export function ProxyPoolsPage() {
         <div className={styles.summaryItem}>
           <span>{t('proxy_pools.summary.bound_credentials', { defaultValue: '绑定凭证' })}</span>
           <strong>{boundCredentialsCount}</strong>
-        </div>
-        <div className={styles.summaryItem}>
-          <span>{t('proxy_pools.summary.maintenance_files', { defaultValue: '待维护文件' })}</span>
-          <strong>{maintenanceFiles}</strong>
         </div>
       </div>
 

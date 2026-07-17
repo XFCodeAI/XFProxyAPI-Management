@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Upload } from 'lucide-react';
+import { Upload, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -24,6 +24,7 @@ import { AuthFilesGroupAssignmentModal } from '@/features/authFiles/components/A
 import { AuthImportModal } from '@/features/authFiles/components/AuthImportModal';
 import { AuthSessionImportResultModal } from '@/features/authFiles/components/AuthSessionImportResultModal';
 import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components/AuthFilesPrefixProxyEditorModal';
+import { AuthFilesLegacyRepairModal } from '@/features/authFiles/components/AuthFilesLegacyRepairModal';
 import { useAuthFilesData } from '@/features/authFiles/hooks/useAuthFilesData';
 import { useAuthFilesModels } from '@/features/authFiles/hooks/useAuthFilesModels';
 import { useAuthFilesPrefixProxyEditor } from '@/features/authFiles/hooks/useAuthFilesPrefixProxyEditor';
@@ -33,7 +34,7 @@ import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useOAuthProviderFlow } from '@/hooks/useOAuthProviderFlow';
 import { authFilesApi, pluginsApi } from '@/services/api';
-import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
+import { useAuthStore, useNotificationStore } from '@/stores';
 import type { AuthFileItem, PluginListEntry, ProxySelection } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
 import { parseTimestampMs } from '@/utils/timestamp';
@@ -219,7 +220,6 @@ interface QuotaPageProps {
 export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
-  const maintenanceFiles = useAuthInventoryStore((state) => state.maintenanceFiles);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
 
@@ -274,6 +274,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const [oauthDialogProviderId, setOauthDialogProviderId] = useState<string | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [authSettingsOpen, setAuthSettingsOpen] = useState(false);
+  const [legacyRepairOpen, setLegacyRepairOpen] = useState(false);
   const [visibleQuotaCredentials, setVisibleQuotaCredentials] = useState<{
     providerId: string;
     files: AuthFileItem[];
@@ -540,6 +541,10 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     setImportModalOpen(false);
   };
 
+  const refreshAfterLegacyRepair = useCallback(async () => {
+    await loadFiles();
+  }, [loadFiles]);
+
   const pickImportFiles = () => {
     handleUploadClick();
   };
@@ -668,20 +673,6 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
         <div className={styles.pageHeader}>
           <div className={styles.titleWrapper}>
             <h1 className={styles.pageTitle}>{t('quota_management.title')}</h1>
-            {maintenanceFiles > 0 ? (
-              <span
-                className={styles.countBadge}
-                aria-label={t('quota_management.maintenance_files', {
-                  defaultValue: '{{count}} 个待维护文件',
-                  count: maintenanceFiles,
-                })}
-              >
-                {t('quota_management.maintenance_badge', {
-                  defaultValue: '维护 {{count}}',
-                  count: maintenanceFiles,
-                })}
-              </span>
-            ) : null}
           </div>
         </div>
       )}
@@ -723,6 +714,17 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           {!uploading && <Upload size={16} aria-hidden="true" />}
           <span>{t('auth_files.import_button', { defaultValue: '导入' })}</span>
         </Button>
+        <TooltipButton
+          variant="secondary"
+          size="sm"
+          className={styles.legacyRepairButton}
+          onClick={() => setLegacyRepairOpen(true)}
+          disabled={disableControls}
+          label={t('auth_files.legacy_repair_title', { defaultValue: '修复历史删除残留' })}
+        >
+          <Wrench size={16} aria-hidden="true" />
+          <span>{t('common.repair', { defaultValue: '修复' })}</span>
+        </TooltipButton>
         <TooltipButton
           variant="secondary"
           size="sm"
@@ -876,6 +878,11 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
         onCopyText={copyTextWithNotification}
         onSave={handlePrefixProxySave}
         onChange={handlePrefixProxyChange}
+      />
+      <AuthFilesLegacyRepairModal
+        open={legacyRepairOpen}
+        onClose={() => setLegacyRepairOpen(false)}
+        onCompleted={refreshAfterLegacyRepair}
       />
     </div>
   );
