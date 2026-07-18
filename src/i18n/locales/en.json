@@ -126,6 +126,7 @@
     "plugin_store": "Plugin Store",
     "config_management": "Config Panel",
     "logs": "Logs Viewer",
+    "migration": "Server Migration",
     "system_info": "Management Center Info"
   },
   "nav_groups": {
@@ -148,6 +149,7 @@
     "plugin_store": "Discover & install plugins",
     "logs": "Request tracing",
     "config_management": "Gateway configuration",
+    "migration": "Secure migration to this server",
     "system_info": "Runtime & diagnostics"
   },
   "dashboard": {
@@ -1527,6 +1529,74 @@
     "clear_login_desc": "Clear locally saved login data and sign out.",
     "clear_login_button": "Clear login data",
     "clear_login_confirm": "Clear local login data and sign out now?"
+  },
+  "migration": {
+    "title": "Server Migration",
+    "source_title": "Source Server",
+    "source_endpoint": "Source Endpoint",
+    "source_key": "Source Management Key",
+    "preflight": "Preflight",
+    "clear_preflight": "Cancel Preflight",
+    "source_sealed": "Source sealed",
+    "source_invalid": "Enter an HTTPS source endpoint without a path",
+    "source_key_required": "Enter the source management key",
+    "source_heartbeat_failed": "Source seal heartbeat failed. Run preflight again.",
+    "source_seal_missing": "The source seal has expired. Run preflight again.",
+    "preflight_failed": "Migration preflight failed",
+    "preflight_title": "Migration Preflight",
+    "preflight_status": {
+      "ready": "Ready",
+      "blocked": "Blocked"
+    },
+    "snapshot_size": "Snapshot Size",
+    "source_backend": "Source Storage",
+    "source_credentials": "Source Credentials",
+    "replacement_count": "Replacement Scope",
+    "blocking": "Blocking Items",
+    "warnings": "Warnings",
+    "start": "Start Migration",
+    "confirm_title": "Confirm Migration",
+    "confirm_message": "Portable configuration, credentials, 2FA, and plugins on this server will be replaced by the source state.",
+    "transfer_started": "Migration started",
+    "transfer_start_failed": "Could not start migration",
+    "transfer_title": "Migration Progress",
+    "transfer_completed": "Migration completed",
+    "transfer_poll_failed": "Could not read migration progress",
+    "transfer_status": {
+      "staging": "Downloading",
+      "staged": "Ready to apply",
+      "applying": "Applying",
+      "completed": "Completed",
+      "failed": "Failed",
+      "canceled": "Canceled"
+    },
+    "resume": "Resume Migration",
+    "transfer_resume_failed": "Could not resume migration",
+    "cancel_title": "Cancel Migration",
+    "cancel_message": "The current transfer will stop and the source seal will be released.",
+    "cancel_transfer": "Cancel Migration",
+    "transfer_canceled": "Migration canceled",
+    "transfer_cancel_failed": "Could not cancel migration",
+    "idle_hint": "Run preflight before starting a migration.",
+    "domain": {
+      "config": "Configuration",
+      "credentials": "Credentials",
+      "credential_groups": "Credential Groups",
+      "proxy_pools": "Proxy Pools",
+      "providers": "AI Providers",
+      "two_factor": "2FA",
+      "plugins": "Plugins"
+    },
+    "issue": {
+      "source_not_sealed": "The source is not sealed",
+      "source_mutations_active": "The source still has active writes",
+      "source_seal_expired": "The source seal expired",
+      "source_cleanup_unresolved": "The source has unresolved credential cleanup",
+      "staging_capacity_insufficient": "The destination does not have enough free space",
+      "plugin_artifact_missing": "A source plugin artifact is missing",
+      "plugin_platform_incompatible": "Plugin platform is incompatible",
+      "storage_backend_conversion": "Storage backends differ; portable state will be synchronized"
+    }
   },
   "notification": {
     "debug_updated": "Debug settings updated",

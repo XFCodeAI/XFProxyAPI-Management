@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft,
   ChevronRight,
+  ArrowRightLeft,
   CircleDot,
   Languages,
   LogOut,
@@ -66,6 +67,7 @@ const sidebarIcons: Record<string, ReactNode> = {
   pluginStore: <IconSidebarStore size={18} />,
   config: <IconSidebarConfig size={18} />,
   logs: <IconSidebarLogs size={18} />,
+  migration: <ArrowRightLeft size={18} />,
   system: <IconSidebarSystem size={18} />,
 };
 
@@ -464,6 +466,12 @@ export function MainLayout() {
       id: 'control',
       labelKey: 'nav_groups.control',
       items: [
+        {
+          path: '/migration',
+          labelKey: 'nav.migration',
+          metaKey: 'nav_meta.migration',
+          icon: sidebarIcons.migration,
+        },
         {
           path: '/config',
           labelKey: 'nav.config_management',

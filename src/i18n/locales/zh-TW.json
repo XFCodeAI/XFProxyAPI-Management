@@ -126,6 +126,7 @@
     "plugin_store": "插件商店",
     "config_management": "設定面板",
     "logs": "記錄檢視",
+    "migration": "伺服器遷移",
     "system_info": "中心資訊"
   },
   "nav_groups": {
@@ -148,6 +149,7 @@
     "plugin_store": "探索並安裝插件",
     "logs": "請求追蹤與排查",
     "config_management": "閘道基礎設定",
+    "migration": "安全遷移至目前伺服器",
     "system_info": "運行與診斷資訊"
   },
   "dashboard": {
@@ -1554,6 +1556,74 @@
     "clear_login_desc": "清理本地儲存的登入資訊並登出。",
     "clear_login_button": "清理登入資訊",
     "clear_login_confirm": "確認清理本地登入資訊並登出？"
+  },
+  "migration": {
+    "title": "伺服器遷移",
+    "source_title": "來源伺服器",
+    "source_endpoint": "來源位址",
+    "source_key": "來源管理金鑰",
+    "preflight": "預檢",
+    "clear_preflight": "取消預檢",
+    "source_sealed": "來源已封存",
+    "source_invalid": "請輸入不含路徑的 HTTPS 來源位址",
+    "source_key_required": "請輸入來源管理金鑰",
+    "source_heartbeat_failed": "來源封存續期失敗，請重新預檢。",
+    "source_seal_missing": "來源封存已失效，請重新預檢。",
+    "preflight_failed": "遷移預檢失敗",
+    "preflight_title": "遷移預檢",
+    "preflight_status": {
+      "ready": "可以遷移",
+      "blocked": "無法遷移"
+    },
+    "snapshot_size": "快照大小",
+    "source_backend": "來源儲存",
+    "source_credentials": "來源憑證",
+    "replacement_count": "替換範圍",
+    "blocking": "阻斷項目",
+    "warnings": "注意事項",
+    "start": "開始遷移",
+    "confirm_title": "確認遷移",
+    "confirm_message": "目前伺服器的可遷移設定、憑證、2FA 與插件將被來源狀態替換。",
+    "transfer_started": "遷移已開始",
+    "transfer_start_failed": "無法開始遷移",
+    "transfer_title": "遷移進度",
+    "transfer_completed": "遷移完成",
+    "transfer_poll_failed": "讀取遷移進度失敗",
+    "transfer_status": {
+      "staging": "正在下載",
+      "staged": "等待套用",
+      "applying": "正在套用",
+      "completed": "已完成",
+      "failed": "失敗",
+      "canceled": "已取消"
+    },
+    "resume": "繼續遷移",
+    "transfer_resume_failed": "無法繼續遷移",
+    "cancel_title": "取消遷移",
+    "cancel_message": "將停止目前傳輸並釋放來源封存。",
+    "cancel_transfer": "取消遷移",
+    "transfer_canceled": "遷移已取消",
+    "transfer_cancel_failed": "無法取消遷移",
+    "idle_hint": "預檢後才能開始遷移。",
+    "domain": {
+      "config": "設定",
+      "credentials": "驗證憑證",
+      "credential_groups": "憑證分組",
+      "proxy_pools": "代理池",
+      "providers": "AI 供應商",
+      "two_factor": "2FA",
+      "plugins": "插件"
+    },
+    "issue": {
+      "source_not_sealed": "來源尚未封存",
+      "source_mutations_active": "來源仍有進行中的寫入操作",
+      "source_seal_expired": "來源封存已過期",
+      "source_cleanup_unresolved": "來源存在待處理的憑證刪除",
+      "staging_capacity_insufficient": "目標端可用空間不足",
+      "plugin_artifact_missing": "來源缺少插件檔案",
+      "plugin_platform_incompatible": "插件平台不相容",
+      "storage_backend_conversion": "儲存後端不同，目標端將同步可遷移狀態"
+    }
   },
   "notification": {
     "debug_updated": "除錯設定已更新",

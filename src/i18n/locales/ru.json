@@ -126,6 +126,7 @@
     "plugin_store": "Магазин плагинов",
     "config_management": "Панель конфигурации",
     "logs": "Просмотр логов",
+    "migration": "Миграция сервера",
     "system_info": "Информация системы"
   },
   "nav_groups": {
@@ -147,6 +148,7 @@
     "plugin_store": "Поиск и установка плагинов",
     "logs": "Трассировка запросов",
     "config_management": "Базовая конфигурация шлюза",
+    "migration": "Безопасная миграция на этот сервер",
     "system_info": "Состояние и диагностика"
   },
   "dashboard": {
@@ -1514,6 +1516,74 @@
     "clear_login_desc": "Очистите локально сохранённые данные входа и выполните выход.",
     "clear_login_button": "Очистить данные входа",
     "clear_login_confirm": "Очистить локальные данные входа и выйти?"
+  },
+  "migration": {
+    "title": "Миграция сервера",
+    "source_title": "Исходный сервер",
+    "source_endpoint": "Адрес источника",
+    "source_key": "Ключ управления источником",
+    "preflight": "Проверить",
+    "clear_preflight": "Отменить проверку",
+    "source_sealed": "Источник заблокирован",
+    "source_invalid": "Введите HTTPS-адрес источника без пути",
+    "source_key_required": "Введите ключ управления источником",
+    "source_heartbeat_failed": "Не удалось продлить блокировку источника. Повторите проверку.",
+    "source_seal_missing": "Блокировка источника истекла. Повторите проверку.",
+    "preflight_failed": "Предварительная проверка миграции не удалась",
+    "preflight_title": "Предварительная проверка",
+    "preflight_status": {
+      "ready": "Готово",
+      "blocked": "Заблокировано"
+    },
+    "snapshot_size": "Размер снимка",
+    "source_backend": "Хранилище источника",
+    "source_credentials": "Учётные данные источника",
+    "replacement_count": "Область замены",
+    "blocking": "Блокирующие проблемы",
+    "warnings": "Предупреждения",
+    "start": "Начать миграцию",
+    "confirm_title": "Подтвердить миграцию",
+    "confirm_message": "Переносимые настройки, учётные данные, 2FA и плагины этого сервера будут заменены состоянием источника.",
+    "transfer_started": "Миграция начата",
+    "transfer_start_failed": "Не удалось начать миграцию",
+    "transfer_title": "Ход миграции",
+    "transfer_completed": "Миграция завершена",
+    "transfer_poll_failed": "Не удалось получить состояние миграции",
+    "transfer_status": {
+      "staging": "Загрузка",
+      "staged": "Ожидает применения",
+      "applying": "Применение",
+      "completed": "Завершено",
+      "failed": "Ошибка",
+      "canceled": "Отменено"
+    },
+    "resume": "Продолжить миграцию",
+    "transfer_resume_failed": "Не удалось продолжить миграцию",
+    "cancel_title": "Отменить миграцию",
+    "cancel_message": "Текущая передача будет остановлена, а блокировка источника снята.",
+    "cancel_transfer": "Отменить миграцию",
+    "transfer_canceled": "Миграция отменена",
+    "transfer_cancel_failed": "Не удалось отменить миграцию",
+    "idle_hint": "Перед запуском выполните предварительную проверку.",
+    "domain": {
+      "config": "Конфигурация",
+      "credentials": "Учётные данные",
+      "credential_groups": "Группы учётных данных",
+      "proxy_pools": "Пулы прокси",
+      "providers": "Поставщики AI",
+      "two_factor": "2FA",
+      "plugins": "Плагины"
+    },
+    "issue": {
+      "source_not_sealed": "Источник не заблокирован",
+      "source_mutations_active": "На источнике есть активные изменения",
+      "source_seal_expired": "Блокировка источника истекла",
+      "source_cleanup_unresolved": "На источнике есть незавершённая очистка учётных данных",
+      "staging_capacity_insufficient": "На целевом сервере недостаточно места",
+      "plugin_artifact_missing": "Отсутствует файл плагина источника",
+      "plugin_platform_incompatible": "Платформа плагина несовместима",
+      "storage_backend_conversion": "Хранилища различаются; переносимое состояние будет синхронизировано"
+    }
   },
   "notification": {
     "debug_updated": "Настройки отладки обновлены",

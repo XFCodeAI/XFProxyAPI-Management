@@ -13,6 +13,7 @@ export * from './oauth';
 export * from './logs';
 export * from './version';
 export * from './models';
+export * from './migration';
 export * from './plugins';
 export * from './proxyPools';
 export * from './transformers';

@@ -1,0 +1,249 @@
+@use '../styles/mixins.scss' as *;
+
+.container {
+  display: flex;
+  width: min(100%, 1200px);
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 auto;
+}
+
+.pageHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  min-height: 42px;
+}
+
+.titleRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  color: var(--foreground);
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sectionHeader {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.connectionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summaryItem {
+  display: flex;
+  min-width: 0;
+  min-height: 76px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--background);
+
+  span {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  strong {
+    color: var(--foreground);
+    font-size: 16px;
+    font-weight: 650;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+}
+
+.replacementList,
+.issueList {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+}
+
+.replacementRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(2rem, auto) 28px minmax(2rem, auto);
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  span {
+    min-width: 0;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+
+  strong {
+    color: var(--foreground);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.arrow {
+  text-align: center;
+}
+
+.issueSection {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.issueList {
+  margin-top: 0;
+}
+
+.issueRow {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  span {
+    flex: 0 0 auto;
+    color: var(--muted-foreground);
+    font-size: 12px;
+  }
+}
+
+.jobID {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.transferError,
+.completedState {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.transferError {
+  border-color: color-mix(in srgb, var(--destructive) 32%, var(--border));
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 8%, var(--background));
+}
+
+.completedState {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 4%, var(--background));
+}
+
+@include mobile {
+  .container {
+    gap: 14px;
+  }
+
+  .pageTitle {
+    font-size: 24px;
+  }
+
+  .sectionHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .connectionGrid,
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryItem {
+    min-height: 64px;
+  }
+
+  .replacementRow {
+    grid-template-columns: minmax(0, 1fr) auto 22px auto;
+  }
+
+  .issueRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .actionRow {
+    align-items: stretch;
+
+    button {
+      width: 100%;
+    }
+  }
+}

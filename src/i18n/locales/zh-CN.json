@@ -126,6 +126,7 @@
     "plugin_store": "插件商店",
     "config_management": "配置面板",
     "logs": "日志查看",
+    "migration": "服务器迁移",
     "system_info": "中心信息"
   },
   "nav_groups": {
@@ -148,6 +149,7 @@
     "plugin_store": "发现并安装插件",
     "logs": "请求追踪与排查",
     "config_management": "网关基础配置",
+    "migration": "安全迁移到当前服务器",
     "system_info": "运行与诊断信息"
   },
   "dashboard": {
@@ -1527,6 +1529,74 @@
     "clear_login_desc": "清理本地保存的登录信息并退出登录。",
     "clear_login_button": "清理登录信息",
     "clear_login_confirm": "确认清理本地登录信息并退出登录？"
+  },
+  "migration": {
+    "title": "服务器迁移",
+    "source_title": "源服务器",
+    "source_endpoint": "源端地址",
+    "source_key": "源端管理密钥",
+    "preflight": "预检",
+    "clear_preflight": "取消预检",
+    "source_sealed": "源端已封存",
+    "source_invalid": "请输入不带路径的 HTTPS 源端地址",
+    "source_key_required": "请输入源端管理密钥",
+    "source_heartbeat_failed": "源端封存续期失败，请重新预检。",
+    "source_seal_missing": "源端封存已失效，请重新预检。",
+    "preflight_failed": "迁移预检失败",
+    "preflight_title": "迁移预检",
+    "preflight_status": {
+      "ready": "可以迁移",
+      "blocked": "无法迁移"
+    },
+    "snapshot_size": "快照大小",
+    "source_backend": "源端存储",
+    "source_credentials": "源端凭证",
+    "replacement_count": "替换范围",
+    "blocking": "阻断项",
+    "warnings": "注意事项",
+    "start": "开始迁移",
+    "confirm_title": "确认迁移",
+    "confirm_message": "当前服务器的可迁移配置、凭证、2FA 和插件将被源端状态替换。",
+    "transfer_started": "迁移已开始",
+    "transfer_start_failed": "无法开始迁移",
+    "transfer_title": "迁移进度",
+    "transfer_completed": "迁移完成",
+    "transfer_poll_failed": "读取迁移进度失败",
+    "transfer_status": {
+      "staging": "正在下载",
+      "staged": "等待应用",
+      "applying": "正在应用",
+      "completed": "已完成",
+      "failed": "失败",
+      "canceled": "已取消"
+    },
+    "resume": "继续迁移",
+    "transfer_resume_failed": "无法继续迁移",
+    "cancel_title": "取消迁移",
+    "cancel_message": "将停止当前传输并释放源端封存。",
+    "cancel_transfer": "取消迁移",
+    "transfer_canceled": "迁移已取消",
+    "transfer_cancel_failed": "无法取消迁移",
+    "idle_hint": "预检后才能开始迁移。",
+    "domain": {
+      "config": "配置",
+      "credentials": "认证凭证",
+      "credential_groups": "凭证分组",
+      "proxy_pools": "代理池",
+      "providers": "AI 供应商",
+      "two_factor": "2FA",
+      "plugins": "插件"
+    },
+    "issue": {
+      "source_not_sealed": "源端尚未封存",
+      "source_mutations_active": "源端仍有进行中的写入操作",
+      "source_seal_expired": "源端封存已过期",
+      "source_cleanup_unresolved": "源端存在待处理的凭证删除",
+      "staging_capacity_insufficient": "目标端可用空间不足",
+      "plugin_artifact_missing": "源端缺少插件文件",
+      "plugin_platform_incompatible": "插件平台不兼容",
+      "storage_backend_conversion": "存储后端不同，目标端将同步可迁移状态"
+    }
   },
   "notification": {
     "debug_updated": "调试设置已更新",

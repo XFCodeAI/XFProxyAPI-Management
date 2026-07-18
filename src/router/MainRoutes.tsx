@@ -61,6 +61,9 @@ const LogsPage = lazy(() =>
 const SystemPage = lazy(() =>
   import('@/pages/SystemPage').then((module) => ({ default: module.SystemPage }))
 );
+const MigrationPage = lazy(() =>
+  import('@/pages/MigrationPage').then((module) => ({ default: module.MigrationPage }))
+);
 
 function RouteFallback() {
   return (
@@ -102,6 +105,7 @@ const createMainRoutes = (supportsPlugin: boolean) => [
       ]),
   { path: '/config', element: <ConfigPage /> },
   { path: '/logs', element: <LogsPage /> },
+  { path: '/migration', element: <MigrationPage /> },
   { path: '/system', element: <SystemPage /> },
   { path: '*', element: <Navigate to="/" replace /> },
 ];
