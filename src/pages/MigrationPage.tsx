@@ -114,7 +114,6 @@ export function MigrationPage() {
     sourceEndpoint.trim().length > 0 &&
     sourceManagementKey.trim().length > 0;
   const preflightReady = preflight?.job.result.status === 'ready' && Boolean(sealedSource);
-  const transferTerminal = transfer ? terminalTransferStatuses.has(transfer.status) : false;
 
   const releaseSourceSeal = useCallback(async () => {
     const session = sealedSourceRef.current;
@@ -458,7 +457,7 @@ export function MigrationPage() {
                 {t('migration.resume')}
               </Button>
             ) : null}
-            {!transferTerminal ? (
+            {transfer.status !== 'completed' && transfer.status !== 'canceled' ? (
               <Button
                 variant="danger"
                 onClick={handleCancelTransfer}
