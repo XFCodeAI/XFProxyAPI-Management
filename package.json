@@ -1,13 +1,16 @@
 {
   "name": "xfproxyapi-management",
   "private": true,
-  "version": "0.1.13",
+  "version": "0.1.14",
   "type": "module",
   "packageManager": "pnpm@10.17.1",
   "scripts": {
     "dev": "vite",
     "test": "tsc --noEmit",
     "test:gpt-session": "node --experimental-strip-types tests/gptSessionImport.test.mjs",
+    "test:oauth-credential-target": "node --experimental-strip-types tests/oauthCredentialTarget.test.mjs",
+    "test:oauth-dialog-lifecycle": "node --experimental-strip-types tests/oauthDialogLifecycle.test.mjs",
+    "test:provider-dialog-lifecycle": "node tests/providerDialogLifecycle.test.mjs",
     "test:proxy-selection": "node --experimental-strip-types tests/proxySelectionDefault.test.mjs",
     "test:proxy-pools": "node tests/proxyPools.test.mjs",
     "build": "tsc --noEmit && vite build",

@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { oauthApi } from '@/services/api';
+import type { OAuthCredentialResult } from '@/services/api/oauth';
 import { useNotificationStore } from '@/stores';
 import type { ProxySelection } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
 import { getErrorMessage, isRecord } from '@/utils/helpers';
+import {
+  beginOAuthCallbackSubmission,
+  finishOAuthCallbackSubmission,
+  isCurrentOAuthAttempt,
+  oauthCallbackReportsError,
+} from './oauthAttemptLifecycle';
 
 export interface OAuthProviderState {
   url?: string;
@@ -20,12 +27,30 @@ export interface OAuthProviderState {
 
 interface UseOAuthProviderFlowOptions {
   getProviderText: (provider: string, suffix: string) => string;
-  onSuccess?: (provider: string) => void;
+  onSuccess?: (provider: string, credential: OAuthCredentialResult) => void;
 }
 
 const CALLBACK_SUPPORTED = new Set<string>(['codex', 'anthropic', 'antigravity', 'xai']);
 const XAI_CALLBACK_URL = 'http://127.0.0.1:56121/callback';
 const SUCCESS_RESET_DELAY_MS = 5000;
+const OAUTH_CREDENTIAL_DISPOSITIONS = new Set(['created', 'updated', 'rekeyed']);
+
+const isOAuthCredentialResult = (value: unknown): value is OAuthCredentialResult => {
+  if (!isRecord(value)) return false;
+  const provider = typeof value.provider === 'string' ? value.provider : '';
+  const id = typeof value.id === 'string' ? value.id : '';
+  const name = typeof value.name === 'string' ? value.name : '';
+  const disposition = typeof value.disposition === 'string' ? value.disposition : '';
+  return (
+    provider !== '' &&
+    provider.trim() === provider &&
+    id !== '' &&
+    id.trim() === id &&
+    name !== '' &&
+    name.trim() === name &&
+    OAUTH_CREDENTIAL_DISPOSITIONS.has(disposition)
+  );
+};
 
 const getErrorStatus = (error: unknown): number | undefined => {
   if (!isRecord(error)) return undefined;
@@ -110,6 +135,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
   const cancelRequested = useRef<Partial<Record<string, boolean>>>({});
   const pollingTimers = useRef<Partial<Record<string, number>>>({});
   const successResetTimers = useRef<Partial<Record<string, number>>>({});
+  const callbackSubmissions = useRef<Partial<Record<string, string>>>({});
 
   useEffect(() => {
     statesRef.current = states;
@@ -154,6 +180,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
     (provider: string) => {
       clearProviderTimers(provider);
       cancelRequested.current[provider] = false;
+      delete callbackSubmissions.current[provider];
       setStates((prev) => {
         const updated = {
           ...prev,
@@ -167,8 +194,9 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
   );
 
   const completeProviderAuth = useCallback(
-    (provider: string) => {
+    (provider: string, credential: OAuthCredentialResult) => {
       cancelRequested.current[provider] = false;
+      delete callbackSubmissions.current[provider];
       clearPollingTimer(provider);
       clearSuccessResetTimer(provider);
       updateProviderState(provider, {
@@ -183,7 +211,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         callbackError: undefined,
       });
       showNotification(getProviderText(provider, 'oauth_status_success'), 'success');
-      onSuccess?.(provider);
+      onSuccess?.(provider, credential);
       successResetTimers.current[provider] = window.setTimeout(() => {
         resetProviderAttempt(provider);
       }, SUCCESS_RESET_DELAY_MS);
@@ -208,8 +236,25 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
           if (cancelRequested.current[provider]) {
             return;
           }
+          if (pollingTimers.current[provider] !== timer) {
+            return;
+          }
           if (res.status === 'ok') {
-            completeProviderAuth(provider);
+            if (!isOAuthCredentialResult(res.credential)) {
+              const message = t('auth_login.oauth_credential_result_missing', {
+                defaultValue: 'OAuth completed without a valid credential result.',
+              });
+              updateProviderState(provider, {
+                status: 'error',
+                error: message,
+                polling: false,
+              });
+              showNotification(message, 'error');
+              window.clearInterval(timer);
+              delete pollingTimers.current[provider];
+              return;
+            }
+            completeProviderAuth(provider, res.credential);
           } else if (res.status === 'error') {
             updateProviderState(provider, {
               status: 'error',
@@ -243,6 +288,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
       completeProviderAuth,
       getProviderText,
       showNotification,
+      t,
       updateProviderState,
     ]
   );
@@ -251,6 +297,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
     async (provider: string, proxySelection?: ProxySelection) => {
       clearProviderTimers(provider);
       cancelRequested.current[provider] = false;
+      delete callbackSubmissions.current[provider];
       updateProviderState(provider, {
         url: undefined,
         state: undefined,
@@ -319,6 +366,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
     (provider: string) => {
       const activeState = statesRef.current[provider]?.state;
       cancelRequested.current[provider] = true;
+      delete callbackSubmissions.current[provider];
       clearProviderTimers(provider);
       setStates((prev) => {
         const updated = {
@@ -336,8 +384,11 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
   );
 
   const submitCallback = useCallback(
-    async (provider: string) => {
-      const callbackInput = (states[provider]?.callbackUrl || '').trim();
+    async (provider: string): Promise<boolean> => {
+      const attempt = statesRef.current[provider];
+      const attemptState = attempt?.state?.trim() ?? '';
+      const callbackInput = (attempt?.callbackUrl || '').trim();
+      const callbackReportsError = oauthCallbackReportsError(callbackInput);
       if (!callbackInput) {
         showNotification(
           t(
@@ -347,9 +398,13 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
           ),
           'warning'
         );
-        return;
+        return false;
       }
-      const redirectUrl = resolveCallbackUrl(provider, callbackInput, states[provider]?.state);
+      if (!attemptState) {
+        showNotification(t('auth_login.missing_state'), 'warning');
+        return false;
+      }
+      const redirectUrl = resolveCallbackUrl(provider, callbackInput, attemptState);
       if (!redirectUrl) {
         showNotification(
           t(
@@ -359,7 +414,10 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
           ),
           'warning'
         );
-        return;
+        return false;
+      }
+      if (!beginOAuthCallbackSubmission(callbackSubmissions.current, provider, attemptState)) {
+        return false;
       }
       updateProviderState(provider, {
         callbackSubmitting: true,
@@ -368,9 +426,22 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
       });
       try {
         await oauthApi.submitCallback(provider, redirectUrl);
+        if (
+          cancelRequested.current[provider] ||
+          !isCurrentOAuthAttempt(statesRef.current, provider, attemptState)
+        ) {
+          return false;
+        }
         updateProviderState(provider, { callbackSubmitting: false, callbackStatus: 'success' });
         showNotification(t('auth_login.oauth_callback_success'), 'success');
+        return !callbackReportsError;
       } catch (err: unknown) {
+        if (
+          cancelRequested.current[provider] ||
+          !isCurrentOAuthAttempt(statesRef.current, provider, attemptState)
+        ) {
+          return false;
+        }
         const status = getErrorStatus(err);
         const message = getErrorMessage(err);
         const errorMessage =
@@ -388,9 +459,12 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
           ? `${t('auth_login.oauth_callback_error')} ${errorMessage}`
           : t('auth_login.oauth_callback_error');
         showNotification(notificationMessage, 'error');
+        return false;
+      } finally {
+        finishOAuthCallbackSubmission(callbackSubmissions.current, provider, attemptState);
       }
     },
-    [showNotification, states, t, updateProviderState]
+    [showNotification, t, updateProviderState]
   );
 
   useEffect(() => {

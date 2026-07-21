@@ -34,12 +34,13 @@ import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useOAuthProviderFlow } from '@/hooks/useOAuthProviderFlow';
 import { authFilesApi, pluginsApi } from '@/services/api';
+import type { OAuthCredentialResult } from '@/services/api/oauth';
 import { useAuthStore, useNotificationStore } from '@/stores';
 import type { AuthFileItem, PluginListEntry, ProxySelection } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
-import { parseTimestampMs } from '@/utils/timestamp';
 import { readNavigationPreference, writeNavigationPreference } from '@/utils/navigationPreference';
 import { resolveAuthProvider } from '@/utils/quota';
+import { resolveOAuthCredentialTarget } from '@/features/authFiles/oauthCredentialTarget';
 import styles from './QuotaPage.module.scss';
 
 type BuiltInQuotaProviderId = 'claude' | 'antigravity' | 'codex' | 'xai' | 'kimi';
@@ -72,71 +73,12 @@ type QuotaProviderSummary = QuotaProviderDefinition & {
 
 const EMPTY_AUTH_FILE_ITEMS: AuthFileItem[] = [];
 const QUOTA_ACTIVE_PROVIDER_STORAGE_KEY = 'quotaPage.activeProvider';
+const OAUTH_CREDENTIAL_PUBLICATION_RETRY_MS = [0, 250, 750] as const;
 
 const createProviderFilter = (providerId: string) => (file: AuthFileItem) =>
   resolveAuthProvider(file) === providerId;
 
 const createPluginProviderId = (providerId: string) => `plugin:${providerId}`;
-
-const readAuthFileTime = (file: AuthFileItem): number => {
-  const candidates = [file.modified, file.modtime, file.updated_at, file.lastRefresh];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-      return candidate < 1e12 ? candidate * 1000 : candidate;
-    }
-    if (typeof candidate === 'string') {
-      const trimmed = candidate.trim();
-      if (!trimmed) continue;
-      const numeric = Number(trimmed);
-      if (Number.isFinite(numeric)) {
-        return numeric < 1e12 ? numeric * 1000 : numeric;
-      }
-      const parsed = parseTimestampMs(trimmed);
-      if (!Number.isNaN(parsed)) {
-        return parsed;
-      }
-    }
-  }
-
-  return 0;
-};
-
-const buildOAuthCredentialSignature = (file: AuthFileItem): string =>
-  JSON.stringify({
-    authIndex: file.authIndex ?? file.auth_index ?? null,
-    disabled: file.disabled ?? null,
-    modified: readAuthFileTime(file),
-    size: file.size ?? null,
-    status: file.status ?? null,
-    statusMessage: file.statusMessage ?? null,
-    unavailable: file.unavailable ?? null,
-  });
-
-const resolveOAuthGroupAssignmentTargets = (
-  provider: QuotaProviderDefinition,
-  beforeFiles: AuthFileItem[],
-  afterFiles: AuthFileItem[]
-): AuthFileItem[] => {
-  const beforeProviderFiles = beforeFiles.filter(provider.config.filterFn);
-  const afterProviderFiles = afterFiles
-    .filter(provider.config.filterFn)
-    .filter((file) => !isRuntimeOnlyAuthFile(file));
-  const beforeSignatures = new Map(
-    beforeProviderFiles.map((file) => [file.name, buildOAuthCredentialSignature(file)])
-  );
-  const changedFiles = afterProviderFiles.filter(
-    (file) => beforeSignatures.get(file.name) !== buildOAuthCredentialSignature(file)
-  );
-
-  if (changedFiles.length > 0) return changedFiles;
-  if (afterProviderFiles.length <= 1) return afterProviderFiles;
-
-  const [latest] = [...afterProviderFiles].sort(
-    (left, right) => readAuthFileTime(right) - readAuthFileTime(left)
-  );
-  return latest ? [latest] : [];
-};
 
 const QUOTA_PROVIDERS: BuiltInQuotaProviderDefinition[] = [
   {
@@ -280,7 +222,6 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     files: AuthFileItem[];
   }>({ providerId: '', files: EMPTY_AUTH_FILE_ITEMS });
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
-  const oauthCredentialSnapshotRef = useRef<Record<string, AuthFileItem[]>>({});
 
   const disableControls = connectionStatus !== 'connected';
   const {
@@ -443,22 +384,57 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     [oauthProviderDetails, t]
   );
 
+  const dismissOAuthDialogForProvider = useCallback(
+    (providerId: string) => {
+      setOauthDialogProviderId((currentId) => {
+        if (!currentId) return null;
+        const currentProvider = providerSummaries.find((provider) => provider.id === currentId);
+        return currentProvider?.oauthProviderId === providerId ? null : currentId;
+      });
+    },
+    [providerSummaries]
+  );
+
   const handleOAuthSuccess = useCallback(
-    async (providerId: string) => {
+    async (providerId: string, credential: OAuthCredentialResult) => {
+      dismissOAuthDialogForProvider(providerId);
       const quotaProvider = providerSummaries.find(
         (provider) => provider.oauthProviderId === providerId
       );
-      const beforeFiles = oauthCredentialSnapshotRef.current[providerId] ?? files;
-      const nextFiles = await refreshQuotaPage();
-      delete oauthCredentialSnapshotRef.current[providerId];
-
-      if (!quotaProvider) return;
-      const targets = resolveOAuthGroupAssignmentTargets(quotaProvider, beforeFiles, nextFiles);
-      if (targets.length > 0) {
-        openCredentialGroupAssignment(targets, 'oauth');
+      for (const retryDelay of OAUTH_CREDENTIAL_PUBLICATION_RETRY_MS) {
+        if (retryDelay > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
+        }
+        const nextFiles = await loadFiles(true);
+        const target = resolveOAuthCredentialTarget(credential, nextFiles);
+        if (!target) continue;
+        if (
+          quotaProvider &&
+          quotaProvider.config.filterFn(target) &&
+          !isRuntimeOnlyAuthFile(target)
+        ) {
+          openCredentialGroupAssignment([target], 'oauth');
+          return;
+        }
+        break;
       }
+
+      showNotification(
+        t('auth_login.oauth_credential_not_found', {
+          defaultValue: 'OAuth 登录已完成，但未在凭证列表中找到 {{name}}。未打开分组设置。',
+          name: credential.name,
+        }),
+        'error'
+      );
     },
-    [files, openCredentialGroupAssignment, providerSummaries, refreshQuotaPage]
+    [
+      dismissOAuthDialogForProvider,
+      loadFiles,
+      openCredentialGroupAssignment,
+      providerSummaries,
+      showNotification,
+      t,
+    ]
   );
 
   const handleVisibleQuotaCredentialsChange = useCallback(
@@ -508,6 +484,12 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     setOauthDialogProviderId(null);
   };
 
+  const submitOAuthCallback = async (provider: QuotaProviderSummary) => {
+    const accepted = await oauthFlow.submitCallback(provider.oauthProviderId);
+    if (!accepted) return;
+    setOauthDialogProviderId((currentId) => (currentId === provider.id ? null : currentId));
+  };
+
   const openProviderOAuth = (provider: QuotaProviderSummary) => {
     if (disableControls) return;
     selectQuotaProvider(provider.id);
@@ -516,9 +498,6 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   };
 
   const startProviderOAuth = (provider: QuotaProviderSummary, selection?: ProxySelection) => {
-    oauthCredentialSnapshotRef.current[provider.oauthProviderId] = files.filter(
-      provider.config.filterFn
-    );
     void oauthFlow.startAuth(provider.oauthProviderId, selection);
   };
 
@@ -811,9 +790,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           onClose={closeOAuthDialog}
           onStart={(selection) => startProviderOAuth(oauthDialogProvider, selection)}
           onCopyLink={(url) => void oauthFlow.copyLink(url)}
-          onSubmitCallback={() =>
-            void oauthFlow.submitCallback(oauthDialogProvider.oauthProviderId)
-          }
+          onSubmitCallback={() => void submitOAuthCallback(oauthDialogProvider)}
           onCallbackUrlChange={(value) =>
             oauthFlow.updateProviderState(oauthDialogProvider.oauthProviderId, {
               callbackUrl: value,

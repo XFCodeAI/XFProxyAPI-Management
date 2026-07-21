@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
@@ -9,10 +10,11 @@ export function ConfirmationModal() {
   const confirmation = useNotificationStore((state) => state.confirmation);
   const hideConfirmation = useNotificationStore((state) => state.hideConfirmation);
   const setConfirmationLoading = useNotificationStore((state) => state.setConfirmationLoading);
+  const confirmingRequestRef = useRef<string | null>(null);
 
-  const { isOpen, isLoading, options } = confirmation;
+  const { requestId, isOpen, isLoading, options } = confirmation;
 
-  if (!isOpen || !options) {
+  if (!requestId || !isOpen || !options) {
     return null;
   }
 
@@ -27,14 +29,20 @@ export function ConfirmationModal() {
   } = options;
 
   const handleConfirm = async () => {
+    if (useNotificationStore.getState().confirmation.requestId !== requestId) return;
+    if (confirmingRequestRef.current === requestId) return;
+    confirmingRequestRef.current = requestId;
     try {
-      setConfirmationLoading(true);
+      setConfirmationLoading(requestId, true);
       await onConfirm();
-      hideConfirmation();
+      hideConfirmation(requestId);
     } catch (error) {
-      console.error('确认操作执行失败:', error);
+      console.error('Confirmation action failed:', error);
     } finally {
-      setConfirmationLoading(false);
+      setConfirmationLoading(requestId, false);
+      if (confirmingRequestRef.current === requestId) {
+        confirmingRequestRef.current = null;
+      }
     }
   };
 
@@ -42,10 +50,16 @@ export function ConfirmationModal() {
     if (isLoading) {
       return;
     }
-    if (onCancel) {
-      onCancel();
+    if (useNotificationStore.getState().confirmation.requestId !== requestId) {
+      return;
     }
-    hideConfirmation();
+    try {
+      onCancel?.();
+    } catch (error) {
+      console.error('Confirmation cancellation failed:', error);
+    } finally {
+      hideConfirmation(requestId);
+    }
   };
 
   const isDanger = variant === 'danger';
@@ -63,6 +77,7 @@ export function ConfirmationModal() {
       onClose={handleCancel}
       title={title}
       closeDisabled={isLoading}
+      layer="confirmation"
       width={480}
       footer={
         <>

@@ -32,7 +32,7 @@ export function AuthFilesGroupAssignmentModal({
   const { groups: availableGroups, loading: groupsLoading } = useCredentialGroupsCatalog({
     enabled: open,
   });
-  const targets = assignment?.targets ?? [];
+  const targets = useMemo(() => assignment?.targets ?? [], [assignment]);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const targetKey = useMemo(
     () =>
@@ -49,10 +49,15 @@ export function AuthFilesGroupAssignmentModal({
 
   if (!assignment) return null;
 
+  const oauthAssignment = assignment.source === 'oauth';
   const title = getAssignmentTitle(t, assignment.source);
-  const description = t('auth_files.group_assignment_desc', {
-    defaultValue: '为本次完成的凭证统一设置分组。取消会保留现有分组不变。',
-  });
+  const description = oauthAssignment
+    ? t('auth_files.group_assignment_oauth_desc', {
+        defaultValue: '为本次登录凭证设置分组。取消会保留现有分组不变。',
+      })
+    : t('auth_files.group_assignment_desc', {
+        defaultValue: '为本次完成的凭证统一设置分组。取消会保留现有分组不变。',
+      });
 
   return (
     <Modal
@@ -83,14 +88,20 @@ export function AuthFilesGroupAssignmentModal({
         <div className={styles.targetSection}>
           <div className={styles.sectionHeader}>
             <strong>
-              {t('auth_files.group_assignment_targets', { defaultValue: '本次凭证' })}
+              {oauthAssignment
+                ? t('auth_files.group_assignment_oauth_target', {
+                    defaultValue: '本次登录凭证',
+                  })
+                : t('auth_files.group_assignment_targets', { defaultValue: '本次凭证' })}
             </strong>
-            <span>
-              {t('auth_files.group_assignment_target_count', {
-                defaultValue: '{{count}} 项',
-                count: targets.length,
-              })}
-            </span>
+            {!oauthAssignment ? (
+              <span>
+                {t('auth_files.group_assignment_target_count', {
+                  defaultValue: '{{count}} 项',
+                  count: targets.length,
+                })}
+              </span>
+            ) : null}
           </div>
           <div className={styles.targetList}>
             {targets.map((target) => {
@@ -125,9 +136,13 @@ export function AuthFilesGroupAssignmentModal({
           hint={
             groupsLoading
               ? t('common.loading')
-              : t('auth_files.group_assignment_field_hint', {
-                  defaultValue: '确认后，本次凭证会统一写入所选分组；不选择则清空分组。',
-                })
+              : oauthAssignment
+                ? t('auth_files.group_assignment_oauth_field_hint', {
+                    defaultValue: '确认后，该凭证会写入所选分组；不选择则清空分组。',
+                  })
+                : t('auth_files.group_assignment_field_hint', {
+                    defaultValue: '确认后，本次凭证会统一写入所选分组；不选择则清空分组。',
+                  })
           }
           options={availableGroups}
           selected={selectedGroups}

@@ -1,9 +1,10 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { useCallback, useEffect, type PropsWithChildren, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type PropsWithChildren, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { IconX } from '../icons';
 import { lockScroll, unlockScroll } from '../scrollLock';
 import { cn } from '@/lib/utils';
+import { isSheetInteractionLayerTarget } from './interaction';
 
 export type SheetSize = 'md' | 'lg' | 'xl';
 export type SheetPlacement = 'right' | 'center';
@@ -57,6 +58,7 @@ export function Sheet({
   children,
 }: PropsWithChildren<SheetProps>) {
   const { t } = useTranslation();
+  const closeRequestRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -64,17 +66,30 @@ export function Sheet({
     return () => unlockScroll();
   }, [open]);
 
-  const requestClose = useCallback(async () => {
-    if (closeDisabled) return;
-    if (confirmClose) {
-      try {
-        const ok = await confirmClose();
-        if (ok === false) return;
-      } catch {
-        return;
+  const requestClose = useCallback(() => {
+    if (closeDisabled) return Promise.resolve();
+    if (closeRequestRef.current) return closeRequestRef.current;
+
+    const request = (async () => {
+      if (confirmClose) {
+        try {
+          const ok = await confirmClose();
+          if (ok === false) return;
+        } catch {
+          return;
+        }
       }
-    }
-    onClose();
+      onClose();
+    })();
+
+    closeRequestRef.current = request;
+    const clearRequest = () => {
+      if (closeRequestRef.current === request) {
+        closeRequestRef.current = null;
+      }
+    };
+    void request.then(clearRequest, clearRequest);
+    return request;
   }, [closeDisabled, confirmClose, onClose]);
 
   return (
@@ -103,6 +118,7 @@ export function Sheet({
           }}
           onInteractOutside={(event) => {
             event.preventDefault();
+            if (isSheetInteractionLayerTarget(event.target)) return;
             void requestClose();
           }}
         >

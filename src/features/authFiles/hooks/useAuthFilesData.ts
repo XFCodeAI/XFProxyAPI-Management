@@ -517,10 +517,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         }
 
         showNotification(
-          t('auth_files.group_assignment_success', {
-            defaultValue: '已更新 {{count}} 个凭证的分组',
-            count: targets.length,
-          }),
+          groupAssignment.source === 'oauth'
+            ? t('auth_files.group_assignment_oauth_success', {
+                defaultValue: '已更新登录凭证的分组',
+              })
+            : t('auth_files.group_assignment_success', {
+                defaultValue: '已更新 {{count}} 个凭证的分组',
+                count: targets.length,
+              }),
           'success'
         );
         setGroupAssignment(null);

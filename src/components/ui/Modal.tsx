@@ -15,7 +15,19 @@ interface ModalProps {
   className?: string;
   bodyClassName?: string;
   closeDisabled?: boolean;
+  layer?: 'default' | 'confirmation';
 }
+
+const LAYER_CLASSES = {
+  default: {
+    overlay: 'z-[2000]',
+    content: 'z-[2010]',
+  },
+  confirmation: {
+    overlay: 'z-[2040]',
+    content: 'z-[2050]',
+  },
+} as const;
 
 export function Modal({
   open,
@@ -27,10 +39,12 @@ export function Modal({
   className,
   bodyClassName,
   closeDisabled = false,
+  layer = 'default',
   children,
 }: PropsWithChildren<ModalProps>) {
   const { t } = useTranslation();
   const hasHeader = Boolean(title || headerAction);
+  const layerClasses = LAYER_CLASSES[layer];
   const closeButton = (
     <button
       type="button"
@@ -61,11 +75,14 @@ export function Modal({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
           data-modal-overlay="true"
-          className="fixed inset-0 z-[2000] bg-[var(--overlay)]"
+          data-sheet-interaction-layer
+          className={cn('fixed inset-0 bg-[var(--overlay)]', layerClasses.overlay)}
         />
         <DialogPrimitive.Content
+          data-sheet-interaction-layer
           className={cn(
-            'fixed left-1/2 top-1/2 z-[2010] flex max-h-[min(90vh,calc(100vh-2rem))] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--popover)] text-[var(--popover-foreground)] shadow-[var(--shadow-lg)] outline-none max-sm:max-h-[calc(100vh-1.5rem)] max-sm:rounded-md',
+            'fixed left-1/2 top-1/2 flex max-h-[min(90vh,calc(100vh-2rem))] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--popover)] text-[var(--popover-foreground)] shadow-[var(--shadow-lg)] outline-none max-sm:max-h-[calc(100vh-1.5rem)] max-sm:rounded-md',
+            layerClasses.content,
             className
           )}
           style={{ width, maxWidth: 'calc(100vw - 2rem)' }}

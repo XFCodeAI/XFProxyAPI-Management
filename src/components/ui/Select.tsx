@@ -44,12 +44,7 @@ export function Select({
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
-        className={cn(
-          styles.trigger,
-          styles[size],
-          fullWidth ? styles.fullWidth : '',
-          className
-        )}
+        className={cn(styles.trigger, styles[size], fullWidth ? styles.fullWidth : '', className)}
       >
         <SelectPrimitive.Value placeholder={placeholder} />
         <SelectPrimitive.Icon asChild>
@@ -58,17 +53,14 @@ export function Select({
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content
+          data-sheet-interaction-layer
           position="popper"
           sideOffset={6}
           className={styles.content}
         >
           <SelectPrimitive.Viewport className={styles.viewport}>
             {options.map((option) => (
-              <SelectPrimitive.Item
-                key={option.value}
-                value={option.value}
-                className={styles.item}
-              >
+              <SelectPrimitive.Item key={option.value} value={option.value} className={styles.item}>
                 <SelectPrimitive.ItemIndicator className={styles.indicator}>
                   <IconCheck size={14} />
                 </SelectPrimitive.ItemIndicator>

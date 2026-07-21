@@ -1,7 +1,4 @@
-/**
- * 通知状态管理
- * 替代原项目中的 showNotification 方法
- */
+/** Notification state shared by transient messages and confirmation dialogs. */
 
 import { create } from 'zustand';
 import type { ReactNode } from 'react';
@@ -22,6 +19,7 @@ interface ConfirmationOptions {
 interface NotificationState {
   notifications: Notification[];
   confirmation: {
+    requestId: string | null;
     isOpen: boolean;
     isLoading: boolean;
     options: ConfirmationOptions | null;
@@ -29,14 +27,15 @@ interface NotificationState {
   showNotification: (message: string, type?: NotificationType, duration?: number) => void;
   removeNotification: (id: string) => void;
   clearAll: () => void;
-  showConfirmation: (options: ConfirmationOptions) => void;
-  hideConfirmation: () => void;
-  setConfirmationLoading: (loading: boolean) => void;
+  showConfirmation: (options: ConfirmationOptions) => string;
+  hideConfirmation: (requestId: string) => void;
+  setConfirmationLoading: (requestId: string, loading: boolean) => void;
 }
 
-export const useNotificationStore = create<NotificationState>((set) => ({
+export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   confirmation: {
+    requestId: null,
     isOpen: false,
     isLoading: false,
     options: null,
@@ -55,7 +54,6 @@ export const useNotificationStore = create<NotificationState>((set) => ({
       notifications: [...state.notifications, notification],
     }));
 
-    // 自动移除通知
     if (duration > 0) {
       setTimeout(() => {
         set((state) => ({
@@ -76,31 +74,50 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   },
 
   showConfirmation: (options) => {
+    const current = get().confirmation;
+    if (current.isOpen && current.options?.onCancel) {
+      try {
+        current.options.onCancel();
+      } catch (error) {
+        console.error('Failed to cancel replaced confirmation:', error);
+      }
+    }
+
+    const requestId = generateId();
     set({
       confirmation: {
+        requestId,
         isOpen: true,
         isLoading: false,
         options,
       },
     });
+    return requestId;
   },
 
-  hideConfirmation: () => {
-    set((state) => ({
-      confirmation: {
-        ...state.confirmation,
-        isOpen: false,
-        options: null, // Cleanup
-      },
-    }));
+  hideConfirmation: (requestId) => {
+    set((state) => {
+      if (state.confirmation.requestId !== requestId) return state;
+      return {
+        confirmation: {
+          requestId: null,
+          isOpen: false,
+          isLoading: false,
+          options: null,
+        },
+      };
+    });
   },
 
-  setConfirmationLoading: (loading) => {
-    set((state) => ({
-      confirmation: {
-        ...state.confirmation,
-        isLoading: loading,
-      },
-    }));
+  setConfirmationLoading: (requestId, loading) => {
+    set((state) => {
+      if (state.confirmation.requestId !== requestId) return state;
+      return {
+        confirmation: {
+          ...state.confirmation,
+          isLoading: loading,
+        },
+      };
+    });
   },
 }));

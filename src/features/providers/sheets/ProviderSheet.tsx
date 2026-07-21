@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useImperativeHandle, useState, type Ref } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { Sheet } from '@/components/ui/Sheet';
 import { IconLoader2, IconPencil } from '@/components/ui/icons';
@@ -57,6 +65,7 @@ export function ProviderSheet({
   const formId = useId();
   const [submitting, setSubmitting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const discardConfirmationRef = useRef<Promise<boolean> | null>(null);
 
   // Reset dirty flag whenever the sheet is closed or the editing target
   // (brand / resource / mode) changes — the child form will re-mount and
@@ -78,17 +87,35 @@ export function ProviderSheet({
     if (!isEditingForm || !isDirty || submitting) {
       return Promise.resolve(true);
     }
-    return new Promise<boolean>((resolve) => {
+    if (discardConfirmationRef.current) {
+      return discardConfirmationRef.current;
+    }
+
+    const request = new Promise<boolean>((resolve) => {
+      let settled = false;
+      const settle = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
       showConfirmation({
         title: t('providersPage.unsavedChanges.title'),
         message: t('providersPage.unsavedChanges.message'),
         variant: 'danger',
         confirmText: t('providersPage.unsavedChanges.discard'),
         cancelText: t('providersPage.unsavedChanges.keepEditing'),
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
+        onConfirm: () => settle(true),
+        onCancel: () => settle(false),
       });
     });
+    discardConfirmationRef.current = request;
+    const clearRequest = () => {
+      if (discardConfirmationRef.current === request) {
+        discardConfirmationRef.current = null;
+      }
+    };
+    void request.then(clearRequest, clearRequest);
+    return request;
   }, [isDirty, isEditingForm, showConfirmation, submitting, t]);
 
   useImperativeHandle(ref, () => ({ confirmDiscardIfDirty }), [confirmDiscardIfDirty]);
@@ -151,14 +178,14 @@ export function ProviderSheet({
       );
     }
     return (
-        <BaseProviderForm
-          key={formKey}
-          brand={state.brand}
-          resource={state.resource}
-          credentialGroupOptions={credentialGroupOptions}
-          mode={state.mode}
-          mutating={formMutating}
-          formId={formId}
+      <BaseProviderForm
+        key={formKey}
+        brand={state.brand}
+        resource={state.resource}
+        credentialGroupOptions={credentialGroupOptions}
+        mode={state.mode}
+        mutating={formMutating}
+        formId={formId}
         onSubmit={state.mode === 'create' ? handleCreate : handleUpdate}
         onDirtyChange={handleDirtyChange}
       />

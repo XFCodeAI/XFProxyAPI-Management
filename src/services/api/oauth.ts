@@ -28,6 +28,20 @@ export interface OAuthCancelResponse {
   canceled: boolean;
 }
 
+export type OAuthCredentialDisposition = 'created' | 'updated' | 'rekeyed';
+
+export interface OAuthCredentialResult {
+  provider: string;
+  id: string;
+  name: string;
+  disposition: OAuthCredentialDisposition;
+}
+
+export type OAuthStatusResponse =
+  | { status: 'ok'; credential: OAuthCredentialResult }
+  | { status: 'wait' }
+  | { status: 'error'; error?: string };
+
 const WEBUI_SUPPORTED = new Set<string>(['codex', 'anthropic', 'antigravity', 'xai']);
 
 const normalizeProviderForManagementPath = (provider: string): string => {
@@ -51,7 +65,7 @@ export const oauthApi = {
   },
 
   getAuthStatus: (state: string) =>
-    apiClient.get<{ status: 'ok' | 'wait' | 'error'; error?: string }>(`/get-auth-status`, {
+    apiClient.get<OAuthStatusResponse>(`/get-auth-status`, {
       params: { state },
     }),
 

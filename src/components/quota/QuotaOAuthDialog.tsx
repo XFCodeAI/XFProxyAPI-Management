@@ -182,6 +182,7 @@ export function QuotaOAuthDialog({
                 size="sm"
                 onClick={onSubmitCallback}
                 loading={state.callbackSubmitting}
+                disabled={state.callbackSubmitting}
               >
                 {t('auth_login.oauth_callback_button')}
               </Button>
