@@ -95,7 +95,7 @@ export type UseAuthFilesDataResult = {
   groupAssigning: boolean;
   groupAssignmentError: string;
   fileInputRef: RefObject<HTMLInputElement | null>;
-  loadFiles: () => Promise<AuthFileItem[]>;
+  loadFiles: (fresh?: boolean) => Promise<AuthFileItem[]>;
   beginFileImport: (files: File[], options?: BeginFileImportOptions) => boolean;
   handleUploadClick: () => void;
   handleFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
@@ -375,23 +375,25 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     });
   }, [files, selectedFiles.size]);
 
-  const loadFiles = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await refreshAuthFiles();
-      const nextFiles = data?.files || [];
-      filesRef.current = nextFiles;
-      setFiles(nextFiles);
-      return nextFiles;
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : t('notification.refresh_failed');
-      setError(errorMessage);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, [refreshAuthFiles, setFiles, t]);
+  const loadFiles = useCallback(
+    async (fresh = false) => {
+      setLoading(true);
+      setError('');
+      try {
+        await refreshAuthFiles(fresh);
+        const nextFiles = useAuthInventoryStore.getState().files;
+        filesRef.current = nextFiles;
+        return nextFiles;
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : t('notification.refresh_failed');
+        setError(errorMessage);
+        return [];
+      } finally {
+        setLoading(false);
+      }
+    },
+    [refreshAuthFiles, t]
+  );
 
   const refreshUploadProxyPools = useCallback(async () => {
     setUploadProxyPoolsLoading(true);
@@ -487,7 +489,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         const successCount = results.length - failed.length;
 
         if (successCount > 0) {
-          await loadFiles();
+          await loadFiles(true);
         }
 
         if (failed.length > 0) {
@@ -550,7 +552,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
             `${t('auth_files.upload_success')}${suffix}`,
             result.failed.length ? 'warning' : 'success'
           );
-          await loadFiles();
+          await loadFiles(true);
           addPendingUploadGroupNames(uploadedNames);
           if (selection.mode === 'file') {
             await refreshUploadProxyPools();
@@ -704,7 +706,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         }
 
         if (importedCount > 0) {
-          await loadFiles();
+          await loadFiles(true);
           if (selection.mode === 'file') {
             await refreshUploadProxyPools();
           }

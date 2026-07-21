@@ -22,7 +22,7 @@ type AuthInventoryState = {
   loading: boolean;
   error: string;
   streamConnected: boolean;
-  refresh: () => Promise<AuthFilesResponse>;
+  refresh: (fresh?: boolean) => Promise<AuthFilesResponse>;
   setFiles: (updater: FilesUpdater) => void;
   start: () => void;
   stop: (clear?: boolean) => void;
@@ -33,6 +33,7 @@ let streamTask: Promise<void> | null = null;
 let streamGeneration = 0;
 let refreshGeneration = 0;
 let refreshPromise: Promise<AuthFilesResponse> | null = null;
+let refreshPromiseGeneration = -1;
 let scheduledRefresh: ReturnType<typeof setTimeout> | null = null;
 let targetInventoryId = '';
 let targetRevision = 0;
@@ -194,11 +195,26 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
   error: '',
   streamConnected: false,
 
-  refresh: async () => {
-    if (refreshPromise) return refreshPromise;
+  refresh: async (fresh = false) => {
     const generation = refreshGeneration;
+    const activeRefresh = refreshPromise;
+    if (activeRefresh && refreshPromiseGeneration === generation) {
+      if (!fresh) return activeRefresh;
+      await activeRefresh.catch(() => undefined);
+      if (generation !== refreshGeneration) {
+        return get().refresh(true);
+      }
+      if (
+        refreshPromise &&
+        refreshPromise !== activeRefresh &&
+        refreshPromiseGeneration === generation
+      ) {
+        return refreshPromise;
+      }
+    }
+
     set({ loading: true });
-    refreshPromise = authFilesApi
+    const request = authFilesApi
       .list()
       .then((response) => {
         if (generation !== refreshGeneration) return response;
@@ -244,7 +260,11 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
         throw error;
       })
       .finally(() => {
-        refreshPromise = null;
+        if (refreshPromise === request) {
+          refreshPromise = null;
+          refreshPromiseGeneration = -1;
+        }
+        if (generation !== refreshGeneration) return;
         const state = useAuthInventoryStore.getState();
         if (
           targetRevision > state.revision ||
@@ -253,7 +273,9 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
           scheduleInventoryRefresh();
         }
       });
-    return refreshPromise;
+    refreshPromise = request;
+    refreshPromiseGeneration = generation;
+    return request;
   },
 
   setFiles: (updater) => {
