@@ -267,6 +267,8 @@
     "delete_blocked_detail": "This group is still used by {{authFiles}} auth files, {{providers}} AI provider credentials, and {{apiKeys}} API keys. Unbind them first."
   },
   "auth_files": {
+    "group_catalog_load_failed": "Failed to load the group list: {{error}}",
+    "group_catalog_retry": "Retry now",
     "title": "Auth Files Management",
     "title_section": "Auth Files",
     "description": "Manage all CLI Proxy JSON auth files here (e.g. Qwen, Gemini, Vertex). Uploading a credential immediately enables the corresponding AI integration.",
@@ -785,6 +787,8 @@
     "delete_title": "Delete mappings"
   },
   "auth_login": {
+    "oauth_credential_syncing": "Authentication succeeded. Synchronizing the new credential...",
+    "oauth_credential_not_assignable": "OAuth credential {{name}} is runtime-only and cannot be assigned to a group.",
     "codex_oauth_title": "Codex OAuth",
     "codex_oauth_button": "Start Codex Login",
     "codex_oauth_hint": "Login to Codex service through OAuth flow, automatically obtain and save authentication files.",

@@ -3,12 +3,14 @@ import { test } from 'node:test';
 import { resolveOAuthCredentialTarget } from '../src/features/authFiles/oauthCredentialTarget.ts';
 
 const credential = {
+  provider: 'codex',
   id: 'codex-annahurst6911@outlook.json',
   name: 'codex-annahurst6911@outlook.json',
 };
 
 test('resolves only the exact OAuth credential among existing provider accounts', () => {
   const existing = {
+    provider: 'codex',
     id: 'codex-existing@example.com.json',
     name: 'codex-existing@example.com.json',
     authIndex: 9,
@@ -27,6 +29,7 @@ test('resolves only the exact OAuth credential among existing provider accounts'
 
 test('ignores unrelated inventory signature changes', () => {
   const unrelated = {
+    provider: 'codex',
     id: 'codex-existing@example.com.json',
     name: 'codex-existing@example.com.json',
     authIndex: 100,
@@ -40,11 +43,21 @@ test('ignores unrelated inventory signature changes', () => {
 });
 
 test('rejects an inventory row whose logical name matches but ID does not', () => {
-  const mismatched = { id: 'different-id', name: credential.name };
+  const mismatched = { provider: 'codex', id: 'different-id', name: credential.name };
   assert.equal(resolveOAuthCredentialTarget(credential, [mismatched]), null);
 });
 
 test('rejects an inventory response that omits the returned credential ID', () => {
-  const exact = { name: credential.name, groups: ['gpt-plus'] };
+  const exact = { provider: 'codex', name: credential.name, groups: ['gpt-plus'] };
   assert.equal(resolveOAuthCredentialTarget(credential, [exact]), null);
+});
+
+test('rejects an exact ID and name from another provider', () => {
+  const mismatched = { provider: 'claude', id: credential.id, name: credential.name };
+  assert.equal(resolveOAuthCredentialTarget(credential, [mismatched]), null);
+});
+
+test('matches provider identity using the backend lowercase normalization', () => {
+  const exact = { provider: 'Codex', id: credential.id, name: credential.name };
+  assert.equal(resolveOAuthCredentialTarget(credential, [exact]), exact);
 });

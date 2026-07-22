@@ -59,11 +59,15 @@ export function QuotaOAuthDialog({
     state.status === 'success' ? t('auth_login.login_another_account') : t('common.login');
   const statusText =
     state.status && state.status !== 'idle'
-      ? state.status === 'success'
-        ? getProviderText('oauth_status_success')
-        : state.status === 'error'
-          ? `${getProviderText('oauth_status_error')} ${state.error || ''}`
-          : getProviderText('oauth_status_waiting')
+      ? state.status === 'syncing'
+        ? t('auth_login.oauth_credential_syncing', {
+            defaultValue: 'Authentication succeeded. Synchronizing the new credential...',
+          })
+        : state.status === 'success'
+          ? getProviderText('oauth_status_success')
+          : state.status === 'error'
+            ? `${getProviderText('oauth_status_error')} ${state.error || ''}`
+            : getProviderText('oauth_status_waiting')
       : '';
   const startDisabled = Boolean(state.url) || (!pluginProvider && proxyPoolsLoading);
 

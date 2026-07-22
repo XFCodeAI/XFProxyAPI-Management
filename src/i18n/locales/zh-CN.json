@@ -267,6 +267,8 @@
     "delete_blocked_detail": "分组仍被 {{authFiles}} 个认证文件、{{providers}} 个 AI 供应商凭证、{{apiKeys}} 个 API Key 使用，请先解绑。"
   },
   "auth_files": {
+    "group_catalog_load_failed": "分组列表加载失败：{{error}}",
+    "group_catalog_retry": "立即重试",
     "title": "认证文件管理",
     "title_section": "认证文件",
     "description": "这里集中管理 CLI Proxy 支持的所有 JSON 认证文件（如 Qwen、Gemini、Vertex 等），上传后即可在运行时启用相应的 AI 服务。",
@@ -785,6 +787,8 @@
     "delete_title": "删除映射"
   },
   "auth_login": {
+    "oauth_credential_syncing": "认证成功，正在同步本次新凭证...",
+    "oauth_credential_not_assignable": "OAuth 凭证 {{name}} 仅存在于运行时，无法设置分组。",
     "codex_oauth_title": "Codex OAuth",
     "codex_oauth_button": "开始 Codex 登录",
     "codex_oauth_hint": "通过 OAuth 流程登录 Codex 服务，自动获取并保存认证文件。",

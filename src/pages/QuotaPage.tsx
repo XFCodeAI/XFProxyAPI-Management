@@ -32,15 +32,15 @@ import { isRuntimeOnlyAuthFile } from '@/features/authFiles/constants';
 import { getPluginTitle } from '@/features/plugins/pluginResources';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
-import { useOAuthProviderFlow } from '@/hooks/useOAuthProviderFlow';
+import { useOAuthProviderFlow, type OAuthAttemptContext } from '@/hooks/useOAuthProviderFlow';
 import { authFilesApi, pluginsApi } from '@/services/api';
 import type { OAuthCredentialResult } from '@/services/api/oauth';
-import { useAuthStore, useNotificationStore } from '@/stores';
+import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
 import type { AuthFileItem, PluginListEntry, ProxySelection } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
 import { readNavigationPreference, writeNavigationPreference } from '@/utils/navigationPreference';
 import { resolveAuthProvider } from '@/utils/quota';
-import { resolveOAuthCredentialTarget } from '@/features/authFiles/oauthCredentialTarget';
+import { waitForOAuthCredentialPublication } from '@/features/authFiles/oauthCredentialPublication';
 import styles from './QuotaPage.module.scss';
 
 type BuiltInQuotaProviderId = 'claude' | 'antigravity' | 'codex' | 'xai' | 'kimi';
@@ -73,7 +73,6 @@ type QuotaProviderSummary = QuotaProviderDefinition & {
 
 const EMPTY_AUTH_FILE_ITEMS: AuthFileItem[] = [];
 const QUOTA_ACTIVE_PROVIDER_STORAGE_KEY = 'quotaPage.activeProvider';
-const OAUTH_CREDENTIAL_PUBLICATION_RETRY_MS = [0, 250, 750] as const;
 
 const createProviderFilter = (providerId: string) => (file: AuthFileItem) =>
   resolveAuthProvider(file) === providerId;
@@ -396,45 +395,30 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   );
 
   const handleOAuthSuccess = useCallback(
-    async (providerId: string, credential: OAuthCredentialResult) => {
-      dismissOAuthDialogForProvider(providerId);
-      const quotaProvider = providerSummaries.find(
-        (provider) => provider.oauthProviderId === providerId
-      );
-      for (const retryDelay of OAUTH_CREDENTIAL_PUBLICATION_RETRY_MS) {
-        if (retryDelay > 0) {
-          await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
-        }
-        const nextFiles = await loadFiles(true);
-        const target = resolveOAuthCredentialTarget(credential, nextFiles);
-        if (!target) continue;
-        if (
-          quotaProvider &&
-          quotaProvider.config.filterFn(target) &&
-          !isRuntimeOnlyAuthFile(target)
-        ) {
-          openCredentialGroupAssignment([target], 'oauth');
-          return;
-        }
-        break;
+    async (providerId: string, credential: OAuthCredentialResult, attempt: OAuthAttemptContext) => {
+      const publication = await waitForOAuthCredentialPublication({
+        credential,
+        refresh: () => useAuthInventoryStore.getState().refresh(true),
+        signal: attempt.signal,
+        isCurrent: () => attempt.isCurrent() && useAuthStore.getState().isAuthenticated,
+      });
+      if (publication.status === 'cancelled' || !attempt.isCurrent()) return;
+
+      const target = publication.credential;
+      if (isRuntimeOnlyAuthFile(target) || target.assignable === false) {
+        throw new Error(
+          t('auth_login.oauth_credential_not_assignable', {
+            defaultValue:
+              'OAuth credential {{name}} is runtime-only and cannot be assigned to a group.',
+            name: credential.name,
+          })
+        );
       }
 
-      showNotification(
-        t('auth_login.oauth_credential_not_found', {
-          defaultValue: 'OAuth 登录已完成，但未在凭证列表中找到 {{name}}。未打开分组设置。',
-          name: credential.name,
-        }),
-        'error'
-      );
+      dismissOAuthDialogForProvider(providerId);
+      openCredentialGroupAssignment([target], 'oauth');
     },
-    [
-      dismissOAuthDialogForProvider,
-      loadFiles,
-      openCredentialGroupAssignment,
-      providerSummaries,
-      showNotification,
-      t,
-    ]
+    [dismissOAuthDialogForProvider, openCredentialGroupAssignment, t]
   );
 
   const handleVisibleQuotaCredentialsChange = useCallback(

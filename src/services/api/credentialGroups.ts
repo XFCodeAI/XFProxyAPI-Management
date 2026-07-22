@@ -18,13 +18,12 @@ const normalizeCredentialGroups = (value: unknown): string[] => {
 };
 
 export const credentialGroupsApi = {
-  async list(): Promise<string[]> {
-    const payload = await apiClient.get<Record<string, unknown>>('/credential-groups');
+  async list(signal?: AbortSignal): Promise<string[]> {
+    const payload = await apiClient.get<Record<string, unknown>>('/credential-groups', { signal });
     return normalizeCredentialGroups(payload['credential-groups'] ?? payload.items);
   },
 
   create: (name: string) => apiClient.patch('/credential-groups', { name }),
 
-  delete: (name: string) =>
-    apiClient.delete(`/credential-groups?name=${encodeURIComponent(name)}`),
+  delete: (name: string) => apiClient.delete(`/credential-groups?name=${encodeURIComponent(name)}`),
 };

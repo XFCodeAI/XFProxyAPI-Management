@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { oauthApi } from '@/services/api';
 import type { OAuthCredentialResult } from '@/services/api/oauth';
-import { useNotificationStore } from '@/stores';
+import { useAuthStore, useNotificationStore } from '@/stores';
 import type { ProxySelection } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
 import { getErrorMessage, isRecord } from '@/utils/helpers';
+import { waitForOAuthStatus } from './oauthStatusPolling';
 import {
   beginOAuthCallbackSubmission,
   finishOAuthCallbackSubmission,
@@ -16,18 +17,35 @@ import {
 export interface OAuthProviderState {
   url?: string;
   state?: string;
-  status?: 'idle' | 'waiting' | 'success' | 'error';
+  status?: 'idle' | 'waiting' | 'syncing' | 'success' | 'error';
   error?: string;
   polling?: boolean;
+  credential?: OAuthCredentialResult;
   callbackUrl?: string;
   callbackSubmitting?: boolean;
   callbackStatus?: 'success' | 'error';
   callbackError?: string;
 }
 
+export interface OAuthAttemptContext {
+  state: string;
+  signal: AbortSignal;
+  isCurrent: () => boolean;
+}
+
 interface UseOAuthProviderFlowOptions {
   getProviderText: (provider: string, suffix: string) => string;
-  onSuccess?: (provider: string, credential: OAuthCredentialResult) => void;
+  onSuccess?: (
+    provider: string,
+    credential: OAuthCredentialResult,
+    attempt: OAuthAttemptContext
+  ) => Promise<void>;
+}
+
+interface OAuthProviderAttempt {
+  id: number;
+  state?: string;
+  controller: AbortController;
 }
 
 const CALLBACK_SUPPORTED = new Set<string>(['codex', 'anthropic', 'antigravity', 'xai']);
@@ -41,6 +59,8 @@ const isOAuthCredentialResult = (value: unknown): value is OAuthCredentialResult
   const id = typeof value.id === 'string' ? value.id : '';
   const name = typeof value.name === 'string' ? value.name : '';
   const disposition = typeof value.disposition === 'string' ? value.disposition : '';
+  const inventoryId = typeof value.inventory_id === 'string' ? value.inventory_id : '';
+  const revision = Number(value.revision);
   return (
     provider !== '' &&
     provider.trim() === provider &&
@@ -48,6 +68,10 @@ const isOAuthCredentialResult = (value: unknown): value is OAuthCredentialResult
     id.trim() === id &&
     name !== '' &&
     name.trim() === name &&
+    inventoryId !== '' &&
+    inventoryId.trim() === inventoryId &&
+    Number.isSafeInteger(revision) &&
+    revision > 0 &&
     OAUTH_CREDENTIAL_DISPOSITIONS.has(disposition)
   );
 };
@@ -130,24 +154,18 @@ export const supportsOAuthCallback = (provider: string, pluginProvider = false) 
 export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthProviderFlowOptions) {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [states, setStates] = useState<Record<string, OAuthProviderState>>({});
   const statesRef = useRef<Record<string, OAuthProviderState>>({});
   const cancelRequested = useRef<Partial<Record<string, boolean>>>({});
-  const pollingTimers = useRef<Partial<Record<string, number>>>({});
   const successResetTimers = useRef<Partial<Record<string, number>>>({});
   const callbackSubmissions = useRef<Partial<Record<string, string>>>({});
+  const attempts = useRef<Partial<Record<string, OAuthProviderAttempt>>>({});
+  const attemptSequence = useRef(0);
 
   useEffect(() => {
     statesRef.current = states;
   }, [states]);
-
-  const clearPollingTimer = useCallback((provider: string) => {
-    const timer = pollingTimers.current[provider];
-    if (timer !== undefined) {
-      window.clearInterval(timer);
-      delete pollingTimers.current[provider];
-    }
-  }, []);
 
   const clearSuccessResetTimer = useCallback((provider: string) => {
     const timer = successResetTimers.current[provider];
@@ -170,14 +188,25 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
 
   const clearProviderTimers = useCallback(
     (provider: string) => {
-      clearPollingTimer(provider);
       clearSuccessResetTimer(provider);
     },
-    [clearPollingTimer, clearSuccessResetTimer]
+    [clearSuccessResetTimer]
+  );
+
+  const abortProviderAttempt = useCallback((provider: string) => {
+    attempts.current[provider]?.controller.abort();
+    delete attempts.current[provider];
+  }, []);
+
+  const isCurrentProviderAttempt = useCallback(
+    (provider: string, attempt: OAuthProviderAttempt): boolean =>
+      attempts.current[provider] === attempt && !attempt.controller.signal.aborted,
+    []
   );
 
   const resetProviderAttempt = useCallback(
     (provider: string) => {
+      abortProviderAttempt(provider);
       clearProviderTimers(provider);
       cancelRequested.current[provider] = false;
       delete callbackSubmissions.current[provider];
@@ -190,36 +219,65 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         return updated;
       });
     },
-    [clearProviderTimers]
+    [abortProviderAttempt, clearProviderTimers]
   );
 
   const completeProviderAuth = useCallback(
-    (provider: string, credential: OAuthCredentialResult) => {
+    async (provider: string, credential: OAuthCredentialResult, attempt: OAuthProviderAttempt) => {
+      if (!attempt.state || !isCurrentProviderAttempt(provider, attempt)) return;
       cancelRequested.current[provider] = false;
       delete callbackSubmissions.current[provider];
-      clearPollingTimer(provider);
       clearSuccessResetTimer(provider);
+      updateProviderState(provider, {
+        url: undefined,
+        state: attempt.state,
+        status: 'syncing',
+        error: undefined,
+        polling: true,
+        credential,
+        callbackUrl: '',
+        callbackSubmitting: false,
+        callbackStatus: undefined,
+        callbackError: undefined,
+      });
+
+      const context: OAuthAttemptContext = {
+        state: attempt.state,
+        signal: attempt.controller.signal,
+        isCurrent: () => isCurrentProviderAttempt(provider, attempt),
+      };
+      try {
+        await onSuccess?.(provider, credential, context);
+      } catch (error: unknown) {
+        if (!isCurrentProviderAttempt(provider, attempt)) return;
+        const message = getErrorMessage(error);
+        updateProviderState(provider, {
+          status: 'error',
+          error: message,
+          polling: false,
+        });
+        showNotification(message, 'error');
+        return;
+      }
+
+      if (!isCurrentProviderAttempt(provider, attempt)) return;
       updateProviderState(provider, {
         url: undefined,
         state: undefined,
         status: 'success',
         error: undefined,
         polling: false,
-        callbackUrl: '',
-        callbackSubmitting: false,
-        callbackStatus: undefined,
-        callbackError: undefined,
+        credential,
       });
       showNotification(getProviderText(provider, 'oauth_status_success'), 'success');
-      onSuccess?.(provider, credential);
       successResetTimers.current[provider] = window.setTimeout(() => {
         resetProviderAttempt(provider);
       }, SUCCESS_RESET_DELAY_MS);
     },
     [
-      clearPollingTimer,
       clearSuccessResetTimer,
       getProviderText,
+      isCurrentProviderAttempt,
       onSuccess,
       resetProviderAttempt,
       showNotification,
@@ -228,65 +286,46 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
   );
 
   const startPolling = useCallback(
-    (provider: string, state: string) => {
-      clearPollingTimer(provider);
-      const timer = window.setInterval(async () => {
-        try {
-          const res = await oauthApi.getAuthStatus(state);
-          if (cancelRequested.current[provider]) {
-            return;
-          }
-          if (pollingTimers.current[provider] !== timer) {
-            return;
-          }
-          if (res.status === 'ok') {
-            if (!isOAuthCredentialResult(res.credential)) {
-              const message = t('auth_login.oauth_credential_result_missing', {
-                defaultValue: 'OAuth completed without a valid credential result.',
-              });
-              updateProviderState(provider, {
-                status: 'error',
-                error: message,
-                polling: false,
-              });
-              showNotification(message, 'error');
-              window.clearInterval(timer);
-              delete pollingTimers.current[provider];
-              return;
-            }
-            completeProviderAuth(provider, res.credential);
-          } else if (res.status === 'error') {
-            updateProviderState(provider, {
-              status: 'error',
-              error: res.error,
-              polling: false,
-            });
-            showNotification(
-              `${getProviderText(provider, 'oauth_status_error')} ${res.error || ''}`,
-              'error'
-            );
-            window.clearInterval(timer);
-            delete pollingTimers.current[provider];
-          }
-        } catch (err: unknown) {
-          if (cancelRequested.current[provider]) {
-            return;
-          }
+    async (provider: string, state: string, attempt: OAuthProviderAttempt) => {
+      const res = await waitForOAuthStatus({
+        request: (signal) => oauthApi.getAuthStatus(state, signal),
+        signal: attempt.controller.signal,
+        isCurrent: () =>
+          !cancelRequested.current[provider] && isCurrentProviderAttempt(provider, attempt),
+      });
+      if (!res || !isCurrentProviderAttempt(provider, attempt)) return;
+
+      if (res.status === 'ok') {
+        if (!isOAuthCredentialResult(res.credential)) {
+          const message = t('auth_login.oauth_credential_result_missing', {
+            defaultValue: 'OAuth completed without a valid credential result.',
+          });
           updateProviderState(provider, {
             status: 'error',
-            error: getErrorMessage(err),
+            error: message,
             polling: false,
           });
-          window.clearInterval(timer);
-          delete pollingTimers.current[provider];
+          showNotification(message, 'error');
+          return;
         }
-      }, 3000);
-      pollingTimers.current[provider] = timer;
+        await completeProviderAuth(provider, res.credential, attempt);
+        return;
+      }
+
+      updateProviderState(provider, {
+        status: 'error',
+        error: res.error,
+        polling: false,
+      });
+      showNotification(
+        `${getProviderText(provider, 'oauth_status_error')} ${res.error || ''}`,
+        'error'
+      );
     },
     [
-      clearPollingTimer,
       completeProviderAuth,
       getProviderText,
+      isCurrentProviderAttempt,
       showNotification,
       t,
       updateProviderState,
@@ -295,9 +334,15 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
 
   const startAuth = useCallback(
     async (provider: string, proxySelection?: ProxySelection) => {
+      abortProviderAttempt(provider);
       clearProviderTimers(provider);
       cancelRequested.current[provider] = false;
       delete callbackSubmissions.current[provider];
+      const attempt: OAuthProviderAttempt = {
+        id: ++attemptSequence.current,
+        controller: new AbortController(),
+      };
+      attempts.current[provider] = attempt;
       updateProviderState(provider, {
         url: undefined,
         state: undefined,
@@ -310,7 +355,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
       });
       try {
         const res = await oauthApi.startAuth(provider, proxySelection);
-        if (cancelRequested.current[provider]) {
+        if (cancelRequested.current[provider] || !isCurrentProviderAttempt(provider, attempt)) {
           if (res.state) {
             void oauthApi.cancelAuth(provider, res.state).catch(() => {});
           }
@@ -328,15 +373,16 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
           showNotification(message, 'error');
           return;
         }
+        attempt.state = res.state;
         updateProviderState(provider, {
           url: res.url,
           state: res.state,
           status: 'waiting',
           polling: true,
         });
-        startPolling(provider, res.state);
+        void startPolling(provider, res.state, attempt);
       } catch (err: unknown) {
-        if (cancelRequested.current[provider]) {
+        if (cancelRequested.current[provider] || !isCurrentProviderAttempt(provider, attempt)) {
           return;
         }
         const message = getErrorMessage(err);
@@ -347,7 +393,16 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         );
       }
     },
-    [clearProviderTimers, getProviderText, showNotification, startPolling, t, updateProviderState]
+    [
+      abortProviderAttempt,
+      clearProviderTimers,
+      getProviderText,
+      isCurrentProviderAttempt,
+      showNotification,
+      startPolling,
+      t,
+      updateProviderState,
+    ]
   );
 
   const copyLink = useCallback(
@@ -367,6 +422,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
       const activeState = statesRef.current[provider]?.state;
       cancelRequested.current[provider] = true;
       delete callbackSubmissions.current[provider];
+      abortProviderAttempt(provider);
       clearProviderTimers(provider);
       setStates((prev) => {
         const updated = {
@@ -380,7 +436,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         void oauthApi.cancelAuth(provider, activeState).catch(() => {});
       }
     },
-    [clearProviderTimers]
+    [abortProviderAttempt, clearProviderTimers]
   );
 
   const submitCallback = useCallback(
@@ -468,14 +524,18 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
   );
 
   useEffect(() => {
+    if (isAuthenticated) return;
+    Object.keys(attempts.current).forEach(abortProviderAttempt);
+    Object.keys(successResetTimers.current).forEach(clearSuccessResetTimer);
+  }, [abortProviderAttempt, clearSuccessResetTimer, isAuthenticated]);
+
+  useEffect(() => {
     return () => {
-      Object.values(pollingTimers.current).forEach((timer) => {
-        if (timer !== undefined) window.clearInterval(timer);
-      });
+      Object.values(attempts.current).forEach((attempt) => attempt?.controller.abort());
       Object.values(successResetTimers.current).forEach((timer) => {
         if (timer !== undefined) window.clearTimeout(timer);
       });
-      pollingTimers.current = {};
+      attempts.current = {};
       successResetTimers.current = {};
     };
   }, []);

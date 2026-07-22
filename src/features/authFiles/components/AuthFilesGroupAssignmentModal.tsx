@@ -29,8 +29,15 @@ export function AuthFilesGroupAssignmentModal({
   onConfirm,
 }: AuthFilesGroupAssignmentModalProps) {
   const { t } = useTranslation();
-  const { groups: availableGroups, loading: groupsLoading } = useCredentialGroupsCatalog({
+  const {
+    groups: availableGroups,
+    loading: groupsLoading,
+    error: groupsError,
+    ready: groupsReady,
+    refresh: refreshGroups,
+  } = useCredentialGroupsCatalog({
     enabled: open,
+    retry: true,
   });
   const targets = useMemo(() => assignment?.targets ?? [], [assignment]);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -75,7 +82,7 @@ export function AuthFilesGroupAssignmentModal({
             type="button"
             onClick={() => void onConfirm(selectedGroups)}
             loading={saving}
-            disabled={saving}
+            disabled={saving || !groupsReady}
           >
             {t('auth_files.group_assignment_apply', { defaultValue: '应用分组' })}
           </Button>
@@ -147,9 +154,29 @@ export function AuthFilesGroupAssignmentModal({
           options={availableGroups}
           selected={selectedGroups}
           onChange={setSelectedGroups}
-          disabled={saving || groupsLoading}
+          disabled={saving || !groupsReady}
           emptyText={t('auth_files.groups_empty')}
         />
+
+        {groupsError ? (
+          <div className={styles.catalogError}>
+            <span>
+              {t('auth_files.group_catalog_load_failed', {
+                defaultValue: '分组列表加载失败：{{error}}',
+                error: groupsError,
+              })}
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void refreshGroups()}
+              disabled={saving || groupsLoading}
+            >
+              {t('auth_files.group_catalog_retry', { defaultValue: '立即重试' })}
+            </Button>
+          </div>
+        ) : null}
 
         {error ? <div className={styles.errorBox}>{error}</div> : null}
       </div>

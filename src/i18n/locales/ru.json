@@ -266,6 +266,8 @@
     "delete_blocked_detail": "Группа всё ещё используется: файлов учётных данных {{authFiles}}, учётных данных AI-провайдеров {{providers}}, API-ключей {{apiKeys}}. Сначала снимите привязки."
   },
   "auth_files": {
+    "group_catalog_load_failed": "Не удалось загрузить список групп: {{error}}",
+    "group_catalog_retry": "Повторить сейчас",
     "title": "Управление файлами авторизации",
     "title_section": "Файлы авторизации",
     "description": "Управляйте всеми JSON-файлами авторизации CLI Proxy (например, Qwen, Gemini, Vertex). Загрузка учётных данных сразу включает соответствующую интеграцию AI.",
@@ -782,6 +784,8 @@
     "delete_title": "Удалить сопоставления"
   },
   "auth_login": {
+    "oauth_credential_syncing": "Аутентификация выполнена. Синхронизация новых учетных данных...",
+    "oauth_credential_not_assignable": "Учетные данные OAuth {{name}} существуют только во время выполнения и не могут быть добавлены в группу.",
     "codex_oauth_title": "Codex OAuth",
     "codex_oauth_button": "Начать вход Codex",
     "codex_oauth_hint": "Выполните вход в сервис Codex через OAuth и автоматически получите/сохраните файлы авторизации.",

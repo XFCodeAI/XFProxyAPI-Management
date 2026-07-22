@@ -35,6 +35,8 @@ export interface OAuthCredentialResult {
   id: string;
   name: string;
   disposition: OAuthCredentialDisposition;
+  inventory_id: string;
+  revision: number;
 }
 
 export type OAuthStatusResponse =
@@ -64,9 +66,10 @@ export const oauthApi = {
     });
   },
 
-  getAuthStatus: (state: string) =>
+  getAuthStatus: (state: string, signal?: AbortSignal) =>
     apiClient.get<OAuthStatusResponse>(`/get-auth-status`, {
       params: { state },
+      signal,
     }),
 
   submitCallback: (provider: string, redirectUrl: string) => {

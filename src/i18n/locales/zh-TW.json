@@ -267,6 +267,8 @@
     "delete_blocked_detail": "分組仍被 {{authFiles}} 個認證檔案、{{providers}} 個 AI 供應商憑證、{{apiKeys}} 個 API Key 使用，請先解除綁定。"
   },
   "auth_files": {
+    "group_catalog_load_failed": "分組列表載入失敗：{{error}}",
+    "group_catalog_retry": "立即重試",
     "title": "驗證檔案管理",
     "title_section": "驗證檔案",
     "description": "這裡集中管理 CLI Proxy 支援的所有 JSON 驗證檔案（如 Qwen、Gemini、Vertex 等），上傳後即可在執行時啟用對應的 AI 服務。",
@@ -785,6 +787,8 @@
     "delete_title": "刪除映射"
   },
   "auth_login": {
+    "oauth_credential_syncing": "驗證成功，正在同步本次新憑證...",
+    "oauth_credential_not_assignable": "OAuth 憑證 {{name}} 僅存在於執行階段，無法設定分組。",
     "codex_oauth_title": "Codex OAuth",
     "codex_oauth_button": "開始 Codex 登入",
     "codex_oauth_hint": "透過 OAuth 流程登入 Codex 服務，自動取得並儲存驗證檔案。",

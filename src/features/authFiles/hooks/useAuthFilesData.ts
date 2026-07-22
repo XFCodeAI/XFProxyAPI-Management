@@ -24,6 +24,7 @@ import {
   type AuthFileProxyInspection,
 } from '@/features/authFiles/proxyUploadInspection';
 import { resolveDefaultImportProxySelection } from '@/features/authFiles/proxySelectionDefault';
+import { applyAuthFilesGroupAssignment } from '@/features/authFiles/authFilesGroupAssignment';
 import { normalizeCredentialGroups } from '@/utils/credentialGroups';
 import { isRecord } from '@/utils/helpers';
 
@@ -430,7 +431,10 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     (targets: AuthFileItem[], source: AuthFileGroupAssignmentSource = 'file') => {
       const normalizedTargets = normalizeAssignmentTargets(targets);
       if (normalizedTargets.length === 0) return;
-      setGroupAssignment({ source, targets: normalizedTargets });
+      setGroupAssignment({
+        source,
+        targets: source === 'oauth' ? normalizedTargets.slice(0, 1) : normalizedTargets,
+      });
       setGroupAssignmentError('');
     },
     []
@@ -470,7 +474,6 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const confirmCredentialGroupAssignment = useCallback(
     async (groups: string[]) => {
       if (!groupAssignment || groupAssigning) return;
-      const targetGroups = normalizeCredentialGroups(groups);
       const targets = groupAssignment.targets;
       if (targets.length === 0) {
         setGroupAssignment(null);
@@ -480,39 +483,33 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       setGroupAssigning(true);
       setGroupAssignmentError('');
       try {
-        const results = await Promise.allSettled(
-          targets.map((target) => authFilesApi.patchFields(target.name, { groups: targetGroups }))
+        const result = await applyAuthFilesGroupAssignment(
+          targets,
+          groups,
+          (target, targetGroups) => authFilesApi.patchFields(target.name, { groups: targetGroups })
         );
-        const failed = results
-          .map((result, index) => ({ result, target: targets[index] }))
-          .filter((entry) => entry.result.status === 'rejected');
-        const successCount = results.length - failed.length;
 
-        if (successCount > 0) {
+        if (result.successCount > 0) {
           await loadFiles(true);
         }
 
-        if (failed.length > 0) {
-          const details = failed
+        if (result.failed.length > 0) {
+          const details = result.failed
             .slice(0, 5)
-            .map((entry) => {
-              const reason =
-                entry.result.status === 'rejected' ? getErrorMessage(entry.result.reason) : '';
-              return `${entry.target.name}: ${reason}`;
-            })
+            .map((entry) => `${entry.target.name}: ${getErrorMessage(entry.error)}`)
             .join('; ');
           const suffix =
-            failed.length > 5
+            result.failed.length > 5
               ? t('auth_files.group_assignment_failed_more', {
                   defaultValue: '，另有 {{count}} 项失败',
-                  count: failed.length - 5,
+                  count: result.failed.length - 5,
                 })
               : '';
           const message = `${t('auth_files.group_assignment_failed', {
             defaultValue: '分组写入失败',
           })}: ${details}${suffix}`;
           setGroupAssignmentError(message);
-          showNotification(message, successCount > 0 ? 'warning' : 'error');
+          showNotification(message, result.successCount > 0 ? 'warning' : 'error');
           return;
         }
 
