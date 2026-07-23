@@ -1108,6 +1108,18 @@
       "accept_candidate": "接受 {{model}} 的候选",
       "rejected_title": "已拒绝的来源记录",
       "no_target": "没有目标模型",
+      "requested_aliases": "请求别名：{{value}}",
+      "no_applicable_source": "没有可应用到该模型的来源候选。",
+      "base_prices": "基础价格",
+      "conditional_count": "条件变体：{{count}}",
+      "conditional_only": "该来源仅提供条件定价，基础价格未知。",
+      "conditional_variants": "条件变体",
+      "all_service_tiers": "全部服务等级",
+      "service_tier_value": "服务等级：{{value}}",
+      "all_contexts": "全部上下文长度",
+      "context_between": "输入 Token {{min}} 至 {{max}}",
+      "context_at_least": "输入 Token 至少 {{value}}",
+      "context_at_most": "输入 Token 最多 {{value}}",
       "sources": {
         "litellm": "LiteLLM",
         "openrouter": "OpenRouter"
@@ -1119,8 +1131,33 @@
       },
       "candidate_status": {
         "ready": "就绪",
+        "partial": "部分可用",
         "ambiguous": "有歧义",
+        "unmatched": "未找到",
+        "provider_incompatible": "供应商不匹配",
         "rejected": "已拒绝"
+      },
+      "reasons": {
+        "model_unmatched": "没有找到匹配的来源模型。",
+        "model_ambiguous": "有多个来源候选与该模型匹配。",
+        "provider_incompatible": "来源模型属于不兼容的供应商。",
+        "unsupported_source": "不支持该定价来源。",
+        "invalid_source_identity": "来源模型标识无效。",
+        "unsupported_time_condition": "暂不支持按时间生效的定价条件。",
+        "unsupported_cache_duration_condition": "暂不支持缓存时长定价条件。",
+        "unsupported_condition": "该来源包含不支持的定价条件。",
+        "unsupported_price_field": "该来源包含不支持的价格维度。",
+        "invalid_context_selector": "上下文长度条件无效。",
+        "invalid_price_decimal": "价格数值无效。",
+        "invalid_price_rule": "生成的价格规则无效。",
+        "no_supported_price_rule": "无法生成受支持的价格规则。",
+        "invalid_record": "来源记录无效。",
+        "missing_model_id": "来源记录缺少模型标识。",
+        "invalid_decimal": "来源记录包含无效的小数。",
+        "negative_decimal": "来源记录包含负数价格。",
+        "invalid_condition": "来源记录包含无效条件。",
+        "no_supported_pricing": "来源记录没有受支持的价格维度。",
+        "unknown": "该来源无法为此模型提供可用价格。"
       }
     }
   },

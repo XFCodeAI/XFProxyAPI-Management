@@ -69,6 +69,38 @@ const variantWire = {
   version: 2,
 };
 
+const syncRuleWire = ({
+  model,
+  provider = 'codex',
+  serviceTier = null,
+  contextMinTokens = null,
+  contextMaxTokens = null,
+  prices = {},
+}) => ({
+  provider,
+  model,
+  service_tier: serviceTier,
+  context_min_tokens: contextMinTokens,
+  context_max_tokens: contextMaxTokens,
+  prices: {
+    input_per_million: null,
+    output_per_million: null,
+    reasoning_per_million: null,
+    cache_read_per_million: null,
+    cache_creation_per_million: null,
+    fixed_request: null,
+    ...prices,
+  },
+  multipliers: {
+    input: null,
+    output: null,
+    reasoning: null,
+    cache_read: null,
+    cache_creation: null,
+    fixed_request: null,
+  },
+});
+
 try {
   const api = await server.ssrLoadModule('/src/services/api/modelPrices.ts');
   const client = await server.ssrLoadModule('/src/services/api/client.ts');
@@ -190,7 +222,7 @@ try {
     /model_prices_invalid_response:delete.id/
   );
 
-  const preview = api.normalizeModelPriceSyncPreviewResponse({
+  const previewWire = {
     preview_id: 'preview-1',
     stale: false,
     expires_at: '2026-07-23T02:00:00Z',
@@ -199,35 +231,145 @@ try {
         source: 'openrouter',
         status: 'ok',
         fetched_count: 10,
-        candidate_count: 2,
+        candidate_count: 4,
         rejected_count: 1,
         error: null,
       },
     ],
     candidates: [
       {
-        id: 'candidate-a',
-        target_provider: 'openai',
-        target_model: 'gpt-5',
-        status: 'ambiguous',
-        reason: 'provider and model family match',
-        ambiguity_reason: 'two dated variants',
+        id: 'sol-a',
+        target_provider: 'codex',
+        target_model: 'gpt-5.6-sol',
+        status: 'partial',
+        reason: 'unsupported_price_field',
+        ambiguity_reason: null,
         rejection_reason: null,
-        source: 'openrouter',
-        source_model_id: 'openai/gpt-5-a',
-        rule: inputWire,
+        source: 'litellm',
+        source_model_id: 'openai/gpt-5.6-sol',
+        rules: [
+          syncRuleWire({
+            model: 'gpt-5.6-sol',
+            serviceTier: 'priority',
+            prices: { input_per_million: '10', output_per_million: '60' },
+          }),
+          syncRuleWire({
+            model: 'gpt-5.6-sol',
+            contextMinTokens: 272001,
+            prices: { input_per_million: '10', output_per_million: '45' },
+          }),
+          syncRuleWire({
+            model: 'gpt-5.6-sol',
+            prices: {
+              input_per_million: '5',
+              output_per_million: '30',
+              cache_read_per_million: '0.5',
+            },
+          }),
+        ],
       },
       {
-        id: 'candidate-b',
+        id: 'sol-b',
         target_provider: 'codex',
-        target_model: 'gpt-5',
-        status: 'ambiguous',
+        target_model: 'gpt-5.6-sol',
+        status: 'ready',
         reason: null,
-        ambiguity_reason: 'two dated variants',
+        ambiguity_reason: null,
         rejection_reason: null,
-        source: 'openrouter',
-        source_model_id: 'openai/gpt-5-b',
-        rule: inputWire,
+        source: 'litellm',
+        source_model_id: 'openai/gpt-5.6-sol-2026-07-01',
+        rules: [
+          syncRuleWire({
+            model: 'gpt-5.6-sol',
+            prices: { input_per_million: '5', output_per_million: '30' },
+          }),
+        ],
+      },
+      {
+        id: 'conditional-only',
+        target_provider: 'codex',
+        target_model: 'gpt-conditional',
+        status: 'ready',
+        reason: null,
+        ambiguity_reason: null,
+        rejection_reason: null,
+        source: 'litellm',
+        source_model_id: 'openai/gpt-conditional',
+        rules: [
+          syncRuleWire({
+            model: 'gpt-conditional',
+            serviceTier: 'flex',
+            prices: { input_per_million: '1', output_per_million: '4' },
+          }),
+        ],
+      },
+      {
+        id: 'free-partial',
+        target_provider: 'codex',
+        target_model: 'gpt-free',
+        status: 'partial',
+        reason: 'unsupported_condition',
+        ambiguity_reason: null,
+        rejection_reason: null,
+        source: 'litellm',
+        source_model_id: 'openai/gpt-free',
+        rules: [
+          syncRuleWire({
+            model: 'gpt-free',
+            prices: { input_per_million: '0', output_per_million: null },
+          }),
+        ],
+      },
+    ],
+    coverage: [
+      {
+        source: 'litellm',
+        target_provider: 'codex',
+        target_model: 'gpt-5.6-sol',
+        requested_models: ['gpt-5.6-sol-high'],
+        status: 'ambiguous',
+        reason: 'model_ambiguous',
+        candidate_ids: ['sol-a', 'sol-b'],
+      },
+      {
+        source: 'litellm',
+        target_provider: 'codex',
+        target_model: 'gpt-conditional',
+        status: 'ready',
+        reason: null,
+        candidate_ids: ['conditional-only'],
+      },
+      {
+        source: 'litellm',
+        target_provider: 'codex',
+        target_model: 'gpt-free',
+        status: 'partial',
+        reason: 'unsupported_condition',
+        candidate_ids: ['free-partial'],
+      },
+      {
+        source: 'litellm',
+        target_provider: 'codex',
+        target_model: 'gpt-missing',
+        status: 'unmatched',
+        reason: 'model_unmatched',
+        candidate_ids: [],
+      },
+      {
+        source: 'litellm',
+        target_provider: 'codex',
+        target_model: 'gpt-incompatible',
+        status: 'provider_incompatible',
+        reason: 'provider_incompatible',
+        candidate_ids: [],
+      },
+      {
+        source: 'litellm',
+        target_provider: 'codex',
+        target_model: 'gpt-rejected',
+        status: 'rejected',
+        reason: 'no_supported_price_rule',
+        candidate_ids: [],
       },
     ],
     rejected: [
@@ -235,12 +377,61 @@ try {
         source: 'litellm',
         source_model_id: 'vendor/unknown',
         target_model: null,
-        reason: 'missing output price',
+        reason: 'no_supported_pricing',
       },
     ],
-  });
-  assert.equal(preview.candidates[0].rule.prices.outputPerMillion, '12.50');
-  assert.equal(preview.rejected[0].reason, 'missing output price');
+  };
+  const preview = api.normalizeModelPriceSyncPreviewResponse(previewWire);
+  assert.equal(preview.candidates[0].rules.length, 3);
+  assert.equal(preview.rejected[0].reason, 'no_supported_pricing');
+
+  const syncRows = viewModel.buildModelPriceSyncTargetRows(preview);
+  assert.equal(syncRows.length, 6);
+  const solRow = syncRows.find((row) => row.model === 'gpt-5.6-sol');
+  assert.ok(solRow);
+  assert.equal(solRow.candidates.length, 2);
+  assert.deepEqual(solRow.requestedModels, ['gpt-5.6-sol-high']);
+  const solDefault = viewModel.getModelPriceSyncDefaultRule(solRow.candidates[0]);
+  assert.ok(solDefault);
+  assert.equal(solDefault.prices.inputPerMillion, '5');
+  assert.equal(solDefault.prices.cacheReadPerMillion, '0.5');
+  assert.equal(solDefault.prices.outputPerMillion, '30');
+  assert.equal(viewModel.getModelPriceSyncConditionalRules(solRow.candidates[0]).length, 2);
+  const conditionalRow = syncRows.find((row) => row.model === 'gpt-conditional');
+  assert.equal(viewModel.getModelPriceSyncDefaultRule(conditionalRow.candidates[0]), null);
+  const freeRow = syncRows.find((row) => row.model === 'gpt-free');
+  const freeDefault = viewModel.getModelPriceSyncDefaultRule(freeRow.candidates[0]);
+  assert.equal(viewModel.getDecimalDisplayKind(freeDefault.prices.inputPerMillion), 'free');
+  assert.equal(viewModel.getDecimalDisplayKind(freeDefault.prices.outputPerMillion), 'missing');
+  assert.equal(freeRow.coverage[0].status, 'partial');
+  assert.equal(syncRows.find((row) => row.model === 'gpt-missing').coverage[0].status, 'unmatched');
+  assert.equal(
+    syncRows.find((row) => row.model === 'gpt-incompatible').coverage[0].status,
+    'provider_incompatible'
+  );
+  assert.equal(syncRows.find((row) => row.model === 'gpt-rejected').coverage[0].status, 'rejected');
+  assert.equal(viewModel.canAcceptSyncCandidate(freeRow.candidates[0]), true);
+
+  const missingRulesCandidate = { ...previewWire.candidates[0] };
+  delete missingRulesCandidate.rules;
+  assert.throws(
+    () =>
+      api.normalizeModelPriceSyncPreviewResponse({
+        ...previewWire,
+        candidates: [missingRulesCandidate],
+        coverage: [{ ...previewWire.coverage[0], candidate_ids: ['sol-a'] }],
+      }),
+    /model_prices_invalid_response:preview.candidates\[0\].rules/
+  );
+  assert.throws(
+    () =>
+      api.normalizeModelPriceSyncPreviewResponse({
+        ...previewWire,
+        candidates: [{ ...previewWire.candidates[0], rules: [] }],
+        coverage: [{ ...previewWire.coverage[0], candidate_ids: ['sol-a'] }],
+      }),
+    /model_prices_invalid_response:preview.candidates\[0\].rules/
+  );
 
   const rows = viewModel.buildModelPriceRows(catalog);
   assert.equal(rows.length, 2);
@@ -262,16 +453,16 @@ try {
 
   const selectedA = viewModel.toggleAcceptedCandidate(
     new Set(),
-    preview.candidates[0],
+    solRow.candidates[0],
     preview.candidates
   );
-  assert.deepEqual([...selectedA], ['candidate-a']);
+  assert.deepEqual([...selectedA], ['sol-a']);
   const selectedB = viewModel.toggleAcceptedCandidate(
     selectedA,
-    preview.candidates[1],
+    solRow.candidates[1],
     preview.candidates
   );
-  assert.deepEqual([...selectedB], ['candidate-a', 'candidate-b']);
+  assert.deepEqual([...selectedB], ['sol-b']);
 
   const draft = viewModel.createModelPriceDraft();
   draft.model = 'manual-model';

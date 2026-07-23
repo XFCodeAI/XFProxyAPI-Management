@@ -4,6 +4,8 @@ import type {
   ModelPriceRule,
   ModelPriceRuleInput,
   ModelPriceSyncCandidate,
+  ModelPriceSyncCoverage,
+  ModelPriceSyncPreview,
 } from '@/services/api/modelPrices';
 
 export type ModelPriceFilter = 'all' | 'used' | 'unpriced';
@@ -19,6 +21,15 @@ export interface ModelPriceRow {
   source: string | null;
   sourceModelId: string | null;
   entry: ModelPriceEntry;
+}
+
+export interface ModelPriceSyncTargetRow {
+  key: string;
+  provider: string;
+  model: string;
+  requestedModels: string[];
+  coverage: ModelPriceSyncCoverage[];
+  candidates: ModelPriceSyncCandidate[];
 }
 
 export interface ModelPriceDraft {
@@ -238,8 +249,59 @@ export const getDecimalDisplayKind = (value: string | null): DecimalDisplayKind 
   return /^0(?:\.0+)?$/.test(value) ? 'free' : 'value';
 };
 
+export const isDefaultModelPriceSyncRule = (rule: ModelPriceRuleInput): boolean =>
+  rule.serviceTier === null && rule.contextMinTokens === null && rule.contextMaxTokens === null;
+
+export const getModelPriceSyncDefaultRule = (
+  candidate: ModelPriceSyncCandidate
+): ModelPriceRuleInput | null => candidate.rules.find(isDefaultModelPriceSyncRule) ?? null;
+
+export const getModelPriceSyncConditionalRules = (
+  candidate: ModelPriceSyncCandidate
+): ModelPriceRuleInput[] => candidate.rules.filter((rule) => !isDefaultModelPriceSyncRule(rule));
+
+export const buildModelPriceSyncTargetRows = (
+  preview: ModelPriceSyncPreview
+): ModelPriceSyncTargetRow[] => {
+  const rows = new Map<string, ModelPriceSyncTargetRow>();
+  preview.coverage.forEach((coverage) => {
+    const key = `${coverage.targetProvider}\0${coverage.targetModel}`;
+    const current = rows.get(key) ?? {
+      key,
+      provider: coverage.targetProvider,
+      model: coverage.targetModel,
+      requestedModels: [],
+      coverage: [],
+      candidates: [],
+    };
+    current.coverage.push(coverage);
+    current.requestedModels.push(...coverage.requestedModels);
+    rows.set(key, current);
+  });
+  preview.candidates.forEach((candidate) => {
+    const key = `${candidate.targetProvider}\0${candidate.targetModel}`;
+    const row = rows.get(key);
+    if (row) row.candidates.push(candidate);
+  });
+  rows.forEach((row) => {
+    row.requestedModels = [...new Set(row.requestedModels)].sort();
+    row.coverage.sort((left, right) => left.source.localeCompare(right.source));
+    row.candidates.sort(
+      (left, right) =>
+        left.source.localeCompare(right.source) || left.sourceModelId.localeCompare(right.sourceModelId)
+    );
+  });
+  return [...rows.values()].sort(
+    (left, right) =>
+      left.provider.localeCompare(right.provider) || left.model.localeCompare(right.model)
+  );
+};
+
 export const canAcceptSyncCandidate = (candidate: ModelPriceSyncCandidate): boolean =>
-  (candidate.status === 'ready' || candidate.status === 'ambiguous') && !candidate.rejectionReason;
+  (candidate.status === 'ready' ||
+    candidate.status === 'partial' ||
+    candidate.status === 'ambiguous') &&
+  !candidate.rejectionReason;
 
 export const toggleAcceptedCandidate = (
   selected: ReadonlySet<string>,

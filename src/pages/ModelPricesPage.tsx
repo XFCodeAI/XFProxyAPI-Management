@@ -25,18 +25,24 @@ import {
   modelPricesApi,
   type ModelPriceCatalog,
   type ModelPriceCatalogAvailable,
+  type ModelPriceDimensions,
   type ModelPriceRule,
+  type ModelPriceRuleInput,
   type ModelPriceSyncCandidate,
+  type ModelPriceSyncCandidateStatus,
   type ModelPriceSyncPreview,
   type ModelPriceSyncSource,
 } from '@/services/api';
 import {
   buildModelPriceRows,
   buildModelPriceRuleInput,
+  buildModelPriceSyncTargetRows,
   canAcceptSyncCandidate,
   createModelPriceDraft,
   filterModelPriceRows,
   getDecimalDisplayKind,
+  getModelPriceSyncConditionalRules,
+  getModelPriceSyncDefaultRule,
   toggleAcceptedCandidate,
   validateModelPriceDraft,
   type ModelPriceDraft,
@@ -51,6 +57,26 @@ import styles from './ModelPricesPage.module.scss';
 
 const FILTERS: ModelPriceFilter[] = ['all', 'used', 'unpriced'];
 const SYNC_SOURCES: ModelPriceSyncSource[] = ['litellm', 'openrouter'];
+const EMPTY_PRICE_DIMENSIONS: ModelPriceDimensions = {
+  inputPerMillion: null,
+  outputPerMillion: null,
+  reasoningPerMillion: null,
+  cacheReadPerMillion: null,
+  cacheCreationPerMillion: null,
+  fixedRequest: null,
+};
+const SYNC_PRICE_FIELDS: Array<{
+  key: keyof ModelPriceDimensions;
+  label: string;
+  perMillion: boolean;
+}> = [
+  { key: 'inputPerMillion', label: 'input', perMillion: true },
+  { key: 'outputPerMillion', label: 'output', perMillion: true },
+  { key: 'reasoningPerMillion', label: 'reasoning', perMillion: true },
+  { key: 'cacheReadPerMillion', label: 'cache_read', perMillion: true },
+  { key: 'cacheCreationPerMillion', label: 'cache_creation', perMillion: true },
+  { key: 'fixedRequest', label: 'fixed_request', perMillion: false },
+];
 
 interface PriceValueProps {
   value: string | null;
@@ -81,9 +107,10 @@ function formatTimestamp(value: string | null, locale: string, missingLabel: str
   }).format(date);
 }
 
-function candidateStatusVariant(candidate: ModelPriceSyncCandidate): string {
-  if (candidate.rejectionReason || candidate.status === 'rejected') return styles.statusRejected;
-  if (candidate.status === 'ambiguous') return styles.statusAmbiguous;
+function syncStatusVariant(status: ModelPriceSyncCandidateStatus): string {
+  if (status === 'rejected' || status === 'provider_incompatible') return styles.statusRejected;
+  if (status === 'partial' || status === 'ambiguous') return styles.statusAmbiguous;
+  if (status === 'unmatched') return styles.statusUnmatched;
   return styles.statusReady;
 }
 
@@ -114,6 +141,7 @@ export function ModelPricesPage() {
   const [previewing, setPreviewing] = useState(false);
   const [applyingPreview, setApplyingPreview] = useState(false);
   const [acceptedCandidateIDs, setAcceptedCandidateIDs] = useState<Set<string>>(new Set());
+  const [expandedSyncCandidates, setExpandedSyncCandidates] = useState<Set<string>>(new Set());
   const loadRequestRef = useRef(0);
 
   const disabled = connectionStatus !== 'connected';
@@ -125,6 +153,10 @@ export function ModelPricesPage() {
   const visibleRows = useMemo(
     () => filterModelPriceRows(rows, filter, search),
     [filter, rows, search]
+  );
+  const syncTargetRows = useMemo(
+    () => (syncPreview ? buildModelPriceSyncTargetRows(syncPreview) : []),
+    [syncPreview]
   );
 
   const loadCatalog = useCallback(async () => {
@@ -294,6 +326,7 @@ export function ModelPricesPage() {
     setSyncPreview(null);
     setSyncError('');
     setAcceptedCandidateIDs(new Set());
+    setExpandedSyncCandidates(new Set());
     setSyncOpen(true);
   };
 
@@ -303,6 +336,7 @@ export function ModelPricesPage() {
     setSyncPreview(null);
     setSyncError('');
     setAcceptedCandidateIDs(new Set());
+    setExpandedSyncCandidates(new Set());
   };
 
   const toggleSyncSource = (source: ModelPriceSyncSource) => {
@@ -323,6 +357,7 @@ export function ModelPricesPage() {
     setSyncError('');
     setSyncPreview(null);
     setAcceptedCandidateIDs(new Set());
+    setExpandedSyncCandidates(new Set());
     try {
       setSyncPreview(await modelPricesApi.previewSync(Array.from(syncSources)));
     } catch (error: unknown) {
@@ -337,6 +372,15 @@ export function ModelPricesPage() {
     setAcceptedCandidateIDs((current) =>
       toggleAcceptedCandidate(current, candidate, syncPreview.candidates)
     );
+  };
+
+  const toggleSyncCandidateDetails = (candidateID: string) => {
+    setExpandedSyncCandidates((current) => {
+      const next = new Set(current);
+      if (next.has(candidateID)) next.delete(candidateID);
+      else next.add(candidateID);
+      return next;
+    });
   };
 
   const applySync = async () => {
@@ -483,6 +527,57 @@ export function ModelPricesPage() {
       </div>
     );
   };
+
+  const renderSyncPrices = (prices: ModelPriceDimensions) => (
+    <div className={styles.syncPriceGrid}>
+      {SYNC_PRICE_FIELDS.map((field) => (
+        <div className={styles.priceField} key={field.key}>
+          <span>{t(`model_prices.fields.${field.label}`)}</span>
+          <PriceValue
+            value={prices[field.key]}
+            missingLabel={t('model_prices.missing')}
+            freeLabel={t('model_prices.free_zero')}
+            suffix={field.perMillion ? t('model_prices.per_million_suffix') : ''}
+          />
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderSyncRuleScope = (rule: ModelPriceRuleInput) => {
+    let contextLabel = t('model_prices.sync.all_contexts');
+    if (rule.contextMinTokens !== null && rule.contextMaxTokens !== null) {
+      contextLabel = t('model_prices.sync.context_between', {
+        min: rule.contextMinTokens.toLocaleString(i18n.language),
+        max: rule.contextMaxTokens.toLocaleString(i18n.language),
+      });
+    } else if (rule.contextMinTokens !== null) {
+      contextLabel = t('model_prices.sync.context_at_least', {
+        value: rule.contextMinTokens.toLocaleString(i18n.language),
+      });
+    } else if (rule.contextMaxTokens !== null) {
+      contextLabel = t('model_prices.sync.context_at_most', {
+        value: rule.contextMaxTokens.toLocaleString(i18n.language),
+      });
+    }
+    return (
+      <div className={styles.syncRuleScope}>
+        <span>
+          {rule.serviceTier
+            ? t('model_prices.sync.service_tier_value', { value: rule.serviceTier })
+            : t('model_prices.sync.all_service_tiers')}
+        </span>
+        <span>{contextLabel}</span>
+      </div>
+    );
+  };
+
+  const syncReasonLabel = (reason: string | null): string | null =>
+    reason
+      ? t(`model_prices.sync.reasons.${reason}`, {
+          defaultValue: t('model_prices.sync.reasons.unknown'),
+        })
+      : null;
 
   const renderRuleActions = (rule: ModelPriceRule, allowDelete = true) =>
     rule.source.kind === 'manual' ? (
@@ -1088,7 +1183,11 @@ export function ModelPricesPage() {
               <div className={styles.sourceResults}>
                 {syncPreview.sourceResults.map((result) => (
                   <div key={result.source} data-error={Boolean(result.error)}>
-                    <strong>{result.source}</strong>
+                    <strong>
+                      {t(`model_prices.sync.sources.${result.source}`, {
+                        defaultValue: result.source,
+                      })}
+                    </strong>
                     <span>
                       {t(`model_prices.sync.status.${result.status}`, {
                         defaultValue: result.status,
@@ -1119,73 +1218,178 @@ export function ModelPricesPage() {
                 </span>
               </div>
 
-              {syncPreview.candidates.length === 0 ? (
+              {syncTargetRows.length === 0 ? (
                 <EmptyState title={t('model_prices.sync.no_candidates')} />
               ) : (
                 <div className={styles.candidateList}>
-                  {syncPreview.candidates.map((candidate) => {
-                    const selectable = canAcceptSyncCandidate(candidate);
-                    const selected = acceptedCandidateIDs.has(candidate.id);
-                    return (
-                      <label
-                        className={`${styles.candidateRow} ${selected ? styles.candidateSelected : ''}`}
-                        data-disabled={!selectable}
-                        key={candidate.id}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={() => toggleCandidate(candidate)}
-                          disabled={!selectable || applyingPreview || syncPreview.stale}
-                          aria-label={t('model_prices.sync.accept_candidate', {
-                            model: candidate.targetModel,
+                  {syncTargetRows.map((row) => (
+                    <section className={styles.syncTargetRow} key={row.key}>
+                      <header className={styles.syncTargetHeader}>
+                        <div>
+                          <strong>{row.model}</strong>
+                          <span>{row.provider}</span>
+                        </div>
+                        {row.requestedModels.length ? (
+                          <small>
+                            {t('model_prices.sync.requested_aliases', {
+                              value: row.requestedModels.join(', '),
+                            })}
+                          </small>
+                        ) : null}
+                      </header>
+
+                      <div className={styles.syncCoverageList}>
+                        {row.coverage.map((coverage) => {
+                          const reason = syncReasonLabel(coverage.reason);
+                          return (
+                            <div key={`${coverage.source}:${coverage.targetProvider}:${coverage.targetModel}`}>
+                              <div>
+                                <strong>
+                                  {t(`model_prices.sync.sources.${coverage.source}`, {
+                                    defaultValue: coverage.source,
+                                  })}
+                                </strong>
+                                <span
+                                  className={`${styles.badge} ${syncStatusVariant(coverage.status)}`}
+                                >
+                                  {t(
+                                    `model_prices.sync.candidate_status.${coverage.status}`,
+                                    { defaultValue: coverage.status }
+                                  )}
+                                </span>
+                              </div>
+                              {reason ? <small>{reason}</small> : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {row.candidates.length === 0 ? (
+                        <div className={styles.syncNoAlternatives}>
+                          {t('model_prices.sync.no_applicable_source')}
+                        </div>
+                      ) : (
+                        <div className={styles.syncAlternatives}>
+                          {row.candidates.map((candidate) => {
+                            const selectable = canAcceptSyncCandidate(candidate);
+                            const selected = acceptedCandidateIDs.has(candidate.id);
+                            const defaultRule = getModelPriceSyncDefaultRule(candidate);
+                            const conditionalRules = getModelPriceSyncConditionalRules(candidate);
+                            const expanded = expandedSyncCandidates.has(candidate.id);
+                            const reasonLabels = [
+                              candidate.ambiguityReason,
+                              candidate.rejectionReason,
+                              candidate.reason,
+                            ]
+                              .map(syncReasonLabel)
+                              .filter((value): value is string => Boolean(value));
+                            return (
+                              <div
+                                className={`${styles.candidateAlternative} ${selected ? styles.candidateSelected : ''}`}
+                                data-disabled={!selectable}
+                                key={candidate.id}
+                              >
+                                <label className={styles.candidateChoice}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selected}
+                                    onChange={() => toggleCandidate(candidate)}
+                                    disabled={!selectable || applyingPreview || syncPreview.stale}
+                                    aria-label={t('model_prices.sync.accept_candidate', {
+                                      model: candidate.targetModel,
+                                    })}
+                                  />
+                                  <div className={styles.candidateIdentity}>
+                                    <div>
+                                      <strong>
+                                        {t(`model_prices.sync.sources.${candidate.source}`, {
+                                          defaultValue: candidate.source,
+                                        })}
+                                      </strong>
+                                      <span
+                                        className={`${styles.badge} ${syncStatusVariant(candidate.status)}`}
+                                      >
+                                        {t(
+                                          `model_prices.sync.candidate_status.${candidate.status}`,
+                                          { defaultValue: candidate.status }
+                                        )}
+                                      </span>
+                                    </div>
+                                    <span>{candidate.sourceModelId}</span>
+                                  </div>
+                                </label>
+
+                                <div className={styles.syncBasePrice}>
+                                  <div className={styles.syncPriceHeading}>
+                                    <strong>{t('model_prices.sync.base_prices')}</strong>
+                                    <span>
+                                      {t('model_prices.sync.conditional_count', {
+                                        count: conditionalRules.length,
+                                      })}
+                                    </span>
+                                  </div>
+                                  {!defaultRule ? (
+                                    <div className={styles.syncConditionalOnly}>
+                                      {t('model_prices.sync.conditional_only')}
+                                    </div>
+                                  ) : null}
+                                  {renderSyncPrices(
+                                    defaultRule?.prices ?? EMPTY_PRICE_DIMENSIONS
+                                  )}
+                                </div>
+
+                                {reasonLabels.length ? (
+                                  <div className={styles.candidateReason}>
+                                    {[...new Set(reasonLabels)].map((reason) => (
+                                      <span
+                                        data-error={Boolean(candidate.rejectionReason)}
+                                        data-warning={!candidate.rejectionReason}
+                                        key={reason}
+                                      >
+                                        {reason}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+
+                                {conditionalRules.length ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className={styles.syncVariantsToggle}
+                                      onClick={() => toggleSyncCandidateDetails(candidate.id)}
+                                      aria-expanded={expanded}
+                                      disabled={applyingPreview}
+                                    >
+                                      {expanded ? (
+                                        <ChevronDown size={15} />
+                                      ) : (
+                                        <ChevronRight size={15} />
+                                      )}
+                                      <span>{t('model_prices.sync.conditional_variants')}</span>
+                                    </button>
+                                    {expanded ? (
+                                      <div className={styles.syncVariantList}>
+                                        {conditionalRules.map((rule, index) => (
+                                          <div
+                                            className={styles.syncVariantRule}
+                                            key={`${candidate.id}:${rule.serviceTier ?? ''}:${rule.contextMinTokens ?? ''}:${rule.contextMaxTokens ?? ''}:${index}`}
+                                          >
+                                            {renderSyncRuleScope(rule)}
+                                            {renderSyncPrices(rule.prices)}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </>
+                                ) : null}
+                              </div>
+                            );
                           })}
-                        />
-                        <div className={styles.candidateIdentity}>
-                          <div>
-                            <strong>{candidate.targetModel}</strong>
-                            <span
-                              className={`${styles.badge} ${candidateStatusVariant(candidate)}`}
-                            >
-                              {t(`model_prices.sync.candidate_status.${candidate.status}`, {
-                                defaultValue: candidate.status,
-                              })}
-                            </span>
-                          </div>
-                          <span>{`${candidate.targetProvider} / ${candidate.source} / ${candidate.sourceModelId}`}</span>
                         </div>
-                        <div className={styles.candidatePrices}>
-                          <span>
-                            {t('model_prices.fields.input')}{' '}
-                            <PriceValue
-                              value={candidate.rule.prices.inputPerMillion}
-                              missingLabel={t('model_prices.missing')}
-                              freeLabel={t('model_prices.free_zero')}
-                              suffix={t('model_prices.per_million_suffix')}
-                            />
-                          </span>
-                          <span>
-                            {t('model_prices.fields.output')}{' '}
-                            <PriceValue
-                              value={candidate.rule.prices.outputPerMillion}
-                              missingLabel={t('model_prices.missing')}
-                              freeLabel={t('model_prices.free_zero')}
-                              suffix={t('model_prices.per_million_suffix')}
-                            />
-                          </span>
-                        </div>
-                        <div className={styles.candidateReason}>
-                          {candidate.ambiguityReason ? (
-                            <span data-warning="true">{candidate.ambiguityReason}</span>
-                          ) : null}
-                          {candidate.rejectionReason ? (
-                            <span data-error="true">{candidate.rejectionReason}</span>
-                          ) : null}
-                          {candidate.reason ? <span>{candidate.reason}</span> : null}
-                        </div>
-                      </label>
-                    );
-                  })}
+                      )}
+                    </section>
+                  ))}
                 </div>
               )}
 
@@ -1196,7 +1400,7 @@ export function ModelPricesPage() {
                     <div key={`${rejection.source}:${rejection.sourceModelId}:${index}`}>
                       <strong>{rejection.sourceModelId}</strong>
                       <span>{rejection.targetModel ?? t('model_prices.sync.no_target')}</span>
-                      <small>{rejection.reason}</small>
+                      <small>{syncReasonLabel(rejection.reason)}</small>
                     </div>
                   ))}
                 </section>

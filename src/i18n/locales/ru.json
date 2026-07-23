@@ -1105,6 +1105,18 @@
       "accept_candidate": "Принять кандидата для {{model}}",
       "rejected_title": "Отклонённые записи источников",
       "no_target": "Нет целевой модели",
+      "requested_aliases": "Запрошенные псевдонимы: {{value}}",
+      "no_applicable_source": "Для этой модели нет применимого кандидата источника.",
+      "base_prices": "Базовые цены",
+      "conditional_count": "Условных вариантов: {{count}}",
+      "conditional_only": "Источник содержит только условные цены; базовые цены неизвестны.",
+      "conditional_variants": "Условные варианты",
+      "all_service_tiers": "Все уровни обслуживания",
+      "service_tier_value": "Уровень обслуживания: {{value}}",
+      "all_contexts": "Любая длина контекста",
+      "context_between": "От {{min}} до {{max}} входных токенов",
+      "context_at_least": "Не менее {{value}} входных токенов",
+      "context_at_most": "Не более {{value}} входных токенов",
       "sources": {
         "litellm": "LiteLLM",
         "openrouter": "OpenRouter"
@@ -1116,8 +1128,33 @@
       },
       "candidate_status": {
         "ready": "Готов",
+        "partial": "Частично",
         "ambiguous": "Неоднозначно",
+        "unmatched": "Не найдено",
+        "provider_incompatible": "Поставщик не совпадает",
         "rejected": "Отклонён"
+      },
+      "reasons": {
+        "model_unmatched": "Соответствующая модель в источнике не найдена.",
+        "model_ambiguous": "Модели соответствует несколько кандидатов источника.",
+        "provider_incompatible": "Модель источника относится к несовместимому поставщику.",
+        "unsupported_source": "Этот источник цен не поддерживается.",
+        "invalid_source_identity": "Недопустимый идентификатор модели источника.",
+        "unsupported_time_condition": "Условия цены по времени не поддерживаются.",
+        "unsupported_cache_duration_condition": "Условия цены по длительности кеша не поддерживаются.",
+        "unsupported_condition": "Источник содержит неподдерживаемое условие цены.",
+        "unsupported_price_field": "Источник содержит неподдерживаемое измерение цены.",
+        "invalid_context_selector": "Недопустимое условие длины контекста.",
+        "invalid_price_decimal": "Недопустимое значение цены.",
+        "invalid_price_rule": "Сформировано недопустимое правило цены.",
+        "no_supported_price_rule": "Не удалось сформировать поддерживаемое правило цены.",
+        "invalid_record": "Недопустимая запись источника.",
+        "missing_model_id": "В записи источника нет идентификатора модели.",
+        "invalid_decimal": "Запись источника содержит недопустимое десятичное значение.",
+        "negative_decimal": "Запись источника содержит отрицательную цену.",
+        "invalid_condition": "Запись источника содержит недопустимое условие.",
+        "no_supported_pricing": "В записи источника нет поддерживаемых измерений цены.",
+        "unknown": "Источник не предоставил применимую цену для этой модели."
       }
     }
   },

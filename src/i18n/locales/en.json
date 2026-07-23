@@ -1108,6 +1108,18 @@
       "accept_candidate": "Accept candidate for {{model}}",
       "rejected_title": "Rejected source records",
       "no_target": "No target model",
+      "requested_aliases": "Requested aliases: {{value}}",
+      "no_applicable_source": "No source candidate can be applied to this model.",
+      "base_prices": "Base prices",
+      "conditional_count": "Conditional variants: {{count}}",
+      "conditional_only": "This source provides conditional pricing only; base prices are unknown.",
+      "conditional_variants": "Conditional variants",
+      "all_service_tiers": "All service tiers",
+      "service_tier_value": "Service tier: {{value}}",
+      "all_contexts": "All context lengths",
+      "context_between": "{{min}} to {{max}} input tokens",
+      "context_at_least": "At least {{value}} input tokens",
+      "context_at_most": "At most {{value}} input tokens",
       "sources": {
         "litellm": "LiteLLM",
         "openrouter": "OpenRouter"
@@ -1119,8 +1131,33 @@
       },
       "candidate_status": {
         "ready": "Ready",
+        "partial": "Partial",
         "ambiguous": "Ambiguous",
+        "unmatched": "Not found",
+        "provider_incompatible": "Provider mismatch",
         "rejected": "Rejected"
+      },
+      "reasons": {
+        "model_unmatched": "No matching source model was found.",
+        "model_ambiguous": "Multiple source candidates match this model.",
+        "provider_incompatible": "The source model belongs to an incompatible provider.",
+        "unsupported_source": "This pricing source is not supported.",
+        "invalid_source_identity": "The source model identity is invalid.",
+        "unsupported_time_condition": "Time-based pricing conditions are not supported.",
+        "unsupported_cache_duration_condition": "Cache-duration pricing conditions are not supported.",
+        "unsupported_condition": "A pricing condition from this source is not supported.",
+        "unsupported_price_field": "A source price dimension is not supported.",
+        "invalid_context_selector": "The context-length condition is invalid.",
+        "invalid_price_decimal": "A price value is invalid.",
+        "invalid_price_rule": "A generated price rule is invalid.",
+        "no_supported_price_rule": "No supported price rule could be generated.",
+        "invalid_record": "The source record is invalid.",
+        "missing_model_id": "The source record has no model identifier.",
+        "invalid_decimal": "The source record contains an invalid decimal value.",
+        "negative_decimal": "The source record contains a negative price.",
+        "invalid_condition": "The source record contains an invalid condition.",
+        "no_supported_pricing": "The source record has no supported pricing dimensions.",
+        "unknown": "The source could not provide a usable price for this model."
       }
     }
   },

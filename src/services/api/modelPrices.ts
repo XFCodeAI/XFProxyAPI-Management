@@ -5,6 +5,13 @@ import { apiClient } from './client';
 export type DecimalString = string;
 export type ModelPriceCoverage = 'priced' | 'partial' | 'unpriced';
 export type ModelPriceSyncSource = 'litellm' | 'openrouter';
+export type ModelPriceSyncCandidateStatus =
+  | 'ready'
+  | 'partial'
+  | 'ambiguous'
+  | 'unmatched'
+  | 'provider_incompatible'
+  | 'rejected';
 
 export interface ModelPriceDimensions {
   inputPerMillion: DecimalString | null;
@@ -111,13 +118,23 @@ export interface ModelPriceSyncCandidate {
   id: string;
   targetProvider: string;
   targetModel: string;
-  status: string;
+  status: ModelPriceSyncCandidateStatus;
   reason: string | null;
   ambiguityReason: string | null;
   rejectionReason: string | null;
-  source: string;
+  source: ModelPriceSyncSource;
   sourceModelId: string;
-  rule: ModelPriceRuleInput;
+  rules: ModelPriceRuleInput[];
+}
+
+export interface ModelPriceSyncCoverage {
+  source: ModelPriceSyncSource;
+  targetProvider: string;
+  targetModel: string;
+  requestedModels: string[];
+  status: ModelPriceSyncCandidateStatus;
+  reason: string | null;
+  candidateIds: string[];
 }
 
 export interface ModelPriceSyncRejection {
@@ -133,6 +150,7 @@ export interface ModelPriceSyncPreview {
   expiresAt: string | null;
   sourceResults: ModelPriceSyncSourceResult[];
   candidates: ModelPriceSyncCandidate[];
+  coverage: ModelPriceSyncCoverage[];
   rejected: ModelPriceSyncRejection[];
 }
 
@@ -244,6 +262,28 @@ const readStringArray = (
 const requireArray = (record: Record<string, unknown>, key: string, context: string): unknown[] => {
   const value = record[key];
   return Array.isArray(value) ? value : invalidResponse(`${context}.${key}`);
+};
+
+const normalizeSyncSource = (value: unknown, context: string): ModelPriceSyncSource => {
+  if (value === 'litellm' || value === 'openrouter') return value;
+  return invalidResponse(context);
+};
+
+const normalizeSyncCandidateStatus = (
+  value: unknown,
+  context: string
+): ModelPriceSyncCandidateStatus => {
+  if (
+    value === 'ready' ||
+    value === 'partial' ||
+    value === 'ambiguous' ||
+    value === 'unmatched' ||
+    value === 'provider_incompatible' ||
+    value === 'rejected'
+  ) {
+    return value;
+  }
+  return invalidResponse(context);
 };
 
 const normalizeDimensions = (value: unknown, context: string): ModelPriceDimensions => {
@@ -417,17 +457,44 @@ const normalizeSyncSourceResult = (value: unknown, context: string): ModelPriceS
 
 const normalizeSyncCandidate = (value: unknown, context: string): ModelPriceSyncCandidate => {
   const record = requireRecord(value, context);
+  const targetProvider = requireString(record, 'target_provider', context);
+  const targetModel = requireString(record, 'target_model', context);
+  const rules = requireArray(record, 'rules', context).map((entry, index) =>
+    normalizeRuleInput(entry, `${context}.rules[${index}]`)
+  );
+  if (rules.length === 0) return invalidResponse(`${context}.rules`);
+  rules.forEach((rule, index) => {
+    if (rule.provider !== targetProvider) {
+      invalidResponse(`${context}.rules[${index}].provider`);
+    }
+    if (rule.model !== targetModel) {
+      invalidResponse(`${context}.rules[${index}].model`);
+    }
+  });
   return {
     id: requireString(record, 'id', context),
-    targetProvider: requireString(record, 'target_provider', context),
-    targetModel: requireString(record, 'target_model', context),
-    status: requireString(record, 'status', context),
+    targetProvider,
+    targetModel,
+    status: normalizeSyncCandidateStatus(record.status, `${context}.status`),
     reason: readNullableString(record, 'reason', context),
     ambiguityReason: readNullableString(record, 'ambiguity_reason', context),
     rejectionReason: readNullableString(record, 'rejection_reason', context),
-    source: requireString(record, 'source', context),
+    source: normalizeSyncSource(record.source, `${context}.source`),
     sourceModelId: requireString(record, 'source_model_id', context),
-    rule: normalizeRuleInput(record.rule, `${context}.rule`),
+    rules,
+  };
+};
+
+const normalizeSyncCoverage = (value: unknown, context: string): ModelPriceSyncCoverage => {
+  const record = requireRecord(value, context);
+  return {
+    source: normalizeSyncSource(record.source, `${context}.source`),
+    targetProvider: requireString(record, 'target_provider', context),
+    targetModel: requireString(record, 'target_model', context),
+    requestedModels: readStringArray(record, 'requested_models', context),
+    status: normalizeSyncCandidateStatus(record.status, `${context}.status`),
+    reason: readNullableString(record, 'reason', context),
+    candidateIds: readStringArray(record, 'candidate_ids', context),
   };
 };
 
@@ -443,6 +510,37 @@ const normalizeSyncRejection = (value: unknown, context: string): ModelPriceSync
 
 export const normalizeModelPriceSyncPreviewResponse = (value: unknown): ModelPriceSyncPreview => {
   const record = requireRecord(value, 'preview');
+  const candidates = requireArray(record, 'candidates', 'preview').map((entry, index) =>
+    normalizeSyncCandidate(entry, `preview.candidates[${index}]`)
+  );
+  const coverage = requireArray(record, 'coverage', 'preview').map((entry, index) =>
+    normalizeSyncCoverage(entry, `preview.coverage[${index}]`)
+  );
+  const candidatesByID = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  if (candidatesByID.size !== candidates.length) return invalidResponse('preview.candidates.id');
+  coverage.forEach((entry, coverageIndex) => {
+    entry.candidateIds.forEach((candidateID, candidateIndex) => {
+      const candidate = candidatesByID.get(candidateID);
+      if (
+        !candidate ||
+        candidate.source !== entry.source ||
+        candidate.targetProvider !== entry.targetProvider ||
+        candidate.targetModel !== entry.targetModel
+      ) {
+        invalidResponse(`preview.coverage[${coverageIndex}].candidate_ids[${candidateIndex}]`);
+      }
+    });
+  });
+  candidates.forEach((candidate, candidateIndex) => {
+    const covered = coverage.some(
+      (entry) =>
+        entry.source === candidate.source &&
+        entry.targetProvider === candidate.targetProvider &&
+        entry.targetModel === candidate.targetModel &&
+        entry.candidateIds.includes(candidate.id)
+    );
+    if (!covered) invalidResponse(`preview.candidates[${candidateIndex}].coverage`);
+  });
   return {
     previewId: requireString(record, 'preview_id', 'preview'),
     stale: requireBoolean(record, 'stale', 'preview'),
@@ -450,9 +548,8 @@ export const normalizeModelPriceSyncPreviewResponse = (value: unknown): ModelPri
     sourceResults: requireArray(record, 'source_results', 'preview').map((entry, index) =>
       normalizeSyncSourceResult(entry, `preview.source_results[${index}]`)
     ),
-    candidates: requireArray(record, 'candidates', 'preview').map((entry, index) =>
-      normalizeSyncCandidate(entry, `preview.candidates[${index}]`)
-    ),
+    candidates,
+    coverage,
     rejected: requireArray(record, 'rejected', 'preview').map((entry, index) =>
       normalizeSyncRejection(entry, `preview.rejected[${index}]`)
     ),

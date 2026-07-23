@@ -1135,6 +1135,18 @@
       "accept_candidate": "接受 {{model}} 的候選",
       "rejected_title": "已拒絕的來源記錄",
       "no_target": "沒有目標模型",
+      "requested_aliases": "請求別名：{{value}}",
+      "no_applicable_source": "沒有可套用到此模型的來源候選。",
+      "base_prices": "基礎價格",
+      "conditional_count": "條件變體：{{count}}",
+      "conditional_only": "此來源僅提供條件定價，基礎價格未知。",
+      "conditional_variants": "條件變體",
+      "all_service_tiers": "全部服務等級",
+      "service_tier_value": "服務等級：{{value}}",
+      "all_contexts": "全部上下文長度",
+      "context_between": "輸入 Token {{min}} 至 {{max}}",
+      "context_at_least": "輸入 Token 至少 {{value}}",
+      "context_at_most": "輸入 Token 最多 {{value}}",
       "sources": {
         "litellm": "LiteLLM",
         "openrouter": "OpenRouter"
@@ -1146,8 +1158,33 @@
       },
       "candidate_status": {
         "ready": "就緒",
+        "partial": "部分可用",
         "ambiguous": "有歧義",
+        "unmatched": "未找到",
+        "provider_incompatible": "供應商不相容",
         "rejected": "已拒絕"
+      },
+      "reasons": {
+        "model_unmatched": "沒有找到相符的來源模型。",
+        "model_ambiguous": "有多個來源候選與此模型相符。",
+        "provider_incompatible": "來源模型屬於不相容的供應商。",
+        "unsupported_source": "不支援此定價來源。",
+        "invalid_source_identity": "來源模型識別無效。",
+        "unsupported_time_condition": "暫不支援依時間生效的定價條件。",
+        "unsupported_cache_duration_condition": "暫不支援快取時長定價條件。",
+        "unsupported_condition": "此來源包含不支援的定價條件。",
+        "unsupported_price_field": "此來源包含不支援的價格維度。",
+        "invalid_context_selector": "上下文長度條件無效。",
+        "invalid_price_decimal": "價格數值無效。",
+        "invalid_price_rule": "產生的價格規則無效。",
+        "no_supported_price_rule": "無法產生受支援的價格規則。",
+        "invalid_record": "來源記錄無效。",
+        "missing_model_id": "來源記錄缺少模型識別。",
+        "invalid_decimal": "來源記錄包含無效的小數。",
+        "negative_decimal": "來源記錄包含負數價格。",
+        "invalid_condition": "來源記錄包含無效條件。",
+        "no_supported_pricing": "來源記錄沒有受支援的價格維度。",
+        "unknown": "此來源無法為該模型提供可用價格。"
       }
     }
   },
