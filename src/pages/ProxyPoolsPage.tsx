@@ -44,6 +44,7 @@ import {
 } from '@/stores';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import type {
+  AuthFileItem,
   ProxyPoolEntry,
   ProxyPoolRebalancePreview,
   ProxyPoolStatusEntry,
@@ -217,6 +218,10 @@ function reconciliationFailureCount(counts: AuthFileReconciliationCounts): numbe
   );
 }
 
+function authFileSupportsProxy(file: AuthFileItem): boolean {
+  return (file.proxy_supported ?? file.proxySupported) !== false;
+}
+
 export function ProxyPoolsPage() {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
@@ -354,7 +359,7 @@ export function ProxyPoolsPage() {
       Array.from(
         new Set(
           authFiles
-            .filter((file) => file.assignable !== false)
+            .filter((file) => file.assignable !== false && authFileSupportsProxy(file))
             .map((file) => String(file.id || file.name || '').trim())
             .filter((id) => id.length > 0)
         )
@@ -1365,6 +1370,12 @@ export function ProxyPoolsPage() {
                                 .map((item) => item.email || item.label || item.fileName || item.id)
                                 .join(', ')
                             : t('proxy_pools.no_bound_credentials', { defaultValue: '未绑定' })}
+                          {status?.unsupportedAssignedCount
+                            ? ` · ${t('proxy_pools.unsupported_bound_credentials', {
+                                defaultValue: '{{count}} 个历史绑定不支持代理',
+                                count: status.unsupportedAssignedCount,
+                              })}`
+                            : ''}
                         </span>
                       </div>
                       <div className={styles.noteCell}>{pool.note || '-'}</div>
@@ -1828,7 +1839,7 @@ export function ProxyPoolsPage() {
               </div>
             ) : (
               authFiles
-                .filter((file) => file.assignable !== false)
+                .filter((file) => file.assignable !== false && authFileSupportsProxy(file))
                 .map((file) => {
                   const name = String(file.name || '').trim();
                   const provider = String(file.provider || file.type || 'Auth').trim();

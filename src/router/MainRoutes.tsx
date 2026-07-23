@@ -58,6 +58,19 @@ const ConfigPage = lazy(() =>
 const LogsPage = lazy(() =>
   import('@/pages/LogsPage').then((module) => ({ default: module.LogsPage }))
 );
+const ModelPricesPage = lazy(() =>
+  import('@/pages/ModelPricesPage').then((module) => ({ default: module.ModelPricesPage }))
+);
+const RequestMonitoringPage = lazy(() =>
+  import('@/pages/RequestMonitoringPage').then((module) => ({
+    default: module.RequestMonitoringPage,
+  }))
+);
+const UsageAnalyticsPage = lazy(() =>
+  import('@/pages/UsageAnalyticsPage').then((module) => ({
+    default: module.UsageAnalyticsPage,
+  }))
+);
 const SystemPage = lazy(() =>
   import('@/pages/SystemPage').then((module) => ({ default: module.SystemPage }))
 );
@@ -104,6 +117,9 @@ const createMainRoutes = (supportsPlugin: boolean) => [
         { path: '/plugin-store', element: <Navigate to="/" replace /> },
       ]),
   { path: '/config', element: <ConfigPage /> },
+  { path: '/model-prices', element: <ModelPricesPage /> },
+  { path: '/usage-analytics', element: <UsageAnalyticsPage /> },
+  { path: '/monitoring', element: <RequestMonitoringPage /> },
   { path: '/logs', element: <LogsPage /> },
   { path: '/migration', element: <MigrationPage /> },
   { path: '/system', element: <SystemPage /> },

@@ -29,6 +29,8 @@ export interface ProxyPoolAssignment {
   label?: string;
   fileName?: string;
   email?: string;
+  proxySupported: boolean;
+  proxySupportStatus: string;
 }
 
 export interface ProxyPoolAssignmentFailure {
@@ -112,6 +114,8 @@ export interface ProxyPoolStatusEntry {
   timezone?: string;
   assignedCount: number;
   assignedTo: ProxyPoolAssignment[];
+  unsupportedAssignedCount: number;
+  unsupportedAssignedTo: ProxyPoolAssignment[];
 }
 
 export type ProxySelectionMode = 'file' | 'smart' | 'proxy' | 'direct';

@@ -1,7 +1,7 @@
 {
   "name": "xfproxyapi-management",
   "private": true,
-  "version": "0.1.15",
+  "version": "0.1.16",
   "type": "module",
   "packageManager": "pnpm@10.17.1",
   "scripts": {
@@ -18,6 +18,8 @@
     "test:provider-dialog-lifecycle": "node tests/providerDialogLifecycle.test.mjs",
     "test:proxy-selection": "node --experimental-strip-types tests/proxySelectionDefault.test.mjs",
     "test:proxy-pools": "node tests/proxyPools.test.mjs",
+    "test:usage-analytics": "node --experimental-strip-types tests/usageAnalytics.test.mjs",
+    "test:dashboard-analytics": "node --experimental-strip-types tests/dashboardAnalytics.test.mjs",
     "build": "tsc --noEmit && vite build",
     "package": "node scripts/package-panel.mjs",
     "verify": "pnpm build && pnpm package",

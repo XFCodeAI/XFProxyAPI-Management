@@ -118,6 +118,9 @@
     "ai_providers": "AI Providers",
     "auth_files": "Auth Files",
     "proxy_pools": "Proxy Pools",
+    "model_prices": "Model Prices",
+    "usage_analytics": "Usage Analytics",
+    "monitoring": "Request Monitoring",
     "quota_management": "Credential Management",
     "credential_quota": "Quota",
     "credential_groups": "Groups",
@@ -141,6 +144,9 @@
     "ai_providers": "Upstream model routing",
     "auth_files": "Auth files & credentials",
     "proxy_pools": "Centralized proxy config",
+    "model_prices": "Price coverage & estimates",
+    "usage_analytics": "Usage, cost & trends",
+    "monitoring": "Request diagnostics & usage",
     "quota_management": "OAuth quota & auth files",
     "credential_quota": "OAuth quota & auth files",
     "credential_groups": "Credential group catalog",
@@ -173,7 +179,59 @@
     "caring_afternoon": "Steady progress — you're doing great.",
     "caring_evening": "Wrapping up nicely — almost there.",
     "caring_night": "Burning the midnight oil? Don't forget to rest.",
-    "system_overview": "System Overview"
+    "system_overview": "System Overview",
+    "analytics": {
+      "title": "Today's Operations",
+      "updated": "Updated {{value}}",
+      "today": "Today",
+      "window_15m": "Last 15 minutes",
+      "metrics": {
+        "calls": "Calls",
+        "cost": "Cost",
+        "success": "Success rate",
+        "rpm": "RPM",
+        "tpm": "TPM",
+        "latency": "P95 latency"
+      },
+      "alerts": {
+        "collector_stale": "Usage collection has not persisted data recently. Check collector health.",
+        "collector_degraded": "Usage collection is dropping events or reporting SQL errors. Check collector health.",
+        "unpriced": "Some calls today have no matching price, so total cost is incomplete.",
+        "no_traffic": "No requests have been recorded today."
+      },
+      "states": {
+        "unavailable": "Operations analytics unavailable",
+        "unavailable_description": "PostgreSQL usage analytics is not enabled on this server.",
+        "error": "Operations analytics failed to load",
+        "no_traffic": "No traffic"
+      },
+      "timeline": {
+        "title": "24-hour traffic",
+        "subtitle": "Successful and failed calls"
+      },
+      "collector": {
+        "title": "Collector health",
+        "healthy": "Healthy",
+        "stale": "Data is stale",
+        "degraded": "Degraded",
+        "persisted": "Persisted",
+        "queue": "Queue",
+        "dropped": "Dropped",
+        "last_success": "Last success"
+      },
+      "top_models": {
+        "title": "Top model cost",
+        "empty": "No priced models"
+      },
+      "failures": {
+        "title": "Recent failures",
+        "subtitle": "Last 24 hours",
+        "empty": "No recent failed requests"
+      },
+      "errors": {
+        "load": "Unable to load operations analytics"
+      }
+    }
   },
   "basic_settings": {
     "title": "Basic Settings",
@@ -898,6 +956,392 @@
     "window": "Last 7 days",
     "oldest": "Oldest",
     "newest": "Latest"
+  },
+  "model_prices": {
+    "title": "Model Prices",
+    "status_unavailable": "Capability unavailable",
+    "last_sync": "Last source sync: {{value}}",
+    "never": "Never",
+    "add_rule": "Add manual rule",
+    "search_placeholder": "Search model, provider, tier, or source",
+    "missing": "Missing",
+    "free_zero": "$0 Free",
+    "per_million_suffix": "/1M",
+    "used": "Used",
+    "unused": "Unused",
+    "no_rule": "No price rule",
+    "default_tier": "Default",
+    "not_configured": "Not configured",
+    "local_rule": "Local manual rule",
+    "missing_dimensions": "Missing: {{dimensions}}",
+    "long_context_value": "> {{threshold}} tokens / input {{input}}x / output {{output}}x",
+    "summary": {
+      "label": "Pricing summary",
+      "rules": "Rules",
+      "used": "Used models",
+      "unpriced": "Unpriced models",
+      "estimated_cost": "Estimated cost",
+      "server_estimate": "Current catalog estimate"
+    },
+    "filters": {
+      "label": "Model price filters",
+      "all": "All",
+      "used": "Used",
+      "unpriced": "Unpriced"
+    },
+    "columns": {
+      "model": "Rule / model",
+      "usage": "Usage / estimate",
+      "prices": "Price dimensions",
+      "scope": "Billing scope",
+      "source": "Provenance"
+    },
+    "coverage": {
+      "priced": "Priced",
+      "partial": "Partial",
+      "unpriced": "Unpriced"
+    },
+    "fields": {
+      "model": "Model",
+      "provider": "Provider",
+      "billing_model": "Billing model",
+      "requested_model": "Requested model",
+      "service_tier": "Service tier",
+      "context_range": "Context range",
+      "context_min_tokens": "Minimum context tokens",
+      "context_max_tokens": "Maximum context tokens",
+      "input": "Input",
+      "output": "Output",
+      "reasoning": "Reasoning",
+      "cache_read": "Cache read",
+      "cache_creation": "Cache creation",
+      "fixed_request": "Fixed request",
+      "multiplier": "Multiplier",
+      "long_context": "Long context",
+      "long_context_threshold": "Threshold tokens",
+      "long_context_input_multiplier": "Input multiplier",
+      "long_context_output_multiplier": "Output multiplier"
+    },
+    "states": {
+      "error_title": "Model prices could not be loaded",
+      "unavailable_title": "Model pricing is unavailable",
+      "unavailable_description": "This server does not expose the model pricing capability.",
+      "stale_description": "Pricing data is stale. Refresh or review a new source sync.",
+      "empty_title": "No price rules",
+      "empty_description": "No manual or synchronized price rules are available.",
+      "filtered_empty_title": "No matching prices",
+      "filtered_empty_description": "No rule or observed model matches the current search and filter."
+    },
+    "editor": {
+      "add_title": "Add manual price rule",
+      "edit_title": "Edit manual price rule",
+      "identity": "Rule identity",
+      "price_dimensions": "Price dimensions",
+      "multipliers": "Price multipliers",
+      "long_context": "Long-context pricing",
+      "per_million_hint": "USD per 1M tokens",
+      "per_request_hint": "USD per request"
+    },
+    "validation": {
+      "required": "Model is required",
+      "provider_required": "Provider is required",
+      "decimal": "Enter a non-negative decimal string",
+      "integer": "Enter a non-negative whole number",
+      "price_required": "Enter at least one price dimension",
+      "context_range": "Minimum context cannot exceed maximum context",
+      "base_price_required": "Set the matching base price first",
+      "threshold_required": "A threshold is required when a multiplier is set",
+      "multiplier_required": "Set at least one multiplier for this threshold"
+    },
+    "delete": {
+      "title": "Delete manual price rule",
+      "message": "Delete the manual rule for {{model}}?"
+    },
+    "notifications": {
+      "created": "Manual price rule added",
+      "updated": "Manual price rule updated",
+      "deleted": "Manual price rule deleted"
+    },
+    "errors": {
+      "load": "Failed to load model prices",
+      "save": "Failed to save price rule",
+      "delete": "Failed to delete price rule",
+      "preview": "Failed to preview source sync",
+      "apply": "Failed to apply source sync"
+    },
+    "sync": {
+      "action": "Sync sources",
+      "title": "Synchronize model prices",
+      "source_required": "Select at least one source",
+      "preview": "Preview",
+      "refresh_preview": "Refresh preview",
+      "apply_count": "Apply accepted ({{count}})",
+      "applied": "Applied {{applied}} price candidates; skipped {{skipped}}",
+      "preview_stale": "This preview is stale. Generate a new preview before applying.",
+      "pending": "Select sources and generate a preview.",
+      "preview_id": "Preview: {{id}}",
+      "expires": "Expires: {{value}}",
+      "source_counts": "Fetched {{fetched}} / candidates {{candidates}} / rejected {{rejected}}",
+      "no_candidates": "No applicable candidates",
+      "accept_candidate": "Accept candidate for {{model}}",
+      "rejected_title": "Rejected source records",
+      "no_target": "No target model",
+      "sources": {
+        "litellm": "LiteLLM",
+        "openrouter": "OpenRouter"
+      },
+      "status": {
+        "ok": "Ready",
+        "partial": "Partial",
+        "error": "Failed"
+      },
+      "candidate_status": {
+        "ready": "Ready",
+        "ambiguous": "Ambiguous",
+        "rejected": "Rejected"
+      }
+    }
+  },
+  "request_monitoring": {
+    "title": "Request Monitoring",
+    "last_refresh": "Updated {{value}}",
+    "status_pending": "Waiting for monitoring data",
+    "credential_fallback": "Unknown credential",
+    "api_key_fallback": "Unknown API key",
+    "auto_refresh": {
+      "label": "Auto refresh interval",
+      "0": "Auto refresh off",
+      "10000": "Every 10 seconds",
+      "30000": "Every 30 seconds",
+      "60000": "Every minute"
+    },
+    "actions": {
+      "export": "Export JSONL",
+      "import": "Import JSONL",
+      "retention": "Retention settings",
+      "filter_requests": "Filter these requests",
+      "open_current": "Open current object",
+      "load_more": "Load more"
+    },
+    "ranges": {
+      "1h": "1 hour",
+      "24h": "24 hours",
+      "7d": "7 days",
+      "30d": "30 days",
+      "custom": "Custom"
+    },
+    "filters": {
+      "time_range": "Monitoring time range",
+      "search": "Search request, model, or identity",
+      "provider": "Provider",
+      "all_providers": "All providers",
+      "result": "Result",
+      "all_results": "All results",
+      "advanced": "Advanced",
+      "clear": "Clear filters",
+      "from": "From",
+      "to": "To",
+      "model": "Resolved model",
+      "all_models": "All models",
+      "credential": "Credential",
+      "all_credentials": "All credentials",
+      "api_key": "API key",
+      "api_key_group": "API key group",
+      "all_api_keys": "All API keys",
+      "failure_category": "Failure category",
+      "all_failures": "All failure categories",
+      "cache": "Cache result",
+      "cache_all": "All cache results",
+      "cache_hit": "Cache hit",
+      "cache_miss": "Cache miss",
+      "min_latency": "Minimum latency (ms)",
+      "max_latency": "Maximum latency (ms)",
+      "request_id": "Request ID",
+      "trace": "Trace value"
+    },
+    "result": {
+      "success": "Success",
+      "failure": "Failure"
+    },
+    "summary": {
+      "label": "Request summary",
+      "requests": "Requests",
+      "success_rate": "Success rate",
+      "estimated_cost": "Estimated cost",
+      "cost_truncated": "Estimate is bounded",
+      "tokens": "Tokens",
+      "p95_latency": "P95 latency",
+      "cache_rate": "Cache hit rate"
+    },
+    "tabs": {
+      "credentials": "Credentials",
+      "api_keys": "API Keys",
+      "requests": "Requests"
+    },
+    "columns": {
+      "credential": "Credential",
+      "api_key": "API key",
+      "requests": "Requests",
+      "failures": "Failures",
+      "tokens": "Tokens",
+      "latency": "Avg latency",
+      "time_provider": "Time / provider",
+      "model": "Model",
+      "identities": "Credential / API key",
+      "tokens_latency": "Tokens / latency",
+      "cost": "Cost",
+      "status": "Status"
+    },
+    "identity": {
+      "current": "Current",
+      "historical": "Historical"
+    },
+    "details": {
+      "request_id": "Request ID",
+      "failure": "Failure evidence",
+      "no_failure": "No failure",
+      "token_breakdown": "Token breakdown",
+      "token_value": "Input {{input}} / output {{output}} / reasoning {{reasoning}} / cache {{cache}}",
+      "timing": "Timing",
+      "current_targets": "Current objects",
+      "no_current_targets": "No current object is available for this historical request.",
+      "safe_headers": "Sanitized response headers",
+      "no_headers": "No safe response headers recorded"
+    },
+    "empty": {
+      "credentials": "No credential activity",
+      "api_keys": "No API key activity",
+      "requests": "No requests match these filters"
+    },
+    "states": {
+      "error_title": "Request monitoring could not be loaded",
+      "unavailable_title": "Request monitoring is unavailable",
+      "unavailable_description": "This server does not expose SQL-backed request monitoring."
+    },
+    "import_confirm": {
+      "title": "Import monitoring records",
+      "message": "Import sanitized records from {{name}}? Existing records are skipped by identity."
+    },
+    "retention": {
+      "title": "Monitoring retention",
+      "days": "Retention days",
+      "events": "Stored events",
+      "oldest": "Oldest event",
+      "bound": "Only events older than the selected period are deleted. Large cleanup runs in bounded batches.",
+      "invalid": "Retention must be a whole number from 1 to 3650 days.",
+      "run": "Delete expired",
+      "run_title": "Delete expired monitoring records",
+      "run_message": "Delete records older than {{days}} days now?"
+    },
+    "notifications": {
+      "exported": "Monitoring records exported",
+      "imported": "Imported {{added}}, skipped {{skipped}}, failed {{failed}}",
+      "retention_saved": "Monitoring retention saved",
+      "retention_ran": "Deleted {{deleted}} records; {{remaining}} remain eligible"
+    },
+    "errors": {
+      "load": "Failed to load request monitoring",
+      "invalid_range": "Choose a valid time range.",
+      "export": "Failed to export monitoring records",
+      "import": "Failed to import monitoring records",
+      "import_file": "Choose a JSONL file no larger than 32 MB.",
+      "retention": "Failed to update monitoring retention"
+    }
+  },
+  "usage_analytics": {
+    "title": "Usage & Cost Analytics",
+    "last_refresh": "Updated {{value}}",
+    "status_pending": "Waiting for analytics data",
+    "actions": { "open_monitoring": "Open in request monitoring" },
+    "filters": {
+      "time_range": "Analytics time range",
+      "granularity": "Granularity",
+      "timezone": "Timezone"
+    },
+    "granularity": { "hour": "Hourly", "day": "Daily" },
+    "views": {
+      "label": "Analytics views",
+      "overview": "Overview",
+      "trends": "Trends",
+      "models": "Models",
+      "api_keys": "API Keys",
+      "credentials": "Credentials",
+      "groups": "Groups",
+      "providers": "Providers",
+      "heatmap": "Heatmap"
+    },
+    "group_views": { "credential-groups": "Credential groups", "api-key-groups": "API Key groups" },
+    "summary": {
+      "label": "Usage summary",
+      "calls": "Calls",
+      "success_rate": "Success rate",
+      "cost": "Estimated cost",
+      "tokens": "Tokens",
+      "p95_latency": "P95 latency",
+      "cache_rate": "Cache hit rate"
+    },
+    "comparison": { "current": "Current period", "previous": "Previous period", "new": "New" },
+    "coverage": {
+      "label": "Cost coverage",
+      "catalog": "Price catalog v{{version}}",
+      "missing": "{{count}} calls have missing price dimensions"
+    },
+    "data_source": {
+      "raw": "Raw events",
+      "rollup": "Hourly rollup",
+      "mixed": "Hourly rollup + raw percentiles"
+    },
+    "token_mix": {
+      "title": "Token mix",
+      "total": "{{value}} total",
+      "input": "Input",
+      "output": "Output",
+      "reasoning": "Reasoning",
+      "cache_read": "Cache read",
+      "cache_creation": "Cache write"
+    },
+    "anomalies": {
+      "title": "Anomalous periods",
+      "count": "{{count}} periods detected",
+      "reasons": {
+        "failure_rate": "Failure rate increased",
+        "latency": "Latency increased",
+        "tokens": "Token spike",
+        "cost": "Cost spike",
+        "cache_hit_rate": "Cache hit rate decreased"
+      }
+    },
+    "trends": { "title": "Period trends", "bucket_count": "{{count}} time buckets" },
+    "metrics": {
+      "calls": "Calls",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "failures": "Failures",
+      "latency": "Latency"
+    },
+    "chart": { "aria": "{{metric}} trend chart" },
+    "rankings": { "identity": "Identity", "latency": "Average latency", "change": "Change" },
+    "identity": { "current": "Current", "historical": "Historical" },
+    "heatmap": {
+      "title": "Weekly hourly distribution",
+      "cell": "{{day}} {{hour}}:00, {{calls}} calls",
+      "days": { "1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat", "7": "Sun" }
+    },
+    "empty": {
+      "overview": "No usage data in this range",
+      "anomalies": "No anomalous periods detected",
+      "trends": "No trend data in this range",
+      "rankings": "No ranking data in this range"
+    },
+    "states": {
+      "error_title": "Usage analytics could not be loaded",
+      "unavailable_title": "Usage analytics is unavailable",
+      "unavailable_description": "This server does not expose SQL-backed usage analytics."
+    },
+    "errors": {
+      "load": "Failed to load usage analytics",
+      "invalid_range": "Select a valid time range."
+    }
   },
   "logs": {
     "title": "Logs Viewer",

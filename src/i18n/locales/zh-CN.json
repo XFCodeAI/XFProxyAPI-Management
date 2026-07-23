@@ -118,6 +118,9 @@
     "ai_providers": "AI 提供商",
     "auth_files": "认证文件",
     "proxy_pools": "代理池",
+    "model_prices": "模型价格",
+    "usage_analytics": "用量分析",
+    "monitoring": "请求监控",
     "quota_management": "凭证管理",
     "credential_quota": "配额管理",
     "credential_groups": "分组管理",
@@ -141,6 +144,9 @@
     "ai_providers": "上游模型路由",
     "auth_files": "Auth 文件与凭证",
     "proxy_pools": "集中管理代理配置",
+    "model_prices": "价格覆盖与估算",
+    "usage_analytics": "用量、成本与趋势",
+    "monitoring": "请求诊断与用量",
     "quota_management": "OAuth 配额与认证文件",
     "credential_quota": "OAuth 配额与认证文件",
     "credential_groups": "凭证分组目录",
@@ -173,7 +179,59 @@
     "caring_afternoon": "稳步推进中，继续加油。",
     "caring_evening": "今天辛苦了，收尾工作做好哦。",
     "caring_night": "夜深了，别忘了早些休息。",
-    "system_overview": "系统概览"
+    "system_overview": "系统概览",
+    "analytics": {
+      "title": "今日运行",
+      "updated": "更新于 {{value}}",
+      "today": "今天",
+      "window_15m": "最近 15 分钟",
+      "metrics": {
+        "calls": "请求",
+        "cost": "成本",
+        "success": "成功率",
+        "rpm": "RPM",
+        "tpm": "TPM",
+        "latency": "P95 延迟"
+      },
+      "alerts": {
+        "collector_stale": "统计采集器长时间未写入数据，请检查采集状态。",
+        "collector_degraded": "统计采集器存在丢弃或写入错误，请检查采集状态。",
+        "unpriced": "今天部分请求缺少价格，成本合计不完整。",
+        "no_traffic": "今天还没有请求记录。"
+      },
+      "states": {
+        "unavailable": "运行统计不可用",
+        "unavailable_description": "当前服务未启用 PostgreSQL 用量统计。",
+        "error": "运行统计加载失败",
+        "no_traffic": "暂无流量"
+      },
+      "timeline": {
+        "title": "24 小时流量",
+        "subtitle": "成功与失败请求"
+      },
+      "collector": {
+        "title": "采集器健康",
+        "healthy": "运行正常",
+        "stale": "数据已过时",
+        "degraded": "运行异常",
+        "persisted": "已写入",
+        "queue": "队列",
+        "dropped": "已丢弃",
+        "last_success": "最后成功"
+      },
+      "top_models": {
+        "title": "模型成本排行",
+        "empty": "暂无已计价模型"
+      },
+      "failures": {
+        "title": "最近失败",
+        "subtitle": "最近 24 小时",
+        "empty": "最近没有失败请求"
+      },
+      "errors": {
+        "load": "无法加载运行统计"
+      }
+    }
   },
   "basic_settings": {
     "title": "基础设置",
@@ -898,6 +956,424 @@
     "window": "最近 7 天",
     "oldest": "最早",
     "newest": "最新"
+  },
+  "model_prices": {
+    "title": "模型价格",
+    "status_unavailable": "能力不可用",
+    "last_sync": "最近来源同步：{{value}}",
+    "never": "从未同步",
+    "add_rule": "新增手动规则",
+    "search_placeholder": "搜索模型、提供商、层级或来源",
+    "missing": "缺失",
+    "free_zero": "$0 免费",
+    "per_million_suffix": "/百万",
+    "used": "已使用",
+    "unused": "未使用",
+    "no_rule": "没有价格规则",
+    "default_tier": "默认",
+    "not_configured": "未配置",
+    "local_rule": "本地手动规则",
+    "missing_dimensions": "缺失：{{dimensions}}",
+    "long_context_value": "> {{threshold}} tokens / 输入 {{input}}x / 输出 {{output}}x",
+    "summary": {
+      "label": "价格摘要",
+      "rules": "规则数",
+      "used": "已用模型",
+      "unpriced": "未定价模型",
+      "estimated_cost": "估算成本",
+      "server_estimate": "按当前目录估算"
+    },
+    "filters": {
+      "label": "模型价格筛选",
+      "all": "全部",
+      "used": "已使用",
+      "unpriced": "未定价"
+    },
+    "columns": {
+      "model": "规则 / 模型",
+      "usage": "用量 / 估算",
+      "prices": "价格维度",
+      "scope": "计费范围",
+      "source": "来源"
+    },
+    "coverage": {
+      "priced": "已定价",
+      "partial": "部分定价",
+      "unpriced": "未定价"
+    },
+    "fields": {
+      "model": "模型",
+      "provider": "提供商",
+      "billing_model": "计费模型",
+      "requested_model": "请求模型",
+      "service_tier": "服务层级",
+      "context_range": "上下文范围",
+      "context_min_tokens": "最小上下文 tokens",
+      "context_max_tokens": "最大上下文 tokens",
+      "input": "输入",
+      "output": "输出",
+      "reasoning": "推理",
+      "cache_read": "缓存读取",
+      "cache_creation": "缓存创建",
+      "fixed_request": "单次请求",
+      "multiplier": "倍率",
+      "long_context": "长上下文",
+      "long_context_threshold": "阈值 tokens",
+      "long_context_input_multiplier": "输入倍率",
+      "long_context_output_multiplier": "输出倍率"
+    },
+    "states": {
+      "error_title": "无法加载模型价格",
+      "unavailable_title": "模型价格能力不可用",
+      "unavailable_description": "当前服务器未提供模型价格管理能力。",
+      "stale_description": "价格数据已过期，请刷新或重新预览来源同步。",
+      "empty_title": "暂无价格规则",
+      "empty_description": "当前没有手动或同步的价格规则。",
+      "filtered_empty_title": "没有匹配的价格",
+      "filtered_empty_description": "当前搜索和筛选条件下没有规则或观测模型。"
+    },
+    "editor": {
+      "add_title": "新增手动价格规则",
+      "edit_title": "编辑手动价格规则",
+      "identity": "规则标识",
+      "price_dimensions": "价格维度",
+      "multipliers": "价格倍率",
+      "long_context": "长上下文定价",
+      "per_million_hint": "美元 / 百万 tokens",
+      "per_request_hint": "美元 / 次请求"
+    },
+    "validation": {
+      "required": "必须填写模型",
+      "provider_required": "必须填写提供商",
+      "decimal": "请输入非负十进制字符串",
+      "integer": "请输入非负整数",
+      "price_required": "至少填写一个价格维度",
+      "context_range": "最小上下文不能大于最大上下文",
+      "base_price_required": "请先填写对应的基础价格",
+      "threshold_required": "设置倍率时必须填写阈值",
+      "multiplier_required": "该阈值至少需要一个倍率"
+    },
+    "delete": {
+      "title": "删除手动价格规则",
+      "message": "确认删除 {{model}} 的手动规则？"
+    },
+    "notifications": {
+      "created": "已新增手动价格规则",
+      "updated": "已更新手动价格规则",
+      "deleted": "已删除手动价格规则"
+    },
+    "errors": {
+      "load": "加载模型价格失败",
+      "save": "保存价格规则失败",
+      "delete": "删除价格规则失败",
+      "preview": "预览来源同步失败",
+      "apply": "应用来源同步失败"
+    },
+    "sync": {
+      "action": "同步来源",
+      "title": "同步模型价格",
+      "source_required": "至少选择一个来源",
+      "preview": "生成预览",
+      "refresh_preview": "刷新预览",
+      "apply_count": "应用已接受项（{{count}}）",
+      "applied": "已应用 {{applied}} 个价格候选，跳过 {{skipped}} 个",
+      "preview_stale": "该预览已过期，请重新生成后再应用。",
+      "pending": "选择来源并生成预览。",
+      "preview_id": "预览：{{id}}",
+      "expires": "过期时间：{{value}}",
+      "source_counts": "获取 {{fetched}} / 候选 {{candidates}} / 拒绝 {{rejected}}",
+      "no_candidates": "没有可应用的候选",
+      "accept_candidate": "接受 {{model}} 的候选",
+      "rejected_title": "已拒绝的来源记录",
+      "no_target": "没有目标模型",
+      "sources": {
+        "litellm": "LiteLLM",
+        "openrouter": "OpenRouter"
+      },
+      "status": {
+        "ok": "就绪",
+        "partial": "部分完成",
+        "error": "失败"
+      },
+      "candidate_status": {
+        "ready": "就绪",
+        "ambiguous": "有歧义",
+        "rejected": "已拒绝"
+      }
+    }
+  },
+  "request_monitoring": {
+    "title": "请求监控",
+    "last_refresh": "更新于 {{value}}",
+    "status_pending": "正在等待监控数据",
+    "credential_fallback": "未知凭证",
+    "api_key_fallback": "未知 API Key",
+    "auto_refresh": {
+      "label": "自动刷新间隔",
+      "0": "关闭自动刷新",
+      "10000": "每 10 秒",
+      "30000": "每 30 秒",
+      "60000": "每分钟"
+    },
+    "actions": {
+      "export": "导出 JSONL",
+      "import": "导入 JSONL",
+      "retention": "保留设置",
+      "filter_requests": "筛选这些请求",
+      "open_current": "打开当前对象",
+      "load_more": "加载更多"
+    },
+    "ranges": {
+      "1h": "1 小时",
+      "24h": "24 小时",
+      "7d": "7 天",
+      "30d": "30 天",
+      "custom": "自定义"
+    },
+    "filters": {
+      "time_range": "监控时间范围",
+      "search": "搜索请求、模型或身份",
+      "provider": "供应商",
+      "all_providers": "全部供应商",
+      "result": "结果",
+      "all_results": "全部结果",
+      "advanced": "高级筛选",
+      "clear": "清除筛选",
+      "from": "开始时间",
+      "to": "结束时间",
+      "model": "实际模型",
+      "all_models": "全部模型",
+      "credential": "凭证",
+      "all_credentials": "全部凭证",
+      "api_key": "API Key",
+      "api_key_group": "API Key 分组",
+      "all_api_keys": "全部 API Key",
+      "failure_category": "失败分类",
+      "all_failures": "全部失败分类",
+      "cache": "缓存结果",
+      "cache_all": "全部缓存结果",
+      "cache_hit": "缓存命中",
+      "cache_miss": "缓存未命中",
+      "min_latency": "最低延迟（毫秒）",
+      "max_latency": "最高延迟（毫秒）",
+      "request_id": "请求 ID",
+      "trace": "追踪值"
+    },
+    "result": {
+      "success": "成功",
+      "failure": "失败"
+    },
+    "summary": {
+      "label": "请求摘要",
+      "requests": "请求数",
+      "success_rate": "成功率",
+      "estimated_cost": "估算成本",
+      "cost_truncated": "估算范围受限",
+      "tokens": "Token 数",
+      "p95_latency": "P95 延迟",
+      "cache_rate": "缓存命中率"
+    },
+    "tabs": {
+      "credentials": "凭证",
+      "api_keys": "API Key",
+      "requests": "请求"
+    },
+    "columns": {
+      "credential": "凭证",
+      "api_key": "API Key",
+      "requests": "请求数",
+      "failures": "失败数",
+      "tokens": "Token 数",
+      "latency": "平均延迟",
+      "time_provider": "时间 / 供应商",
+      "model": "模型",
+      "identities": "凭证 / API Key",
+      "tokens_latency": "Token / 延迟",
+      "cost": "成本",
+      "status": "状态"
+    },
+    "identity": {
+      "current": "当前有效",
+      "historical": "历史记录"
+    },
+    "details": {
+      "request_id": "请求 ID",
+      "failure": "失败依据",
+      "no_failure": "无失败",
+      "token_breakdown": "Token 明细",
+      "token_value": "输入 {{input}} / 输出 {{output}} / 推理 {{reasoning}} / 缓存 {{cache}}",
+      "timing": "耗时",
+      "current_targets": "当前对象",
+      "no_current_targets": "该历史请求没有可打开的当前对象。",
+      "safe_headers": "已脱敏响应头",
+      "no_headers": "未记录可安全展示的响应头"
+    },
+    "empty": {
+      "credentials": "暂无凭证活动",
+      "api_keys": "暂无 API Key 活动",
+      "requests": "没有符合当前筛选条件的请求"
+    },
+    "states": {
+      "error_title": "无法加载请求监控",
+      "unavailable_title": "请求监控不可用",
+      "unavailable_description": "当前服务器未提供基于 SQL 的请求监控能力。"
+    },
+    "import_confirm": {
+      "title": "导入监控记录",
+      "message": "确定从 {{name}} 导入已脱敏记录吗？已有记录会按唯一标识跳过。"
+    },
+    "retention": {
+      "title": "监控数据保留",
+      "days": "保留天数",
+      "events": "已存事件",
+      "oldest": "最早事件",
+      "bound": "只删除早于所选期限的事件，大批量清理会分批执行。",
+      "invalid": "保留天数必须是 1 到 3650 之间的整数。",
+      "run": "删除过期记录",
+      "run_title": "删除过期监控记录",
+      "run_message": "现在删除早于 {{days}} 天的记录吗？"
+    },
+    "notifications": {
+      "exported": "监控记录已导出",
+      "imported": "已导入 {{added}} 条，跳过 {{skipped}} 条，失败 {{failed}} 条",
+      "retention_saved": "监控数据保留设置已保存",
+      "retention_ran": "已删除 {{deleted}} 条，仍有 {{remaining}} 条符合清理条件"
+    },
+    "errors": {
+      "load": "加载请求监控失败",
+      "invalid_range": "请选择有效的时间范围。",
+      "export": "导出监控记录失败",
+      "import": "导入监控记录失败",
+      "import_file": "请选择不超过 32 MB 的 JSONL 文件。",
+      "retention": "更新监控数据保留设置失败"
+    }
+  },
+  "usage_analytics": {
+    "title": "用量与成本分析",
+    "last_refresh": "更新于 {{value}}",
+    "status_pending": "正在等待分析数据",
+    "actions": {
+      "open_monitoring": "在请求监控中打开"
+    },
+    "filters": {
+      "time_range": "分析时间范围",
+      "granularity": "时间粒度",
+      "timezone": "时区"
+    },
+    "granularity": {
+      "hour": "按小时",
+      "day": "按天"
+    },
+    "views": {
+      "label": "分析视图",
+      "overview": "概览",
+      "trends": "趋势",
+      "models": "模型",
+      "api_keys": "API Key",
+      "credentials": "凭证",
+      "groups": "分组",
+      "providers": "供应商",
+      "heatmap": "热力图"
+    },
+    "group_views": {
+      "credential-groups": "凭证分组",
+      "api-key-groups": "API Key 分组"
+    },
+    "summary": {
+      "label": "用量摘要",
+      "calls": "调用数",
+      "success_rate": "成功率",
+      "cost": "估算成本",
+      "tokens": "Token 数",
+      "p95_latency": "P95 延迟",
+      "cache_rate": "缓存命中率"
+    },
+    "comparison": {
+      "current": "当前周期",
+      "previous": "上一周期",
+      "new": "新增"
+    },
+    "coverage": {
+      "label": "成本覆盖率",
+      "catalog": "价格目录 v{{version}}",
+      "missing": "{{count}} 次调用缺少价格维度"
+    },
+    "data_source": {
+      "raw": "原始事件",
+      "rollup": "小时汇总",
+      "mixed": "小时汇总 + 原始分位数"
+    },
+    "token_mix": {
+      "title": "Token 构成",
+      "total": "合计 {{value}}",
+      "input": "输入",
+      "output": "输出",
+      "reasoning": "推理",
+      "cache_read": "缓存读取",
+      "cache_creation": "缓存写入"
+    },
+    "anomalies": {
+      "title": "异常时段",
+      "count": "检测到 {{count}} 个时段",
+      "reasons": {
+        "failure_rate": "失败率升高",
+        "latency": "延迟升高",
+        "tokens": "Token 激增",
+        "cost": "成本激增",
+        "cache_hit_rate": "缓存命中率下降"
+      }
+    },
+    "trends": {
+      "title": "周期趋势",
+      "bucket_count": "{{count}} 个时间桶"
+    },
+    "metrics": {
+      "calls": "调用",
+      "tokens": "Token",
+      "cost": "成本",
+      "failures": "失败",
+      "latency": "延迟"
+    },
+    "chart": {
+      "aria": "{{metric}}趋势图"
+    },
+    "rankings": {
+      "identity": "对象",
+      "latency": "平均延迟",
+      "change": "环比"
+    },
+    "identity": {
+      "current": "当前有效",
+      "historical": "历史记录"
+    },
+    "heatmap": {
+      "title": "每周时段分布",
+      "cell": "{{day}} {{hour}}:00，{{calls}} 次调用",
+      "days": {
+        "1": "周一",
+        "2": "周二",
+        "3": "周三",
+        "4": "周四",
+        "5": "周五",
+        "6": "周六",
+        "7": "周日"
+      }
+    },
+    "empty": {
+      "overview": "当前范围没有用量数据",
+      "anomalies": "当前范围未检测到异常时段",
+      "trends": "当前范围没有趋势数据",
+      "rankings": "当前范围没有排名数据"
+    },
+    "states": {
+      "error_title": "无法加载用量分析",
+      "unavailable_title": "用量分析不可用",
+      "unavailable_description": "当前服务器未提供基于 SQL 的用量分析能力。"
+    },
+    "errors": {
+      "load": "加载用量分析失败",
+      "invalid_range": "请选择有效的时间范围。"
+    }
   },
   "logs": {
     "title": "日志查看",

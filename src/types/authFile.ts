@@ -33,6 +33,10 @@ export interface AuthFileItem {
   disabled?: boolean;
   unavailable?: boolean;
   assignable?: boolean;
+  proxySupported?: boolean;
+  proxy_supported?: boolean;
+  proxySupportStatus?: string;
+  proxy_support_status?: string;
   admission?: 'builtin' | 'plugin' | string;
   status?: string;
   statusMessage?: string;

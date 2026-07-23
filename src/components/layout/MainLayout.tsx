@@ -2,10 +2,13 @@ import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } 
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  Activity,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   ArrowRightLeft,
   CircleDot,
+  DollarSign,
   Languages,
   LogOut,
   Menu,
@@ -66,6 +69,9 @@ const sidebarIcons: Record<string, ReactNode> = {
   plugins: <IconSidebarPlugins size={18} />,
   pluginStore: <IconSidebarStore size={18} />,
   config: <IconSidebarConfig size={18} />,
+  modelPrices: <DollarSign size={18} />,
+  usageAnalytics: <BarChart3 size={18} />,
+  monitoring: <Activity size={18} />,
   logs: <IconSidebarLogs size={18} />,
   migration: <ArrowRightLeft size={18} />,
   system: <IconSidebarSystem size={18} />,
@@ -453,6 +459,24 @@ export function MainLayout() {
               icon: <span className="nav-sub-dot" aria-hidden="true" />,
             },
           ],
+        },
+        {
+          path: '/model-prices',
+          labelKey: 'nav.model_prices',
+          metaKey: 'nav_meta.model_prices',
+          icon: sidebarIcons.modelPrices,
+        },
+        {
+          path: '/usage-analytics',
+          labelKey: 'nav.usage_analytics',
+          metaKey: 'nav_meta.usage_analytics',
+          icon: sidebarIcons.usageAnalytics,
+        },
+        {
+          path: '/monitoring',
+          labelKey: 'nav.monitoring',
+          metaKey: 'nav_meta.monitoring',
+          icon: sidebarIcons.monitoring,
         },
         {
           path: '/logs',

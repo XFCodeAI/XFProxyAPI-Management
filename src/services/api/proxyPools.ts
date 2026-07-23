@@ -259,6 +259,9 @@ function normalizeAssignments(value: unknown): ProxyPoolStatusEntry['assignedTo'
       label: readString(item, 'label') || undefined,
       fileName: readString(item, 'file_name') || undefined,
       email: readString(item, 'email') || undefined,
+      proxySupported: readBool(item, 'proxy_supported', true),
+      proxySupportStatus:
+        readString(item, 'proxy_support_status') || readString(item, 'proxySupportStatus'),
     });
     return items;
   }, []);
@@ -272,6 +275,15 @@ function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
   const reportedAssignedCount = readOptionalNumberAlias(value, 'assigned_count', 'assignedCount');
   const assignedTo =
     reportedAssignedCount === 0 ? [] : normalizeAssignments(value.assigned_to ?? value.assignedTo);
+  const reportedUnsupportedAssignedCount = readOptionalNumberAlias(
+    value,
+    'unsupported_assigned_count',
+    'unsupportedAssignedCount'
+  );
+  const unsupportedAssignedTo =
+    reportedUnsupportedAssignedCount === 0
+      ? []
+      : normalizeAssignments(value.unsupported_assigned_to ?? value.unsupportedAssignedTo);
   return {
     id,
     name: readString(value, 'name') || DEFAULT_PROXY_POOL_NAME,
@@ -301,6 +313,8 @@ function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
     timezone: readString(value, 'timezone') || undefined,
     assignedCount: assignedTo.length,
     assignedTo,
+    unsupportedAssignedCount: unsupportedAssignedTo.length,
+    unsupportedAssignedTo,
   };
 }
 
