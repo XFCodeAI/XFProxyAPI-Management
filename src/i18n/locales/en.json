@@ -970,7 +970,19 @@
     "used": "Used",
     "unused": "Unused",
     "no_rule": "No price rule",
+    "no_default_rule": "No default price",
     "default_tier": "Default",
+    "uses_input_rate": "Uses input rate",
+    "variants": "Conditional variants",
+    "conflicts": "Conflicts",
+    "conflict": "Conflict",
+    "expand_variants": "Expand price variants",
+    "collapse_variants": "Collapse price variants",
+    "variant_details": "Conditional price variants",
+    "variant_details_for": "Price variants for {{model}}",
+    "variant_count": "{{count}} variants / {{conflicts}} conflicts",
+    "context_value": "Context {{min}} - {{max}} tokens",
+    "no_limit": "No limit",
     "not_configured": "Not configured",
     "local_rule": "Local manual rule",
     "missing_dimensions": "Missing: {{dimensions}}",
@@ -978,6 +990,7 @@
     "summary": {
       "label": "Pricing summary",
       "rules": "Rules",
+      "models": "Models",
       "used": "Used models",
       "unpriced": "Unpriced models",
       "estimated_cost": "Estimated cost",
@@ -990,10 +1003,11 @@
       "unpriced": "Unpriced"
     },
     "columns": {
-      "model": "Rule / model",
+      "model": "Model",
       "usage": "Usage / estimate",
       "prices": "Price dimensions",
       "scope": "Billing scope",
+      "variants": "Variants / aliases",
       "source": "Provenance"
     },
     "coverage": {
@@ -1013,6 +1027,7 @@
       "input": "Input",
       "output": "Output",
       "reasoning": "Reasoning",
+      "reasoning_independent": "Independent reasoning",
       "cache_read": "Cache read",
       "cache_creation": "Cache creation",
       "fixed_request": "Fixed request",
@@ -1057,15 +1072,22 @@
       "title": "Delete manual price rule",
       "message": "Delete the manual rule for {{model}}?"
     },
+    "delete_entry": {
+      "action": "Delete model pricing",
+      "title": "Delete model pricing",
+      "message": "Delete every price rule for {{provider}} / {{model}}, including the default and conditional variants?"
+    },
     "notifications": {
       "created": "Manual price rule added",
       "updated": "Manual price rule updated",
-      "deleted": "Manual price rule deleted"
+      "deleted": "Manual price rule deleted",
+      "entry_deleted": "All price rules for the model were deleted"
     },
     "errors": {
       "load": "Failed to load model prices",
       "save": "Failed to save price rule",
       "delete": "Failed to delete price rule",
+      "delete_entry": "Failed to delete model pricing",
       "preview": "Failed to preview source sync",
       "apply": "Failed to apply source sync"
     },

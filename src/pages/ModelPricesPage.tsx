@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock3,
   CloudDownload,
   DollarSign,
@@ -101,6 +103,8 @@ export function ModelPricesPage() {
   const [draftErrors, setDraftErrors] = useState<ModelPriceDraftErrors>({});
   const [savingRule, setSavingRule] = useState(false);
   const [mutatingRuleID, setMutatingRuleID] = useState<string | null>(null);
+  const [mutatingEntryKey, setMutatingEntryKey] = useState<string | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [syncOpen, setSyncOpen] = useState(false);
   const [syncSources, setSyncSources] = useState<Set<ModelPriceSyncSource>>(
     () => new Set(SYNC_SOURCES)
@@ -249,6 +253,42 @@ export function ModelPricesPage() {
     });
   };
 
+  const deleteEntry = (row: ModelPriceRow) => {
+    if (!availableCatalog) return;
+    const expectedCatalogVersion = availableCatalog.catalogVersion;
+    showConfirmation({
+      title: t('model_prices.delete_entry.title'),
+      message: t('model_prices.delete_entry.message', {
+        provider: row.provider,
+        model: row.model,
+      }),
+      confirmText: t('common.delete'),
+      cancelText: t('common.cancel'),
+      variant: 'danger',
+      onConfirm: async () => {
+        setMutatingEntryKey(row.key);
+        try {
+          await modelPricesApi.deleteEntry(row.provider, row.model, expectedCatalogVersion);
+          showNotification(t('model_prices.notifications.entry_deleted'), 'success');
+          setExpandedRows((current) => {
+            const next = new Set(current);
+            next.delete(row.key);
+            return next;
+          });
+          await loadCatalog();
+        } catch (error: unknown) {
+          showNotification(
+            `${t('model_prices.errors.delete_entry')}: ${getErrorMessage(error, t('common.unknown_error'))}`,
+            'error'
+          );
+          throw error;
+        } finally {
+          setMutatingEntryKey(null);
+        }
+      },
+    });
+  };
+
   const openSync = () => {
     setSyncSources(new Set(SYNC_SOURCES));
     setSyncPreview(null);
@@ -333,8 +373,8 @@ export function ModelPricesPage() {
   const renderSummary = (currentCatalog: ModelPriceCatalogAvailable) => (
     <section className={styles.summaryStrip} aria-label={t('model_prices.summary.label')}>
       <div className={styles.summaryMetric}>
-        <span>{t('model_prices.summary.rules')}</span>
-        <strong>{currentCatalog.summary.ruleCount.toLocaleString(i18n.language)}</strong>
+        <span>{t('model_prices.summary.models')}</span>
+        <strong>{currentCatalog.summary.modelCount.toLocaleString(i18n.language)}</strong>
       </div>
       <div className={styles.summaryMetric}>
         <span>{t('model_prices.summary.used')}</span>
@@ -361,18 +401,64 @@ export function ModelPricesPage() {
     </section>
   );
 
-  const renderRulePrices = (rule: ModelPriceRule) => {
+  const renderRulePrices = (rule: ModelPriceRule, compact = false) => {
+    const cacheReadFallback = rule.prices.cacheReadPerMillion === null;
+    const cacheCreationFallback = rule.prices.cacheCreationPerMillion === null;
     const values = [
-      ['input', rule.prices.inputPerMillion, rule.multipliers.input],
-      ['output', rule.prices.outputPerMillion, rule.multipliers.output],
-      ['reasoning', rule.prices.reasoningPerMillion, rule.multipliers.reasoning],
-      ['cache_read', rule.prices.cacheReadPerMillion, rule.multipliers.cacheRead],
-      ['cache_creation', rule.prices.cacheCreationPerMillion, rule.multipliers.cacheCreation],
-      ['fixed_request', rule.prices.fixedRequest, rule.multipliers.fixedRequest],
-    ] as const;
+      {
+        key: 'input',
+        value: rule.prices.inputPerMillion,
+        multiplier: rule.multipliers.input,
+        fallback: false,
+      },
+      {
+        key: 'cache_read',
+        value: rule.prices.cacheReadPerMillion ?? rule.prices.inputPerMillion,
+        multiplier: cacheReadFallback ? rule.multipliers.input : rule.multipliers.cacheRead,
+        fallback: cacheReadFallback && rule.prices.inputPerMillion !== null,
+      },
+      {
+        key: 'output',
+        value: rule.prices.outputPerMillion,
+        multiplier: rule.multipliers.output,
+        fallback: false,
+      },
+      ...(!compact
+        ? [
+            {
+              key: 'cache_creation',
+              value: rule.prices.cacheCreationPerMillion ?? rule.prices.inputPerMillion,
+              multiplier: cacheCreationFallback
+                ? rule.multipliers.input
+                : rule.multipliers.cacheCreation,
+              fallback: cacheCreationFallback && rule.prices.inputPerMillion !== null,
+            },
+          ]
+        : []),
+      ...(rule.prices.reasoningPerMillion !== null
+        ? [
+            {
+              key: 'reasoning_independent',
+              value: rule.prices.reasoningPerMillion,
+              multiplier: rule.multipliers.reasoning,
+              fallback: false,
+            },
+          ]
+        : []),
+      ...(!compact
+        ? [
+            {
+              key: 'fixed_request',
+              value: rule.prices.fixedRequest,
+              multiplier: rule.multipliers.fixedRequest,
+              fallback: false,
+            },
+          ]
+        : []),
+    ];
     return (
-      <div className={styles.priceGrid}>
-        {values.map(([key, value, multiplier]) => (
+      <div className={`${styles.priceGrid} ${compact ? styles.priceGridCompact : ''}`}>
+        {values.map(({ key, value, multiplier, fallback }) => (
           <div className={styles.priceField} key={key}>
             <span>{t(`model_prices.fields.${key}`)}</span>
             <PriceValue
@@ -381,161 +467,256 @@ export function ModelPricesPage() {
               freeLabel={t('model_prices.free_zero')}
               suffix={key === 'fixed_request' ? '' : t('model_prices.per_million_suffix')}
             />
-            <small
-              className={styles.multiplierValue}
-              title={t('model_prices.fields.multiplier', { defaultValue: 'Multiplier' })}
-            >
-              {`x ${multiplier ?? t('model_prices.not_configured')}`}
-            </small>
+            {fallback ? (
+              <small className={styles.rateNote}>{t('model_prices.uses_input_rate')}</small>
+            ) : null}
+            {multiplier !== null ? (
+              <small
+                className={styles.multiplierValue}
+                title={t('model_prices.fields.multiplier', { defaultValue: 'Multiplier' })}
+              >
+                {`x ${multiplier}`}
+              </small>
+            ) : null}
           </div>
         ))}
       </div>
     );
   };
 
-  const renderRow = (row: ModelPriceRow) => {
-    const rule = row.kind === 'rule' ? row.rule : null;
-    const estimatedCost = rule
-      ? formatEstimatedCost(
-          rule.estimatedCost,
-          availableCatalog?.summary.currency ?? 'USD',
-          t('model_prices.missing')
-        )
-      : t('model_prices.missing');
+  const renderRuleActions = (rule: ModelPriceRule, allowDelete = true) =>
+    rule.source.kind === 'manual' ? (
+      <>
+        <TooltipIconButton
+          label={t('common.edit')}
+          onClick={() => openEditEditor(rule)}
+          disabled={
+            disabled || savingRule || mutatingRuleID === rule.id || mutatingEntryKey !== null
+          }
+        >
+          <Pencil size={16} />
+        </TooltipIconButton>
+        {allowDelete ? (
+          <TooltipIconButton
+            label={t('common.delete')}
+            onClick={() => deleteRule(rule)}
+            disabled={
+              disabled || savingRule || mutatingRuleID === rule.id || mutatingEntryKey !== null
+            }
+          >
+            <Trash2 size={16} />
+          </TooltipIconButton>
+        ) : null}
+      </>
+    ) : null;
+
+  const renderRuleSource = (rule: ModelPriceRule) => {
+    const sourceIdentity = [rule.source.provider, rule.source.model].filter(Boolean).join(' / ');
     return (
-      <div className={styles.dataRow} key={row.key}>
-        <div className={styles.modelCell}>
-          <div className={styles.modelLine}>
-            <strong title={row.model}>{row.model}</strong>
-            {row.kind === 'unpriced' ? (
-              <span className={`${styles.badge} ${styles.badgeUnpriced}`}>
-                {t('model_prices.coverage.unpriced')}
-              </span>
-            ) : (
+      <>
+        <span
+          className={`${styles.badge} ${
+            rule.source.kind === 'manual' ? styles.badgeManual : styles.badgeSource
+          }`}
+        >
+          {rule.source.kind}
+        </span>
+        <strong title={sourceIdentity || undefined}>
+          {sourceIdentity || t('model_prices.local_rule')}
+        </strong>
+        <span title={rule.source.url ?? undefined}>
+          {formatTimestamp(
+            rule.source.fetchedAt ?? rule.updatedAt,
+            i18n.language,
+            t('common.not_set')
+          )}
+        </span>
+      </>
+    );
+  };
+
+  const renderConditionalRule = (rule: ModelPriceRule, conflict: boolean) => (
+    <div className={styles.variantRule} data-conflict={conflict} key={rule.id}>
+      <div className={styles.variantIdentity}>
+        <div>
+          <strong>{rule.serviceTier ?? t('model_prices.default_tier')}</strong>
+          {conflict ? (
+            <span className={`${styles.badge} ${styles.badgeUnpriced}`}>
+              {t('model_prices.conflict')}
+            </span>
+          ) : null}
+        </div>
+        <span>
+          {t('model_prices.context_value', {
+            min: rule.contextMinTokens ?? 0,
+            max: rule.contextMaxTokens ?? t('model_prices.no_limit'),
+          })}
+        </span>
+        {rule.missingDimensions.length ? (
+          <small>
+            {t('model_prices.missing_dimensions', {
+              dimensions: rule.missingDimensions.join(', '),
+            })}
+          </small>
+        ) : null}
+      </div>
+      <div className={styles.variantPrices}>{renderRulePrices(rule)}</div>
+      <div className={styles.variantSource}>{renderRuleSource(rule)}</div>
+      <div className={styles.variantActions}>{renderRuleActions(rule)}</div>
+    </div>
+  );
+
+  const renderRow = (row: ModelPriceRow) => {
+    const { entry } = row;
+    const rule = entry.default;
+    const representativeRule = rule ?? entry.variants[0] ?? entry.conflicts[0] ?? null;
+    const detailCount = entry.variants.length + entry.conflicts.length;
+    const expanded = expandedRows.has(row.key);
+    const detailsID = `model-price-${row.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const estimatedCost = formatEstimatedCost(
+      entry.estimatedCost,
+      availableCatalog?.summary.currency ?? 'USD',
+      t('model_prices.missing')
+    );
+    return (
+      <Fragment key={row.key}>
+        <div className={styles.dataRow} data-expanded={expanded}>
+          <div className={styles.modelCell}>
+            <div className={styles.modelLine}>
+              <strong title={row.model}>{row.model}</strong>
               <span
                 className={`${styles.badge} ${
-                  rule?.coverage === 'priced'
+                  entry.coverage === 'priced'
                     ? styles.badgePriced
-                    : rule?.coverage === 'partial'
+                    : entry.coverage === 'partial'
                       ? styles.badgePartial
                       : styles.badgeUnpriced
                 }`}
               >
-                {t(`model_prices.coverage.${rule?.coverage}`)}
+                {t(`model_prices.coverage.${entry.coverage}`)}
               </span>
+            </div>
+            <span className={styles.secondaryText}>{row.provider}</span>
+            {entry.missingDimensions.length ? (
+              <span className={styles.reasonText}>
+                {t('model_prices.missing_dimensions', {
+                  dimensions: entry.missingDimensions.join(', '),
+                })}
+              </span>
+            ) : null}
+          </div>
+
+          <div className={styles.usageCell}>
+            <span className={styles.mobileLabel}>{t('model_prices.columns.usage')}</span>
+            <strong>{row.requestCount.toLocaleString(i18n.language)}</strong>
+            <span>{row.used ? t('model_prices.used') : t('model_prices.unused')}</span>
+            <small>{estimatedCost}</small>
+          </div>
+
+          <div className={styles.pricesCell}>
+            <span className={styles.mobileLabel}>{t('model_prices.columns.prices')}</span>
+            {rule ? (
+              renderRulePrices(rule, true)
+            ) : (
+              <div className={styles.missingPriceBlock}>
+                <AlertTriangle size={15} />
+                <span>
+                  {detailCount > 0 ? t('model_prices.no_default_rule') : t('model_prices.no_rule')}
+                </span>
+                {entry.missingDimensions.length ? (
+                  <small>{entry.missingDimensions.join(', ')}</small>
+                ) : null}
+              </div>
             )}
           </div>
-          <span className={styles.secondaryText}>
-            {[row.provider, row.serviceTier].filter(Boolean).join(' / ') || t('common.not_set')}
-          </span>
-          {row.kind === 'unpriced' ? (
-            <span className={styles.reasonText}>{row.modelGap.reason}</span>
-          ) : rule?.missingDimensions.length ? (
-            <span className={styles.reasonText}>
-              {t('model_prices.missing_dimensions', {
-                dimensions: rule.missingDimensions.join(', '),
-              })}
-            </span>
-          ) : null}
-        </div>
 
-        <div className={styles.usageCell}>
-          <span className={styles.mobileLabel}>{t('model_prices.columns.usage')}</span>
-          <strong>{row.requestCount.toLocaleString(i18n.language)}</strong>
-          <span>{row.used ? t('model_prices.used') : t('model_prices.unused')}</span>
-          <small>{estimatedCost}</small>
-        </div>
-
-        <div className={styles.pricesCell}>
-          <span className={styles.mobileLabel}>{t('model_prices.columns.prices')}</span>
-          {row.kind === 'rule' ? (
-            renderRulePrices(row.rule)
-          ) : (
-            <div className={styles.missingPriceBlock}>
-              <AlertTriangle size={15} />
-              <span>{t('model_prices.no_rule')}</span>
-              {row.modelGap.missingDimensions.length ? (
-                <small>{row.modelGap.missingDimensions.join(', ')}</small>
-              ) : null}
-            </div>
-          )}
-        </div>
-
-        <div className={styles.scopeCell}>
-          <span className={styles.mobileLabel}>{t('model_prices.columns.scope')}</span>
-          {row.kind === 'unpriced' ? (
+          <div className={styles.scopeCell}>
+            <span className={styles.mobileLabel}>{t('model_prices.columns.variants')}</span>
             <div>
-              <span>
-                {t('model_prices.fields.requested_model', { defaultValue: 'Requested model' })}
-              </span>
-              <strong>{row.modelGap.requestedModel ?? t('common.not_set')}</strong>
+              <span>{t('model_prices.variants')}</span>
+              <strong>{entry.variants.length.toLocaleString(i18n.language)}</strong>
             </div>
-          ) : (
-            <>
+            {entry.requestedModels.length ? (
               <div>
-                <span>{t('model_prices.fields.service_tier')}</span>
-                <strong>{row.serviceTier ?? t('model_prices.default_tier')}</strong>
-              </div>
-              <div>
-                <span>
-                  {t('model_prices.fields.context_range', { defaultValue: 'Context range' })}
-                </span>
-                <strong>
-                  {`${row.rule.contextMinTokens ?? 0} - ${row.rule.contextMaxTokens ?? t('common.not_set')}`}
+                <span>{t('model_prices.fields.requested_model')}</span>
+                <strong title={entry.requestedModels.join(', ')}>
+                  {entry.requestedModels.join(', ')}
                 </strong>
               </div>
-            </>
-          )}
-        </div>
+            ) : null}
+            {entry.conflicts.length ? (
+              <div>
+                <span>{t('model_prices.conflicts')}</span>
+                <strong className={styles.conflictValue}>{entry.conflicts.length}</strong>
+              </div>
+            ) : null}
+          </div>
 
-        <div className={styles.sourceCell}>
-          <span className={styles.mobileLabel}>{t('model_prices.columns.source')}</span>
-          {rule ? (
-            <>
-              <span
-                className={`${styles.badge} ${
-                  rule.source.kind === 'manual' ? styles.badgeManual : styles.badgeSource
-                }`}
-              >
-                {rule.source.kind}
-              </span>
-              <strong title={rule.source.model ?? undefined}>
-                {rule.source.model ?? t('model_prices.local_rule')}
-              </strong>
-              <span title={rule.source.url ?? undefined}>
-                {formatTimestamp(
-                  rule.source.fetchedAt ?? rule.updatedAt,
-                  i18n.language,
-                  t('common.not_set')
+          <div className={styles.sourceCell}>
+            <span className={styles.mobileLabel}>{t('model_prices.columns.source')}</span>
+            {representativeRule ? (
+              renderRuleSource(representativeRule)
+            ) : (
+              <span className={styles.priceMissing}>{t('model_prices.missing')}</span>
+            )}
+          </div>
+
+          <div className={styles.actionsCell}>
+            {detailCount > 0 ? (
+              <TooltipIconButton
+                label={t(
+                  expanded ? 'model_prices.collapse_variants' : 'model_prices.expand_variants'
                 )}
-              </span>
-            </>
-          ) : (
-            <span className={styles.priceMissing}>{t('model_prices.missing')}</span>
-          )}
-        </div>
-
-        <div className={styles.actionsCell}>
-          {rule?.source.kind === 'manual' ? (
-            <>
-              <TooltipIconButton
-                label={t('common.edit')}
-                onClick={() => openEditEditor(rule)}
-                disabled={disabled || savingRule || mutatingRuleID === rule.id}
+                onClick={() =>
+                  setExpandedRows((current) => {
+                    const next = new Set(current);
+                    if (next.has(row.key)) next.delete(row.key);
+                    else next.add(row.key);
+                    return next;
+                  })
+                }
+                aria-expanded={expanded}
+                aria-controls={detailsID}
               >
-                <Pencil size={16} />
+                {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               </TooltipIconButton>
+            ) : null}
+            {rule ? renderRuleActions(rule, false) : null}
+            {representativeRule ? (
               <TooltipIconButton
-                label={t('common.delete')}
-                onClick={() => deleteRule(rule)}
-                disabled={disabled || savingRule || mutatingRuleID === rule.id}
+                label={t('model_prices.delete_entry.action')}
+                onClick={() => deleteEntry(row)}
+                disabled={
+                  disabled || savingRule || mutatingRuleID !== null || mutatingEntryKey !== null
+                }
               >
                 <Trash2 size={16} />
               </TooltipIconButton>
-            </>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      </div>
+
+        {expanded ? (
+          <div
+            className={styles.variantDetail}
+            id={detailsID}
+            role="region"
+            aria-label={t('model_prices.variant_details_for', { model: row.model })}
+          >
+            <div className={styles.variantDetailHeader}>
+              <strong>{t('model_prices.variant_details')}</strong>
+              <span>
+                {t('model_prices.variant_count', {
+                  count: entry.variants.length,
+                  conflicts: entry.conflicts.length,
+                })}
+              </span>
+            </div>
+            {entry.variants.map((variant) => renderConditionalRule(variant, false))}
+            {entry.conflicts.map((conflict) => renderConditionalRule(conflict, true))}
+          </div>
+        ) : null}
+      </Fragment>
     );
   };
 
@@ -681,7 +862,7 @@ export function ModelPricesPage() {
                   <span>{t('model_prices.columns.model')}</span>
                   <span>{t('model_prices.columns.usage')}</span>
                   <span>{t('model_prices.columns.prices')}</span>
-                  <span>{t('model_prices.columns.scope')}</span>
+                  <span>{t('model_prices.columns.variants')}</span>
                   <span>{t('model_prices.columns.source')}</span>
                   <span>{t('common.action')}</span>
                 </div>
@@ -776,7 +957,7 @@ export function ModelPricesPage() {
                 [
                   ['inputPerMillion', 'input'],
                   ['outputPerMillion', 'output'],
-                  ['reasoningPerMillion', 'reasoning'],
+                  ['reasoningPerMillion', 'reasoning_independent'],
                   ['cacheReadPerMillion', 'cache_read'],
                   ['cacheCreationPerMillion', 'cache_creation'],
                   ['fixedRequest', 'fixed_request'],
@@ -809,7 +990,7 @@ export function ModelPricesPage() {
                 [
                   ['inputMultiplier', 'input'],
                   ['outputMultiplier', 'output'],
-                  ['reasoningMultiplier', 'reasoning'],
+                  ['reasoningMultiplier', 'reasoning_independent'],
                   ['cacheReadMultiplier', 'cache_read'],
                   ['cacheCreationMultiplier', 'cache_creation'],
                   ['fixedRequestMultiplier', 'fixed_request'],

@@ -38,6 +38,7 @@ const ruleWire = {
     kind: 'litellm',
     manual_override: false,
     model: 'openai/gpt-5',
+    provider: 'openai',
     url: 'https://example.test/prices',
     fetched_at: '2026-07-22T00:00:00Z',
     sync_id: 'sync-1',
@@ -54,6 +55,20 @@ const ruleWire = {
   estimated_cost: '3.25',
 };
 
+const variantWire = {
+  ...ruleWire,
+  id: 'rule-priority',
+  service_tier: 'priority',
+  context_min_tokens: 200001,
+  context_max_tokens: null,
+  prices: {
+    ...ruleWire.prices,
+    input_per_million: '2.50',
+    output_per_million: '15',
+  },
+  version: 2,
+};
+
 try {
   const api = await server.ssrLoadModule('/src/services/api/modelPrices.ts');
   const client = await server.ssrLoadModule('/src/services/api/client.ts');
@@ -65,7 +80,7 @@ try {
     last_sync_at: '2026-07-23T00:00:00Z',
     catalog_version: 8,
     summary: {
-      rule_count: 1,
+      model_count: 2,
       used_model_count: 2,
       unpriced_model_count: 1,
       estimated_cost: '3.25',
@@ -73,15 +88,32 @@ try {
       truncated: false,
       future_metric: 9,
     },
-    rules: [{ ...ruleWire, future_field: 'ignored' }],
-    unpriced_models: [
+    entries: [
+      {
+        provider: 'openai',
+        model: 'gpt-5',
+        coverage: 'partial',
+        missing_dimensions: ['reasoning'],
+        used: true,
+        request_count: 14,
+        estimated_cost: '3.25',
+        requested_models: ['gpt-5-alias'],
+        default: { ...ruleWire, future_field: 'ignored' },
+        variants: [variantWire],
+        conflicts: [],
+      },
       {
         model: 'unknown-model',
         provider: 'openai',
-        requested_model: 'unknown-alias',
+        coverage: 'unpriced',
+        missing_dimensions: ['price_rule'],
+        used: true,
         request_count: 2,
-        reason: 'unpriced',
-        missing_dimensions: ['input', 'output'],
+        estimated_cost: null,
+        requested_models: ['unknown-alias'],
+        default: null,
+        variants: [],
+        conflicts: [],
       },
     ],
     additive_top_level: true,
@@ -91,11 +123,14 @@ try {
   assert.equal(catalog.catalogVersion, 8);
   assert.equal(catalog.summary.currency, 'USD');
   assert.equal(catalog.summary.truncated, false);
-  assert.equal(catalog.rules[0].prices.inputPerMillion, '0');
-  assert.equal(catalog.rules[0].prices.reasoningPerMillion, null);
-  assert.equal(catalog.rules[0].multipliers.output, '1.5');
-  assert.equal(catalog.rules[0].source.kind, 'litellm');
-  assert.equal(catalog.rules[0].version, 4);
+  assert.equal(catalog.summary.modelCount, 2);
+  assert.equal(catalog.entries[0].default.prices.inputPerMillion, '0');
+  assert.equal(catalog.entries[0].default.prices.reasoningPerMillion, null);
+  assert.equal(catalog.entries[0].default.multipliers.output, '1.5');
+  assert.equal(catalog.entries[0].default.source.kind, 'litellm');
+  assert.equal(catalog.entries[0].default.source.provider, 'openai');
+  assert.equal(catalog.entries[0].default.version, 4);
+  assert.equal(catalog.entries[0].variants.length, 1);
 
   const emptyCatalog = api.normalizeModelPriceCatalogResponse({
     available: true,
@@ -103,15 +138,14 @@ try {
     last_sync_at: null,
     catalog_version: 0,
     summary: {
-      rule_count: 0,
+      model_count: 0,
       used_model_count: 0,
       unpriced_model_count: 0,
       estimated_cost: '0',
       currency: 'USD',
       truncated: false,
     },
-    rules: [],
-    unpriced_models: [],
+    entries: [],
   });
   assert.equal(emptyCatalog.catalogVersion, 0);
 
@@ -128,15 +162,14 @@ try {
         last_sync_at: null,
         catalog_version: 1,
         summary: {
-          rule_count: 0,
+          model_count: 0,
           used_model_count: 0,
           unpriced_model_count: 0,
           estimated_cost: 0,
           currency: 'USD',
           truncated: false,
         },
-        rules: [],
-        unpriced_models: [],
+        entries: [],
       }),
     /model_prices_invalid_response:summary.estimated_cost/
   );
@@ -210,9 +243,13 @@ try {
   assert.equal(preview.rejected[0].reason, 'missing output price');
 
   const rows = viewModel.buildModelPriceRows(catalog);
-  assert.deepEqual(
-    rows.map((row) => row.kind),
-    ['rule', 'unpriced']
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].key, 'openai\0gpt-5');
+  assert.equal(rows[0].entry.variants.length, 1);
+  assert.equal(
+    viewModel.buildModelPriceRows({ ...catalog, entries: [...catalog.entries, catalog.entries[0]] })
+      .length,
+    2
   );
   assert.equal(viewModel.filterModelPriceRows(rows, 'used', '').length, 2);
   assert.equal(viewModel.filterModelPriceRows(rows, 'unpriced', '').length, 2);
@@ -234,7 +271,7 @@ try {
     preview.candidates[1],
     preview.candidates
   );
-  assert.deepEqual([...selectedB], ['candidate-b']);
+  assert.deepEqual([...selectedB], ['candidate-a', 'candidate-b']);
 
   const draft = viewModel.createModelPriceDraft();
   draft.model = 'manual-model';
@@ -278,12 +315,24 @@ try {
     };
     client.apiClient.delete = async (url) => {
       calls.push({ method: 'DELETE', url });
+      if (url.includes('/entry?')) {
+        return {
+          deleted: true,
+          provider: 'openai',
+          model: 'gpt/test',
+          deleted_rules: 3,
+          catalog_version: 6,
+        };
+      }
       return { deleted: true, id: 'rule/1' };
     };
 
     await api.modelPricesApi.createRule(input);
     await api.modelPricesApi.updateRule('rule/1', 4, input);
     await api.modelPricesApi.deleteRule('rule/1', 5);
+    const deletedEntry = await api.modelPricesApi.deleteEntry('openai', 'gpt/test', 5);
+    assert.equal(deletedEntry.deletedRules, 3);
+    assert.equal(deletedEntry.catalogVersion, 6);
   } finally {
     client.apiClient.post = originalPost;
     client.apiClient.put = originalPut;
@@ -296,6 +345,10 @@ try {
   assert.equal(calls[1].url, '/usage-analytics/model-prices/rule%2F1?expected_version=4');
   assert.equal(calls[1].body.expected_version, 4);
   assert.equal(calls[2].url, '/usage-analytics/model-prices/rule%2F1?expected_version=5');
+  assert.equal(
+    calls[3].url,
+    '/usage-analytics/model-prices/entry?provider=openai&model=gpt%2Ftest&expected_catalog_version=5'
+  );
 } finally {
   await server.close();
 }

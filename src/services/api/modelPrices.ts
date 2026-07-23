@@ -28,6 +28,7 @@ export interface ModelPriceSource {
   kind: 'manual' | ModelPriceSyncSource;
   manualOverride: boolean;
   model: string | null;
+  provider: string | null;
   url: string | null;
   fetchedAt: string | null;
   syncId: string | null;
@@ -58,17 +59,22 @@ export interface ModelPriceRule extends ModelPriceRuleInput {
   estimatedCost: DecimalString | null;
 }
 
-export interface UnpricedModel {
+export interface ModelPriceEntry {
   model: string;
   provider: string;
-  requestedModel: string | null;
-  requestCount: number;
-  reason: string;
+  coverage: ModelPriceCoverage;
   missingDimensions: string[];
+  used: boolean;
+  requestCount: number;
+  estimatedCost: DecimalString | null;
+  requestedModels: string[];
+  default: ModelPriceRule | null;
+  variants: ModelPriceRule[];
+  conflicts: ModelPriceRule[];
 }
 
 export interface ModelPriceSummary {
-  ruleCount: number;
+  modelCount: number;
   usedModelCount: number;
   unpricedModelCount: number;
   estimatedCost: DecimalString | null;
@@ -82,8 +88,7 @@ export interface ModelPriceCatalogAvailable {
   lastSyncAt: string | null;
   catalogVersion: number;
   summary: ModelPriceSummary;
-  rules: ModelPriceRule[];
-  unpricedModels: UnpricedModel[];
+  entries: ModelPriceEntry[];
 }
 
 export interface ModelPriceCatalogUnavailable {
@@ -135,6 +140,13 @@ export interface ModelPriceSyncApplyResult {
   applied: true;
   appliedCount: number;
   skippedCount: number;
+}
+
+export interface ModelPriceEntryDeleteResult {
+  provider: string;
+  model: string;
+  deletedRules: number;
+  catalogVersion: number;
 }
 
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
@@ -268,6 +280,7 @@ const normalizeSource = (value: unknown, context: string): ModelPriceSource => {
     kind,
     manualOverride: requireBoolean(record, 'manual_override', context),
     model: readNullableString(record, 'model', context),
+    provider: readNullableString(record, 'provider', context),
     url: readNullableString(record, 'url', context),
     fetchedAt: readNullableString(record, 'fetched_at', context),
     syncId: readNullableString(record, 'sync_id', context),
@@ -311,22 +324,50 @@ export const normalizeModelPriceRule = (value: unknown, context = 'rule'): Model
   };
 };
 
-const normalizeUnpricedModel = (value: unknown, context: string): UnpricedModel => {
+const normalizeModelPriceEntryRule = (
+  value: unknown,
+  context: string,
+  provider: string,
+  model: string
+): ModelPriceRule => {
+  const rule = normalizeModelPriceRule(value, context);
+  if (rule.provider !== provider) return invalidResponse(`${context}.provider`);
+  if (rule.model !== model) return invalidResponse(`${context}.model`);
+  return rule;
+};
+
+const normalizeModelPriceEntry = (value: unknown, context: string): ModelPriceEntry => {
   const record = requireRecord(value, context);
+  const model = requireString(record, 'model', context);
+  const provider = requireString(record, 'provider', context);
+  if (!hasOwn(record, 'default')) return invalidResponse(`${context}.default`);
+  const defaultRule =
+    record.default === null
+      ? null
+      : normalizeModelPriceEntryRule(record.default, `${context}.default`, provider, model);
   return {
-    model: requireString(record, 'model', context),
-    provider: requireString(record, 'provider', context),
-    requestedModel: readNullableString(record, 'requested_model', context),
+    model,
+    provider,
+    coverage: normalizeCoverage(record.coverage, context),
+    missingDimensions: readStringArray(record, 'missing_dimensions', context, true),
+    used: requireBoolean(record, 'used', context),
     requestCount: requireCount(record, 'request_count', context),
-    reason: requireString(record, 'reason', context),
-    missingDimensions: readStringArray(record, 'missing_dimensions', context),
+    estimatedCost: readNullableDecimal(record, 'estimated_cost', context),
+    requestedModels: readStringArray(record, 'requested_models', context, true),
+    default: defaultRule,
+    variants: requireArray(record, 'variants', context).map((entry, index) =>
+      normalizeModelPriceEntryRule(entry, `${context}.variants[${index}]`, provider, model)
+    ),
+    conflicts: requireArray(record, 'conflicts', context).map((entry, index) =>
+      normalizeModelPriceEntryRule(entry, `${context}.conflicts[${index}]`, provider, model)
+    ),
   };
 };
 
 const normalizeSummary = (value: unknown): ModelPriceSummary => {
   const record = requireRecord(value, 'summary');
   return {
-    ruleCount: requireCount(record, 'rule_count', 'summary'),
+    modelCount: requireCount(record, 'model_count', 'summary'),
     usedModelCount: requireCount(record, 'used_model_count', 'summary'),
     unpricedModelCount: requireCount(record, 'unpriced_model_count', 'summary'),
     estimatedCost: readNullableDecimal(record, 'estimated_cost', 'summary'),
@@ -351,11 +392,8 @@ export const normalizeModelPriceCatalogResponse = (value: unknown): ModelPriceCa
     lastSyncAt: readNullableString(record, 'last_sync_at', 'catalog'),
     catalogVersion: requireCount(record, 'catalog_version', 'catalog'),
     summary: normalizeSummary(record.summary),
-    rules: requireArray(record, 'rules', 'catalog').map((entry, index) =>
-      normalizeModelPriceRule(entry, `catalog.rules[${index}]`)
-    ),
-    unpricedModels: requireArray(record, 'unpriced_models', 'catalog').map((entry, index) =>
-      normalizeUnpricedModel(entry, `catalog.unpriced_models[${index}]`)
+    entries: requireArray(record, 'entries', 'catalog').map((entry, index) =>
+      normalizeModelPriceEntry(entry, `catalog.entries[${index}]`)
     ),
   };
 };
@@ -439,6 +477,25 @@ export const normalizeModelPriceDeleteResponse = (value: unknown, expectedID: st
   return id;
 };
 
+export const normalizeModelPriceEntryDeleteResponse = (
+  value: unknown,
+  expectedProvider: string,
+  expectedModel: string
+): ModelPriceEntryDeleteResult => {
+  const record = requireRecord(value, 'entry_delete');
+  if (record.deleted !== true) return invalidResponse('entry_delete.deleted');
+  const provider = requireString(record, 'provider', 'entry_delete');
+  const model = requireString(record, 'model', 'entry_delete');
+  if (provider !== expectedProvider) return invalidResponse('entry_delete.provider');
+  if (model !== expectedModel) return invalidResponse('entry_delete.model');
+  return {
+    provider,
+    model,
+    deletedRules: requireCount(record, 'deleted_rules', 'entry_delete'),
+    catalogVersion: requireVersion(record, 'catalog_version', 'entry_delete'),
+  };
+};
+
 const toDimensionsPayload = (dimensions: ModelPriceDimensions) => ({
   input_per_million: dimensions.inputPerMillion,
   output_per_million: dimensions.outputPerMillion,
@@ -504,6 +561,23 @@ export const modelPricesApi = {
       ),
       id
     ),
+
+  deleteEntry: async (
+    provider: string,
+    model: string,
+    expectedCatalogVersion: number
+  ): Promise<ModelPriceEntryDeleteResult> => {
+    const params = new URLSearchParams({
+      provider,
+      model,
+      expected_catalog_version: String(expectedCatalogVersion),
+    });
+    return normalizeModelPriceEntryDeleteResponse(
+      await apiClient.delete(`${BASE_PATH}/entry?${params.toString()}`),
+      provider,
+      model
+    );
+  },
 
   previewSync: async (sources: ModelPriceSyncSource[]): Promise<ModelPriceSyncPreview> =>
     normalizeModelPriceSyncPreviewResponse(

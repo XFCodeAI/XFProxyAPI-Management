@@ -970,7 +970,19 @@
     "used": "已使用",
     "unused": "未使用",
     "no_rule": "没有价格规则",
+    "no_default_rule": "没有默认价格",
     "default_tier": "默认",
+    "uses_input_rate": "沿用输入价格",
+    "variants": "条件变体",
+    "conflicts": "冲突",
+    "conflict": "冲突",
+    "expand_variants": "展开价格变体",
+    "collapse_variants": "收起价格变体",
+    "variant_details": "条件价格变体",
+    "variant_details_for": "{{model}} 的价格变体",
+    "variant_count": "{{count}} 个变体 / {{conflicts}} 个冲突",
+    "context_value": "上下文 {{min}} - {{max}} tokens",
+    "no_limit": "不限",
     "not_configured": "未配置",
     "local_rule": "本地手动规则",
     "missing_dimensions": "缺失：{{dimensions}}",
@@ -978,6 +990,7 @@
     "summary": {
       "label": "价格摘要",
       "rules": "规则数",
+      "models": "模型数",
       "used": "已用模型",
       "unpriced": "未定价模型",
       "estimated_cost": "估算成本",
@@ -990,10 +1003,11 @@
       "unpriced": "未定价"
     },
     "columns": {
-      "model": "规则 / 模型",
+      "model": "模型",
       "usage": "用量 / 估算",
       "prices": "价格维度",
       "scope": "计费范围",
+      "variants": "变体 / 别名",
       "source": "来源"
     },
     "coverage": {
@@ -1013,6 +1027,7 @@
       "input": "输入",
       "output": "输出",
       "reasoning": "推理",
+      "reasoning_independent": "独立推理",
       "cache_read": "缓存读取",
       "cache_creation": "缓存创建",
       "fixed_request": "单次请求",
@@ -1057,15 +1072,22 @@
       "title": "删除手动价格规则",
       "message": "确认删除 {{model}} 的手动规则？"
     },
+    "delete_entry": {
+      "action": "删除模型定价",
+      "title": "删除模型定价",
+      "message": "确认删除 {{provider}} / {{model}} 的全部定价规则（包括默认价格和条件变体）？"
+    },
     "notifications": {
       "created": "已新增手动价格规则",
       "updated": "已更新手动价格规则",
-      "deleted": "已删除手动价格规则"
+      "deleted": "已删除手动价格规则",
+      "entry_deleted": "已删除该模型的全部定价规则"
     },
     "errors": {
       "load": "加载模型价格失败",
       "save": "保存价格规则失败",
       "delete": "删除价格规则失败",
+      "delete_entry": "删除模型定价失败",
       "preview": "预览来源同步失败",
       "apply": "应用来源同步失败"
     },

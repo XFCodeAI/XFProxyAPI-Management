@@ -254,8 +254,8 @@
   display: grid;
   min-width: 0;
   grid-template-columns:
-    minmax(165px, 1.15fr) minmax(72px, 0.45fr) minmax(300px, 2fr)
-    minmax(145px, 1fr) minmax(120px, 0.9fr) 68px;
+    minmax(165px, 1.15fr) minmax(72px, 0.45fr) minmax(260px, 1.8fr)
+    minmax(130px, 0.9fr) minmax(130px, 0.9fr) 104px;
   align-items: center;
   gap: 12px;
 }
@@ -273,6 +273,10 @@
   min-height: 96px;
   padding: 10px 12px;
   border-top: 1px solid var(--border);
+
+  &[data-expanded='true'] {
+    background: color-mix(in srgb, var(--muted) 45%, var(--background));
+  }
 }
 
 .modelCell,
@@ -395,6 +399,10 @@
   gap: 7px 10px;
 }
 
+.priceGridCompact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .priceField {
   display: flex;
   min-width: 0;
@@ -424,6 +432,14 @@
   color: var(--muted-foreground);
   font-family: var(--font-mono);
   font-size: 10px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.rateNote {
+  color: var(--muted-foreground);
+  font-size: 9px;
+  font-weight: 650;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -485,6 +501,10 @@
   }
 }
 
+.conflictValue {
+  color: var(--destructive) !important;
+}
+
 .sourceCell {
   display: flex;
   flex-direction: column;
@@ -512,6 +532,113 @@
   display: flex;
   min-width: 0;
   align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.variantDetail {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 30%, var(--background));
+}
+
+.variantDetailHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+
+  strong {
+    color: var(--foreground);
+    font-size: 12px;
+  }
+
+  span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.variantRule {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(360px, 2fr) minmax(150px, 0.9fr) 68px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px 11px 28px;
+  border-top: 1px solid var(--border);
+
+  &[data-conflict='true'] {
+    background: color-mix(in srgb, var(--destructive) 5%, var(--background));
+  }
+}
+
+.variantIdentity,
+.variantSource {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.variantIdentity {
+  > div {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  strong {
+    color: var(--foreground);
+    font-size: 12px;
+  }
+
+  > span,
+  > small {
+    color: var(--muted-foreground);
+    font-size: 10px;
+    overflow-wrap: anywhere;
+  }
+
+  > small {
+    color: var(--warning, #b45309);
+  }
+}
+
+.variantPrices {
+  min-width: 0;
+}
+
+.variantSource {
+  > strong,
+  > span:not(.badge) {
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  > strong {
+    color: var(--foreground);
+    font-family: var(--font-mono);
+  }
+}
+
+.variantActions {
+  display: flex;
+  min-width: 0;
   justify-content: flex-end;
   gap: 4px;
 }
@@ -866,6 +993,16 @@
     grid-column: 2 / -1;
   }
 
+  .variantRule {
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 0.45fr) auto;
+    padding-left: 20px;
+  }
+
+  .variantPrices {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
   .mobileLabel {
     display: block;
     margin-bottom: 2px;
@@ -973,6 +1110,36 @@
 
   .priceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .priceGridCompact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .variantDetailHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .variantRule {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-left: 12px;
+  }
+
+  .variantIdentity,
+  .variantSource,
+  .variantPrices {
+    grid-column: 1 / -1;
+  }
+
+  .variantPrices {
+    grid-row: auto;
+  }
+
+  .variantActions {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .formGridFour,

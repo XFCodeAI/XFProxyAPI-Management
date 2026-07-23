@@ -1,41 +1,25 @@
 import type {
   ModelPriceCatalogAvailable,
+  ModelPriceEntry,
   ModelPriceRule,
   ModelPriceRuleInput,
   ModelPriceSyncCandidate,
-  UnpricedModel,
 } from '@/services/api/modelPrices';
 
 export type ModelPriceFilter = 'all' | 'used' | 'unpriced';
 export type DecimalDisplayKind = 'missing' | 'free' | 'value';
 
-export type ModelPriceRow =
-  | {
-      key: string;
-      kind: 'rule';
-      model: string;
-      provider: string;
-      serviceTier: string | null;
-      used: boolean;
-      requestCount: number;
-      unpriced: boolean;
-      source: string;
-      sourceModelId: string | null;
-      rule: ModelPriceRule;
-    }
-  | {
-      key: string;
-      kind: 'unpriced';
-      model: string;
-      provider: string;
-      serviceTier: string | null;
-      used: true;
-      requestCount: number;
-      unpriced: true;
-      source: null;
-      sourceModelId: null;
-      modelGap: UnpricedModel;
-    };
+export interface ModelPriceRow {
+  key: string;
+  model: string;
+  provider: string;
+  used: boolean;
+  requestCount: number;
+  unpriced: boolean;
+  source: string | null;
+  sourceModelId: string | null;
+  entry: ModelPriceEntry;
+}
 
 export interface ModelPriceDraft {
   model: string;
@@ -186,40 +170,36 @@ export const buildModelPriceRuleInput = (draft: ModelPriceDraft): ModelPriceRule
 };
 
 export const buildModelPriceRows = (catalog: ModelPriceCatalogAvailable): ModelPriceRow[] => {
-  const rows: ModelPriceRow[] = [
-    ...catalog.unpricedModels.map((modelGap): ModelPriceRow => ({
-      key: `unpriced:${modelGap.provider}:${modelGap.model}:${modelGap.requestedModel ?? ''}`,
-      kind: 'unpriced',
-      model: modelGap.model,
-      provider: modelGap.provider,
-      serviceTier: null,
-      used: true,
-      requestCount: modelGap.requestCount,
-      unpriced: true,
-      source: null,
-      sourceModelId: null,
-      modelGap,
-    })),
-    ...catalog.rules.map((rule): ModelPriceRow => ({
-      key: `rule:${rule.id}`,
-      kind: 'rule',
-      model: rule.model,
-      provider: rule.provider,
-      serviceTier: rule.serviceTier,
-      used: rule.used,
-      requestCount: rule.requestCount,
-      unpriced: rule.coverage !== 'priced',
-      source: rule.source.kind,
-      sourceModelId: rule.source.model,
-      rule,
-    })),
-  ];
+  const rowsByIdentity = new Map<string, ModelPriceRow>();
+  catalog.entries.forEach((entry) => {
+    const key = `${entry.provider}\0${entry.model}`;
+    if (rowsByIdentity.has(key)) return;
+    const rules = [entry.default, ...entry.variants, ...entry.conflicts].filter(
+      (rule): rule is ModelPriceRule => rule !== null
+    );
+    const sources = [...new Set(rules.map((rule) => rule.source.kind))];
+    const sourceModels = rules.map((rule) => rule.source.model).filter(Boolean);
+    rowsByIdentity.set(key, {
+      key,
+      model: entry.model,
+      provider: entry.provider,
+      used: entry.used,
+      requestCount: entry.requestCount,
+      unpriced: entry.coverage !== 'priced',
+      source: sources.length === 1 ? sources[0] : sources.length > 1 ? 'mixed' : null,
+      sourceModelId: sourceModels[0] ?? null,
+      entry,
+    });
+  });
+
+  const rows = [...rowsByIdentity.values()];
 
   return rows.sort(
     (left, right) =>
       Number(right.unpriced) - Number(left.unpriced) ||
       Number(right.used) - Number(left.used) ||
       right.requestCount - left.requestCount ||
+      left.provider.localeCompare(right.provider) ||
       left.model.localeCompare(right.model)
   );
 };
@@ -234,14 +214,21 @@ export const filterModelPriceRows = (
     if (filter === 'used' && !row.used) return false;
     if (filter === 'unpriced' && !row.unpriced) return false;
     if (!query) return true;
-    const requestedModel = row.kind === 'unpriced' ? row.modelGap.requestedModel : null;
+    const rules = [row.entry.default, ...row.entry.variants, ...row.entry.conflicts].filter(
+      (rule): rule is ModelPriceRule => rule !== null
+    );
     return [
       row.model,
       row.provider,
-      row.serviceTier,
       row.source,
       row.sourceModelId,
-      requestedModel,
+      ...row.entry.requestedModels,
+      ...rules.flatMap((rule) => [
+        rule.serviceTier,
+        rule.source.kind,
+        rule.source.provider,
+        rule.source.model,
+      ]),
     ].some((value) => value?.toLowerCase().includes(query));
   });
 };
@@ -266,7 +253,12 @@ export const toggleAcceptedCandidate = (
   }
   if (!canAcceptSyncCandidate(candidate)) return next;
   candidates.forEach((entry) => {
-    if (entry.targetModel === candidate.targetModel) next.delete(entry.id);
+    if (
+      entry.targetProvider === candidate.targetProvider &&
+      entry.targetModel === candidate.targetModel
+    ) {
+      next.delete(entry.id);
+    }
   });
   next.add(candidate.id);
   return next;
