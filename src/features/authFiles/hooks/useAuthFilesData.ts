@@ -2,10 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObj
 import { useTranslation } from 'react-i18next';
 import { authFilesApi, proxyPoolsApi } from '@/services/api';
 import { apiClient } from '@/services/api/client';
-import type {
-  AuthFileBatchDeleteResult,
-  AuthFileSessionValidationResult,
-} from '@/services/api/authFiles';
+import type { AuthFileBatchDeleteResult } from '@/services/api/authFiles';
 import { useAuthInventoryStore, useNotificationStore } from '@/stores';
 import type { AuthFileItem, ProxyPoolStatusEntry, ProxySelection } from '@/types';
 import { formatFileSize } from '@/utils/format';
@@ -25,6 +22,11 @@ import {
 } from '@/features/authFiles/proxyUploadInspection';
 import { resolveDefaultImportProxySelection } from '@/features/authFiles/proxySelectionDefault';
 import { applyAuthFilesGroupAssignment } from '@/features/authFiles/authFilesGroupAssignment';
+import {
+  planSessionValidation,
+  reconcileSessionUpload,
+  type SessionValidationPlan,
+} from '@/features/authFiles/sessionImportValidation';
 import { normalizeCredentialGroups } from '@/utils/credentialGroups';
 import { isRecord } from '@/utils/helpers';
 
@@ -67,11 +69,18 @@ export interface SessionImportFailure {
   reason: string;
 }
 
+export interface SessionImportWarning {
+  name: string;
+  reason: string;
+}
+
 export interface SessionImportResult {
   total: number;
   validated: number;
   imported: number;
+  unverified: number;
   failed: number;
+  warnings: SessionImportWarning[];
   failures: SessionImportFailure[];
 }
 
@@ -203,40 +212,29 @@ const rewriteSessionAuthFileProxy = async (file: File, proxyURL: string): Promis
 
 const resolveSessionUploadFiles = async (
   batch: File[],
-  validation: AuthFileSessionValidationResult,
+  plan: SessionValidationPlan,
   selection: ProxySelection
 ): Promise<{ files: File[]; selection: ProxySelection }> => {
-  const validNames = new Set(validation.files);
-  const fallbackFiles = batch.filter((file) => validNames.has(file.name));
-  if (validation.resolved.length === 0) {
+  const candidateNames = new Set(plan.candidateNames);
+  const fallbackFiles = batch.filter((file) => candidateNames.has(file.name));
+  if (fallbackFiles.length === 0 || Object.keys(plan.proxyUrls).length === 0) {
     return { files: fallbackFiles, selection };
   }
 
-  const filesByName = new Map<string, File[]>();
-  batch.forEach((file) => {
-    const queue = filesByName.get(file.name);
-    if (queue) {
-      queue.push(file);
-    } else {
-      filesByName.set(file.name, [file]);
-    }
-  });
-
   const resolvedFiles: File[] = [];
-  for (const resolved of validation.resolved) {
-    const file = filesByName.get(resolved.name)?.shift();
-    if (!file) continue;
+  for (const file of fallbackFiles) {
     if (selection.mode === 'direct') {
       resolvedFiles.push(file);
       continue;
     }
-    if (!resolved.proxyUrl) {
+    const proxyUrl = plan.proxyUrls[file.name]?.trim();
+    if (!proxyUrl) {
       return { files: fallbackFiles, selection };
     }
-    resolvedFiles.push(await rewriteSessionAuthFileProxy(file, resolved.proxyUrl));
+    resolvedFiles.push(await rewriteSessionAuthFileProxy(file, proxyUrl));
   }
 
-  if (resolvedFiles.length !== validation.validated) {
+  if (resolvedFiles.length !== fallbackFiles.length) {
     return { files: fallbackFiles, selection };
   }
   return {
@@ -590,6 +588,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       let validatedCount = 0;
       let importedCount = 0;
       const importedNames: string[] = [];
+      const warnings: SessionImportWarning[] = [];
 
       try {
         const missingValidationResult = t('auth_files.session_validation_missing_result', {
@@ -602,39 +601,39 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         for (const batch of chunkFiles(validFiles, SESSION_IMPORT_BATCH_SIZE)) {
           let filesToUpload: File[] = [];
           let uploadSelection = selection;
+          let validationPlan: SessionValidationPlan;
 
           try {
             const validation = await authFilesApi.validateSessionFiles(batch, selection);
-            const validNames = new Set(validation.files);
-            const validationFailedNames = new Set(
-              validation.failed.map((item) => item.name).filter(Boolean)
+            validationPlan = planSessionValidation(
+              batch.map((file) => file.name),
+              validation,
+              missingValidationResult
             );
-            const resolvedUpload = await resolveSessionUploadFiles(batch, validation, selection);
+            const resolvedUpload = await resolveSessionUploadFiles(
+              batch,
+              validationPlan,
+              selection
+            );
             filesToUpload = resolvedUpload.files;
             uploadSelection = resolvedUpload.selection;
-            validatedCount += filesToUpload.length;
+            validatedCount += validationPlan.validatedNames.length;
 
-            validation.failed.forEach((item) => {
+            validationPlan.failures.forEach((item) => {
               failures.push({
-                name: item.name || '-',
+                name: item.name,
                 phase: 'validation',
-                reason: item.error || 'Unknown error',
-              });
-            });
-            batch.forEach((file) => {
-              if (validNames.has(file.name) || validationFailedNames.has(file.name)) return;
-              failures.push({
-                name: file.name,
-                phase: 'validation',
-                reason: missingValidationResult,
+                reason: item.reason,
               });
             });
           } catch (err: unknown) {
             const reason = getErrorMessage(err);
-            batch.forEach((file) => {
-              failures.push({ name: file.name, phase: 'validation', reason });
-            });
-            continue;
+            validationPlan = planSessionValidation(
+              batch.map((file) => file.name),
+              { files: [], resolved: [], failed: [] },
+              reason
+            );
+            filesToUpload = batch;
           }
 
           if (filesToUpload.length === 0) {
@@ -643,61 +642,22 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
           try {
             const uploadResult = await authFilesApi.uploadFiles(filesToUpload, uploadSelection);
-            const uploadedNames = new Set(uploadResult.files);
-            const uploadFailedNames = new Set(
-              uploadResult.failed.map((item) => item.name).filter(Boolean)
+            const reconciled = reconcileSessionUpload(
+              filesToUpload.map((file) => file.name),
+              uploadResult,
+              validationPlan.warnings,
+              missingUploadResult
             );
-            const uploadedCount =
-              uploadedNames.size > 0
-                ? filesToUpload.filter((file) => uploadedNames.has(file.name)).length
-                : uploadResult.uploaded;
-            importedCount += Math.min(uploadedCount, filesToUpload.length);
-            if (uploadedNames.size > 0) {
-              importedNames.push(...Array.from(uploadedNames));
-            } else if (uploadedCount > 0) {
-              importedNames.push(
-                ...filesToUpload
-                  .filter((file) => !uploadFailedNames.has(file.name))
-                  .slice(0, uploadedCount)
-                  .map((file) => file.name)
-              );
-            }
-
-            uploadResult.failed.forEach((item) => {
+            importedCount += reconciled.uploadedNames.length;
+            importedNames.push(...reconciled.uploadedNames);
+            warnings.push(...reconciled.warnings);
+            reconciled.failures.forEach((item) => {
               failures.push({
-                name: item.name || '-',
+                name: item.name,
                 phase: 'upload',
-                reason: item.error || 'Unknown error',
+                reason: item.reason,
               });
             });
-            if (uploadedNames.size > 0) {
-              filesToUpload.forEach((file) => {
-                if (uploadedNames.has(file.name) || uploadFailedNames.has(file.name)) return;
-                failures.push({
-                  name: file.name,
-                  phase: 'upload',
-                  reason: missingUploadResult,
-                });
-              });
-            } else {
-              const knownFailureCount = filesToUpload.filter((file) =>
-                uploadFailedNames.has(file.name)
-              ).length;
-              const missingFailureCount = Math.max(
-                0,
-                filesToUpload.length - uploadedCount - knownFailureCount
-              );
-              filesToUpload
-                .filter((file) => !uploadFailedNames.has(file.name))
-                .slice(0, missingFailureCount)
-                .forEach((file) => {
-                  failures.push({
-                    name: file.name,
-                    phase: 'upload',
-                    reason: missingUploadResult,
-                  });
-                });
-            }
           } catch (err: unknown) {
             const reason = getErrorMessage(err);
             filesToUpload.forEach((file) => {
@@ -718,7 +678,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           total: validFiles.length,
           validated: validatedCount,
           imported: importedCount,
+          unverified: warnings.length,
           failed: failures.length,
+          warnings,
           failures,
         });
       } finally {

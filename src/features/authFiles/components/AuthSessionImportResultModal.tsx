@@ -32,9 +32,14 @@ export function AuthSessionImportResultModal({
         : t('auth_files.session_import_failed', { defaultValue: 'Session 导入失败' });
   const summary =
     result.failed === 0
-      ? t('auth_files.session_import_success_summary', {
-          defaultValue: '全部 Session 已验活并导入为 Codex 认证文件。',
-        })
+      ? result.unverified > 0
+        ? t('auth_files.session_import_unverified_summary', {
+            defaultValue: '全部 Session 已导入，其中 {{count}} 个验活未通过。',
+            count: result.unverified,
+          })
+        : t('auth_files.session_import_success_summary', {
+            defaultValue: '全部 Session 已验活并导入为 Codex 认证文件。',
+          })
       : t('auth_files.session_import_failure_summary', {
           defaultValue: '部分 Session 未能完成导入，请根据下面的失败原因处理后重试。',
         });
@@ -68,11 +73,51 @@ export function AuthSessionImportResultModal({
             tone="success"
           />
           <ResultStat
+            label={t('auth_files.session_import_unverified', {
+              defaultValue: '已导入但验活未通过',
+            })}
+            value={result.unverified}
+            tone={result.unverified > 0 ? 'warning' : 'neutral'}
+          />
+          <ResultStat
             label={t('auth_files.session_import_failed_count', { defaultValue: '失败' })}
             value={result.failed}
             tone={result.failed > 0 ? 'danger' : 'neutral'}
           />
         </div>
+
+        {result.warnings.length > 0 ? (
+          <div className={`${styles.failureSection} ${styles.warningSection}`}>
+            <div className={styles.failureHeader}>
+              <strong>
+                {t('auth_files.session_import_warning_details', {
+                  defaultValue: '验活警告',
+                })}
+              </strong>
+              <span>
+                {t('auth_files.session_import_warning_total', {
+                  defaultValue: '{{count}} 项',
+                  count: result.warnings.length,
+                })}
+              </span>
+            </div>
+            <div className={styles.failureList}>
+              {result.warnings.map((warning, index) => (
+                <div className={styles.failureRow} key={`${warning.name}:${index}`}>
+                  <div className={styles.failureMain}>
+                    <strong title={warning.name}>{warning.name}</strong>
+                    <span title={warning.reason}>{warning.reason}</span>
+                  </div>
+                  <span className={styles.warningPill}>
+                    {t('auth_files.session_import_warning_imported', {
+                      defaultValue: '已导入',
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {result.failures.length > 0 ? (
           <div className={styles.failureSection}>
@@ -115,12 +160,18 @@ function ResultStat({
 }: {
   label: string;
   value: number;
-  tone?: 'neutral' | 'success' | 'danger';
+  tone?: 'neutral' | 'success' | 'warning' | 'danger';
 }) {
   return (
     <div
       className={`${styles.statItem} ${
-        tone === 'success' ? styles.statItemSuccess : tone === 'danger' ? styles.statItemDanger : ''
+        tone === 'success'
+          ? styles.statItemSuccess
+          : tone === 'warning'
+            ? styles.statItemWarning
+            : tone === 'danger'
+              ? styles.statItemDanger
+              : ''
       }`}
     >
       <strong>{value}</strong>

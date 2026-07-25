@@ -8,6 +8,12 @@ import type { OAuthModelAliasEntry, ProxySelection } from '@/types';
 import { normalizeOAuthProviderKey } from '@/utils/providerKeys';
 import { parseTimestampMs } from '@/utils/timestamp';
 import { proxySelectionParams } from './proxyPools';
+import {
+  normalizeSessionValidationFailures,
+  type AuthFileSessionValidationFailure,
+} from './sessionValidationFailure';
+
+export type { AuthFileSessionValidationFailure } from './sessionValidationFailure';
 
 type StatusError = { status?: number };
 type AuthFileStatusResponse = { status: string; disabled: boolean };
@@ -61,7 +67,7 @@ export type AuthFileSessionValidationResult = {
   validated: number;
   files: string[];
   resolved: AuthFileSessionValidationResolvedFile[];
-  failed: AuthFileBatchFailure[];
+  failed: AuthFileSessionValidationFailure[];
 };
 export type AuthFileBatchDeleteResult = {
   status: string;
@@ -214,7 +220,7 @@ const normalizeBatchUploadResponse = (
 const normalizeSessionValidationResponse = (
   payload: AuthFileSessionValidationResponse | undefined
 ): AuthFileSessionValidationResult => {
-  const failed = normalizeBatchFailures(payload?.failed);
+  const failed = normalizeSessionValidationFailures(payload?.failed);
   const files = normalizeBatchFileNames(payload?.files);
   const resolved = Array.isArray(payload?.resolved)
     ? payload.resolved.reduce<AuthFileSessionValidationResolvedFile[]>((result, item) => {
