@@ -1322,7 +1322,12 @@
     "states": {
       "error_title": "無法載入請求監控",
       "unavailable_title": "請求監控不可用",
-      "unavailable_description": "目前伺服器未提供以 SQL 為基礎的請求監控功能。"
+      "unavailable_description": "目前伺服器未提供以 SQL 為基礎的請求監控功能。",
+      "section_loading": "正在載入目前區域",
+      "section_stale_loading": "正在重新整理，繼續顯示上次載入的資料",
+      "section_stale_error": "重新整理失敗，繼續顯示上次載入的資料：{{error}}",
+      "section_fresh": "更新於 {{value}}",
+      "detail_loading": "正在載入請求詳情"
     },
     "import_confirm": {
       "title": "匯入監控記錄",
@@ -1347,6 +1352,11 @@
     },
     "errors": {
       "load": "載入請求監控失敗",
+      "load_summary": "載入請求摘要失敗",
+      "load_facets": "載入篩選項失敗",
+      "load_identities": "載入身分活動失敗",
+      "load_requests": "載入請求記錄失敗",
+      "load_detail": "載入請求詳情失敗",
       "invalid_range": "請選擇有效的時間範圍。",
       "export": "匯出監控記錄失敗",
       "import": "匯入監控記錄失敗",
@@ -1442,9 +1452,20 @@
     "states": {
       "error_title": "無法載入用量分析",
       "unavailable_title": "用量分析不可用",
-      "unavailable_description": "目前伺服器未提供基於 SQL 的用量分析能力。"
+      "unavailable_description": "目前伺服器未提供基於 SQL 的用量分析能力。",
+      "section_loading": "正在載入目前區域",
+      "section_stale_loading": "正在重新整理，繼續顯示上次載入的資料",
+      "section_stale_error": "重新整理失敗，繼續顯示上次載入的資料：{{error}}",
+      "section_fresh": "更新於 {{value}}",
+      "rollup_stale": "小時彙總正在追趕進度，目前可用資料會繼續顯示。",
+      "cost_rebuilding": "成本正在依目前價格目錄重建，資料一致前不會顯示部分金額。"
     },
-    "errors": { "load": "載入用量分析失敗", "invalid_range": "請選擇有效的時間範圍。" }
+    "errors": {
+      "load": "載入用量分析失敗",
+      "load_overview": "載入用量摘要失敗",
+      "load_report": "載入目前分析檢視失敗",
+      "invalid_range": "請選擇有效的時間範圍。"
+    }
   },
   "logs": {
     "title": "記錄檢視",

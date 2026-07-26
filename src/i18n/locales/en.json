@@ -1295,7 +1295,12 @@
     "states": {
       "error_title": "Request monitoring could not be loaded",
       "unavailable_title": "Request monitoring is unavailable",
-      "unavailable_description": "This server does not expose SQL-backed request monitoring."
+      "unavailable_description": "This server does not expose SQL-backed request monitoring.",
+      "section_loading": "Loading this section",
+      "section_stale_loading": "Refreshing; previously loaded data remains visible",
+      "section_stale_error": "Refresh failed; previously loaded data remains visible: {{error}}",
+      "section_fresh": "Updated {{value}}",
+      "detail_loading": "Loading request details"
     },
     "import_confirm": {
       "title": "Import monitoring records",
@@ -1320,6 +1325,11 @@
     },
     "errors": {
       "load": "Failed to load request monitoring",
+      "load_summary": "Failed to load request summary",
+      "load_facets": "Failed to load filter options",
+      "load_identities": "Failed to load identity activity",
+      "load_requests": "Failed to load requests",
+      "load_detail": "Failed to load request details",
       "invalid_range": "Choose a valid time range.",
       "export": "Failed to export monitoring records",
       "import": "Failed to import monitoring records",
@@ -1415,10 +1425,18 @@
     "states": {
       "error_title": "Usage analytics could not be loaded",
       "unavailable_title": "Usage analytics is unavailable",
-      "unavailable_description": "This server does not expose SQL-backed usage analytics."
+      "unavailable_description": "This server does not expose SQL-backed usage analytics.",
+      "section_loading": "Loading this section",
+      "section_stale_loading": "Refreshing; previously loaded data remains visible",
+      "section_stale_error": "Refresh failed; previously loaded data remains visible: {{error}}",
+      "section_fresh": "Updated {{value}}",
+      "rollup_stale": "Hourly aggregates are catching up; available data remains visible.",
+      "cost_rebuilding": "Costs are rebuilding against the current price catalog and remain hidden until consistent."
     },
     "errors": {
       "load": "Failed to load usage analytics",
+      "load_overview": "Failed to load usage summary",
+      "load_report": "Failed to load this analytics view",
       "invalid_range": "Select a valid time range."
     }
   },

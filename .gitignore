@@ -18,6 +18,8 @@ style.md
 node_modules
 dist
 .playwright-cli/
+playwright-report/
+test-results/
 output/
 management-panel.zip
 dist-ssr

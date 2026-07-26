@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -52,12 +44,14 @@ import {
 import { reconcileCredentialIdentityCatalog } from '@/features/authFiles/credentialIdentityCatalog';
 import {
   isAnalyticsCapabilityUnavailable,
+  buildAnalyticsQuery,
   usageAnalyticsApi,
   type AnalyticsBucket,
   type AnalyticsGranularity,
   type AnalyticsReport,
+  type AnalyticsQueryInput,
 } from '@/services/api';
-import { useCoalescedAsyncTask } from '@/hooks/useCoalescedAsyncTask';
+import { useDebouncedValue, useLatestAsyncSection } from '@/hooks';
 import { useAuthInventoryStore, useAuthStore } from '@/stores';
 import { getErrorMessage } from '@/utils/helpers';
 import styles from './UsageAnalyticsPage.module.scss';
@@ -119,6 +113,47 @@ const Delta = ({ value }: { value: number | null }) => {
     </small>
   );
 };
+
+function SectionStatus({
+  loading,
+  error,
+  updatedAt,
+  onRetry,
+}: {
+  loading: boolean;
+  error: string;
+  updatedAt: string;
+  onRetry: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const stale = Boolean(updatedAt) && (loading || Boolean(error));
+  const state = error ? 'error' : loading ? 'loading' : updatedAt ? 'fresh' : 'pending';
+  const message = error
+    ? stale
+      ? t('usage_analytics.states.section_stale_error', { error })
+      : error
+    : loading
+      ? t(
+          stale
+            ? 'usage_analytics.states.section_stale_loading'
+            : 'usage_analytics.states.section_loading'
+        )
+      : updatedAt
+        ? t('usage_analytics.states.section_fresh', {
+            value: formatTime(updatedAt, i18n.language),
+          })
+        : t('usage_analytics.status_pending');
+  return (
+    <div className={styles.sectionStatus} data-state={state} data-stale={stale} aria-live="polite">
+      <span>{message}</span>
+      {error ? (
+        <TooltipIconButton label={t('common.refresh')} onClick={onRetry}>
+          <RefreshCw size={14} />
+        </TooltipIconButton>
+      ) : null}
+    </div>
+  );
+}
 
 function TrendChart({
   current,
@@ -261,7 +296,6 @@ export function UsageAnalyticsPage() {
     toDateTimeLocal(initialDrill.range ? new Date(initialDrill.range.to) : new Date())
   );
   const [filters, setFilters] = useState<MonitoringFilters>(() => ({ ...initialDrill.filters }));
-  const deferredSearch = useDeferredValue(filters.search);
   const [advancedOpen, setAdvancedOpen] = useState(() =>
     hasAdvancedMonitoringFilters(initialDrill.filters)
   );
@@ -273,70 +307,94 @@ export function UsageAnalyticsPage() {
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   );
   const [chartMetric, setChartMetric] = useState<AnalyticsChartMetric>('calls');
-  const [overview, setOverview] = useState<AnalyticsReport | null>(null);
-  const [report, setReport] = useState<AnalyticsReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [capabilityUnavailable, setCapabilityUnavailable] = useState(false);
-  const requestSequence = useRef(0);
+  const overviewSection = useLatestAsyncSection<AnalyticsReport>();
+  const reportSection = useLatestAsyncSection<AnalyticsReport>();
+  const healthSection =
+    useLatestAsyncSection<Awaited<ReturnType<typeof usageAnalyticsApi.getHealth>>>();
+  const { run: runOverview } = overviewSection;
+  const { cancel: cancelReport, run: runReport } = reportSection;
+  const { run: runHealth } = healthSection;
+  const [analyticsQuery, setAnalyticsQuery] = useState<AnalyticsQueryInput | null>(null);
+  const [rangeError, setRangeError] = useState('');
 
-  const effectiveFilters = useMemo(
-    () => ({ ...filters, search: deferredSearch }),
-    [deferredSearch, filters]
+  const queryCriteria = useMemo(
+    () => ({ timeRange, customFrom, customTo, filters, granularity, timezone }),
+    [customFrom, customTo, filters, granularity, timeRange, timezone]
   );
+  const debouncedCriteria = useDebouncedValue(queryCriteria, 250);
+  const effectiveFilters = debouncedCriteria.filters;
   const activeView = analyticsViewForTab(activeTab, groupView);
-  const buildCurrentRange = useCallback(
-    () => buildMonitoringRange(timeRange, new Date(), customFrom, customTo),
-    [customFrom, customTo, timeRange]
-  );
-
-  const loadAnalytics = useCallback(async () => {
-    const range = buildCurrentRange();
+  const refreshAnalytics = useCallback(() => {
+    const range = buildMonitoringRange(
+      debouncedCriteria.timeRange,
+      new Date(),
+      debouncedCriteria.customFrom,
+      debouncedCriteria.customTo
+    );
     if (!range) {
-      setLoadError(t('usage_analytics.errors.invalid_range'));
+      setRangeError(t('usage_analytics.errors.invalid_range'));
       return;
     }
-    const sequence = ++requestSequence.current;
-    setLoading(true);
-    setLoadError('');
-    try {
-      const query = buildAnalyticsRequestQuery(range, effectiveFilters, granularity, timezone);
-      const overviewPromise = usageAnalyticsApi.get('overview', query);
-      const reportPromise =
-        activeView === 'overview' ? overviewPromise : usageAnalyticsApi.get(activeView, query);
-      const [nextOverview, nextReport] = await Promise.all([overviewPromise, reportPromise]);
-      if (sequence !== requestSequence.current) return;
-      setOverview(nextOverview);
-      setReport(nextReport);
-      setCapabilityUnavailable(false);
-    } catch (error: unknown) {
-      if (sequence !== requestSequence.current) return;
-      if (isAnalyticsCapabilityUnavailable(error)) {
-        setCapabilityUnavailable(true);
-        setOverview(null);
-        setReport(null);
-      } else {
-        setCapabilityUnavailable(false);
-        setLoadError(getErrorMessage(error, t('usage_analytics.errors.load')));
-      }
-    } finally {
-      if (sequence === requestSequence.current) setLoading(false);
-    }
-  }, [activeView, buildCurrentRange, effectiveFilters, granularity, t, timezone]);
-
-  const refreshAnalytics = useCoalescedAsyncTask(loadAnalytics);
+    setRangeError('');
+    setAnalyticsQuery({
+      ...buildAnalyticsRequestQuery(
+        range,
+        debouncedCriteria.filters,
+        debouncedCriteria.granularity,
+        debouncedCriteria.timezone
+      ),
+      snapshotAt: new Date().toISOString(),
+    });
+  }, [debouncedCriteria, t]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void refreshAnalytics(), 50);
+    const timer = window.setTimeout(refreshAnalytics, 0);
     return () => window.clearTimeout(timer);
-  }, [credentialInventoryId, credentialRevision, loadAnalytics, refreshAnalytics]);
+  }, [credentialInventoryId, credentialRevision, refreshAnalytics]);
 
-  useEffect(
-    () => () => {
-      requestSequence.current++;
-    },
-    []
-  );
+  const analyticsQueryKey = analyticsQuery ? buildAnalyticsQuery(analyticsQuery) : '';
+
+  useEffect(() => {
+    if (!analyticsQuery) return;
+    void runOverview(`overview:${analyticsQueryKey}`, (signal) =>
+      usageAnalyticsApi.get('overview', analyticsQuery, signal)
+    );
+    void runHealth(`health:${analyticsQuery.snapshotAt}`, (signal) =>
+      usageAnalyticsApi.getHealth(signal)
+    );
+  }, [analyticsQuery, analyticsQueryKey, runHealth, runOverview]);
+
+  useEffect(() => {
+    if (!analyticsQuery) return;
+    if (activeView === 'overview') {
+      cancelReport();
+      return;
+    }
+    void runReport(`${activeView}:${analyticsQueryKey}`, (signal) =>
+      usageAnalyticsApi.get(activeView, analyticsQuery, signal)
+    );
+  }, [activeView, analyticsQuery, analyticsQueryKey, cancelReport, runReport]);
+
+  const overview = overviewSection.data;
+  const report =
+    activeView === 'overview'
+      ? overview
+      : reportSection.data?.view === activeView
+        ? reportSection.data
+        : null;
+  const loading = overviewSection.loading || (activeView !== 'overview' && reportSection.loading);
+  const overviewError = overviewSection.error
+    ? getErrorMessage(overviewSection.error, t('usage_analytics.errors.load_overview'))
+    : '';
+  const reportError = reportSection.error
+    ? getErrorMessage(reportSection.error, t('usage_analytics.errors.load_report'))
+    : '';
+  const capabilityUnavailable =
+    !overview &&
+    !report &&
+    [overviewSection.error, reportSection.error].some(
+      (error) => error && isAnalyticsCapabilityUnavailable(error)
+    );
 
   const updateFilter = (field: keyof MonitoringFilters, value: string) => {
     setFilters((current) => ({ ...current, [field]: value }));
@@ -351,6 +409,16 @@ export function UsageAnalyticsPage() {
   const comparison = overview?.comparison;
   const costCoverage = summary?.cost.coverageRate ?? 0;
   const missingPrices = summary ? Object.entries(summary.cost.missingDimensions) : [];
+  const health = healthSection.data;
+  const costRebuilding =
+    summary?.cost.state === 'rebuilding' || report?.summary?.cost.state === 'rebuilding';
+  const rollupNeedsAttention = Boolean(
+    costRebuilding ||
+    health?.stale ||
+    health?.degraded ||
+    health?.rollup.degraded ||
+    (health?.rollup.worker && !health.rollup.backfillComplete)
+  );
   const credentialCatalog = useMemo(
     () =>
       reconcileCredentialIdentityCatalog(
@@ -902,19 +970,14 @@ export function UsageAnalyticsPage() {
         </div>
       ) : null}
 
-      {loading && !overview ? (
-        <>
-          <div className={styles.summaryStrip}>
-            {Array.from({ length: 6 }, (_, index) => (
-              <div key={index}>
-                <Skeleton width="55%" height={11} />
-                <Skeleton width="70%" height={22} />
-              </div>
-            ))}
-          </div>
-          <Skeleton height={320} />
-        </>
-      ) : capabilityUnavailable ? (
+      {rangeError ? (
+        <div className={styles.inlineError} role="alert">
+          <AlertTriangle size={15} />
+          <span>{rangeError}</span>
+        </div>
+      ) : null}
+
+      {capabilityUnavailable ? (
         <section className={styles.statePanel}>
           <AlertTriangle size={22} />
           <div>
@@ -922,57 +985,87 @@ export function UsageAnalyticsPage() {
             <span>{t('usage_analytics.states.unavailable_description')}</span>
           </div>
         </section>
-      ) : loadError && !overview ? (
-        <section className={styles.statePanel} role="alert">
-          <AlertTriangle size={22} />
-          <div>
-            <strong>{t('usage_analytics.states.error_title')}</strong>
-            <span>{loadError}</span>
-          </div>
-          <Button size="sm" variant="secondary" onClick={() => void refreshAnalytics()}>
-            <RefreshCw size={16} />
-            {t('common.refresh')}
-          </Button>
-        </section>
-      ) : overview && report ? (
+      ) : (
         <>
-          {loadError ? (
-            <div className={styles.inlineError} role="alert">
-              <AlertTriangle size={15} />
-              <span>{loadError}</span>
+          <SectionStatus
+            loading={overviewSection.loading}
+            error={overviewError}
+            updatedAt={overview?.generatedAt ?? ''}
+            onRetry={refreshAnalytics}
+          />
+          {overview ? (
+            <>
+              {renderSummary()}
+              <section className={styles.coverageBar} data-complete={costCoverage === 1}>
+                <CircleDollarSign size={18} />
+                <strong>{t('usage_analytics.coverage.label')}</strong>
+                <span>{`${(costCoverage * 100).toFixed(1)}%`}</span>
+                <span>
+                  {t('usage_analytics.coverage.catalog', { version: overview.catalogVersion })}
+                </span>
+                {missingPrices.length ? (
+                  <span>
+                    {t('usage_analytics.coverage.missing', {
+                      count: missingPrices.reduce((total, [, count]) => total + count, 0),
+                    })}
+                  </span>
+                ) : null}
+              </section>
+            </>
+          ) : overviewSection.loading || !overviewError ? (
+            <div className={styles.summaryStrip}>
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index}>
+                  <Skeleton width="55%" height={11} />
+                  <Skeleton width="70%" height={22} />
+                </div>
+              ))}
             </div>
           ) : null}
-          {renderSummary()}
-          <section className={styles.coverageBar} data-complete={costCoverage === 1}>
-            <CircleDollarSign size={18} />
-            <strong>{t('usage_analytics.coverage.label')}</strong>
-            <span>{`${(costCoverage * 100).toFixed(1)}%`}</span>
-            <span>
-              {t('usage_analytics.coverage.catalog', { version: overview.catalogVersion })}
-            </span>
-            {missingPrices.length ? (
+
+          {rollupNeedsAttention ? (
+            <section className={styles.rollupWarning} role="status">
+              <AlertTriangle size={17} />
               <span>
-                {t('usage_analytics.coverage.missing', {
-                  count: missingPrices.reduce((total, [, count]) => total + count, 0),
-                })}
+                {t(
+                  costRebuilding
+                    ? 'usage_analytics.states.cost_rebuilding'
+                    : 'usage_analytics.states.rollup_stale'
+                )}
               </span>
-            ) : null}
-          </section>
-          {activeView === 'overview' ? renderOverview() : null}
-          {activeView === 'trends' ? renderTrends() : null}
-          {[
-            'models',
-            'api-keys',
-            'credentials',
-            'credential-groups',
-            'api-key-groups',
-            'providers',
-          ].includes(activeView)
-            ? renderRankings()
-            : null}
-          {activeView === 'heatmap' ? renderHeatmap() : null}
+            </section>
+          ) : null}
+
+          {activeView !== 'overview' ? (
+            <SectionStatus
+              loading={reportSection.loading}
+              error={reportError}
+              updatedAt={report?.generatedAt ?? ''}
+              onRetry={refreshAnalytics}
+            />
+          ) : null}
+
+          {report ? (
+            <>
+              {activeView === 'overview' ? renderOverview() : null}
+              {activeView === 'trends' ? renderTrends() : null}
+              {[
+                'models',
+                'api-keys',
+                'credentials',
+                'credential-groups',
+                'api-key-groups',
+                'providers',
+              ].includes(activeView)
+                ? renderRankings()
+                : null}
+              {activeView === 'heatmap' ? renderHeatmap() : null}
+            </>
+          ) : activeView !== 'overview' && (reportSection.loading || !reportError) ? (
+            <Skeleton height={320} />
+          ) : null}
         </>
-      ) : null}
+      )}
     </div>
   );
 }

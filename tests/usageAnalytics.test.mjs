@@ -33,6 +33,8 @@ const metrics = (overrides = {}) => ({
     free_calls: 0,
     coverage_rate: 0.75,
     missing_dimensions: { output: 1 },
+    state: 'ready',
+    catalog_version: 9,
   },
   ...overrides,
 });
@@ -51,6 +53,17 @@ const reportWire = {
   data_source: 'mixed',
   fallback_reason: '',
   catalog_version: 9,
+  rollup: {
+    watermark: '2026-07-23T03:00:00Z',
+    last_success_at: '2026-07-23T04:00:00Z',
+    lag: 1000000000,
+    dirty_hours: 0,
+    catalog_version: 9,
+    worker: true,
+    backfill_complete: true,
+    degraded: false,
+  },
+  percentiles: { method: 'histogram', distribution_version: 1, approximate: true },
   credential_inventory_id: 'inventory-1',
   credential_revision: 12,
   credential_catalog: [
@@ -97,6 +110,9 @@ try {
   const normalized = api.normalizeAnalyticsReport(reportWire);
   assert.equal(normalized.view, 'models');
   assert.equal(normalized.rankings[0].metrics.cost.coverageRate, 0.75);
+  assert.equal(normalized.rankings[0].metrics.cost.state, 'ready');
+  assert.equal(normalized.rollup.backfillComplete, true);
+  assert.equal(normalized.percentiles.approximate, true);
   assert.equal(normalized.credentialCatalog[0].hasUsage, false);
   assert.equal(normalized.credentialRevision, 12);
   assert.deepEqual(normalized.series, []);
@@ -167,6 +183,15 @@ try {
   try {
     client.apiClient.get = async (url) => {
       calls.push(url);
+      if (url === '/usage-analytics/health') {
+        return {
+          available: true,
+          degraded: false,
+          stale: false,
+          schema_ready: true,
+          rollup: reportWire.rollup,
+        };
+      }
       return reportWire;
     };
     const response = await api.usageAnalyticsApi.get('models', {
@@ -177,6 +202,9 @@ try {
     });
     assert.equal(response.rankings.length, 1);
     assert.match(calls[0], /^\/usage-analytics\/reports\/models\?/);
+    const health = await api.usageAnalyticsApi.getHealth();
+    assert.equal(health.schemaReady, true);
+    assert.equal(health.rollup.catalogVersion, 9);
   } finally {
     client.apiClient.get = originalGet;
   }

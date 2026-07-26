@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -36,11 +28,12 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { TooltipIconButton } from '@/components/ui/TooltipControls';
 import {
   isMonitoringCapabilityUnavailable,
+  buildMonitoringQuery,
   requestMonitoringApi,
   type MonitoringIdentity,
   type MonitoringIdentityAggregate,
   type MonitoringRequest,
-  type MonitoringResponse,
+  type MonitoringQueryInput,
   type MonitoringRetention,
 } from '@/services/api';
 import {
@@ -61,7 +54,7 @@ import {
   type MonitoringTimeRange,
 } from '@/features/requestMonitoring/viewModel';
 import { reconcileCredentialIdentityCatalog } from '@/features/authFiles/credentialIdentityCatalog';
-import { useCoalescedAsyncTask } from '@/hooks/useCoalescedAsyncTask';
+import { useDebouncedValue, useLatestAsyncSection } from '@/hooks';
 import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
 import { downloadBlob } from '@/utils/download';
 import { getErrorMessage } from '@/utils/helpers';
@@ -104,6 +97,48 @@ function IdentityStatus({ identity, missing }: { identity: MonitoringIdentity; m
   );
 }
 
+function SectionStatus({
+  loading,
+  error,
+  updatedAt,
+  onRetry,
+}: {
+  loading: boolean;
+  error: string;
+  updatedAt: string;
+  onRetry: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const stale = Boolean(updatedAt) && (loading || Boolean(error));
+  const state = error ? 'error' : loading ? 'loading' : updatedAt ? 'fresh' : 'pending';
+  const message = error
+    ? stale
+      ? t('request_monitoring.states.section_stale_error', { error })
+      : error
+    : loading
+      ? t(
+          stale
+            ? 'request_monitoring.states.section_stale_loading'
+            : 'request_monitoring.states.section_loading'
+        )
+      : updatedAt
+        ? t('request_monitoring.states.section_fresh', {
+            value: formatTime(updatedAt, i18n.language, t('common.not_set')),
+          })
+        : t('request_monitoring.status_pending');
+  return (
+    <div className={styles.sectionStatus} data-state={state} data-stale={stale} aria-live="polite">
+      {error ? <AlertTriangle size={14} /> : <Clock3 size={14} />}
+      <span>{message}</span>
+      {error ? (
+        <TooltipIconButton label={t('common.refresh')} onClick={onRetry}>
+          <RefreshCw size={14} />
+        </TooltipIconButton>
+      ) : null}
+    </div>
+  );
+}
+
 export function RequestMonitoringPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -117,11 +152,19 @@ export function RequestMonitoringPage() {
   const credentialRevision = useAuthInventoryStore((state) => state.revision);
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
-  const [data, setData] = useState<MonitoringResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [loadError, setLoadError] = useState('');
-  const [capabilityUnavailable, setCapabilityUnavailable] = useState(false);
+  const summarySection =
+    useLatestAsyncSection<Awaited<ReturnType<typeof requestMonitoringApi.getSummary>>>();
+  const facetsSection =
+    useLatestAsyncSection<Awaited<ReturnType<typeof requestMonitoringApi.getFacets>>>();
+  const identitiesSection =
+    useLatestAsyncSection<Awaited<ReturnType<typeof requestMonitoringApi.getIdentities>>>();
+  const requestsSection =
+    useLatestAsyncSection<Awaited<ReturnType<typeof requestMonitoringApi.getRequests>>>();
+  const { run: runSummary } = summarySection;
+  const { run: runFacets } = facetsSection;
+  const { run: runIdentities } = identitiesSection;
+  const { data: requestsSectionData, run: runRequests } = requestsSection;
+  const [rangeError, setRangeError] = useState('');
   const [activeTab, setActiveTab] = useState<MonitoringTab>('requests');
   const [timeRange, setTimeRange] = useState<MonitoringTimeRange>(
     initialDrillState.range ? 'custom' : '24h'
@@ -139,7 +182,6 @@ export function RequestMonitoringPage() {
   const [filters, setFilters] = useState<MonitoringFilters>(() => ({
     ...initialDrillState.filters,
   }));
-  const deferredSearch = useDeferredValue(filters.search);
   const [advancedOpen, setAdvancedOpen] = useState(() =>
     hasAdvancedMonitoringFilters(initialDrillState.filters)
   );
@@ -148,95 +190,100 @@ export function RequestMonitoringPage() {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
-  const requestSequence = useRef(0);
-  const activeRangeRef = useRef<{ from: string; to: string } | null>(null);
-  const nextCursorRef = useRef('');
+  const activeQueryRef = useRef<MonitoringQueryInput | null>(null);
+  const detailControllersRef = useRef(new Map<string, AbortController>());
+  const [requestDetails, setRequestDetails] = useState<Record<string, MonitoringRequest>>({});
+  const [detailLoadingIDs, setDetailLoadingIDs] = useState<Set<string>>(new Set());
+  const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
   const [retentionOpen, setRetentionOpen] = useState(false);
   const [retention, setRetention] = useState<MonitoringRetention | null>(null);
   const [retentionDays, setRetentionDays] = useState('90');
   const [retentionLoading, setRetentionLoading] = useState(false);
 
   const disabled = connectionStatus !== 'connected';
-  const effectiveFilters = useMemo(
-    () => ({ ...filters, search: deferredSearch }),
-    [deferredSearch, filters]
+  const requestCriteria = useMemo(
+    () => ({ timeRange, customFrom, customTo, filters }),
+    [customFrom, customTo, filters, timeRange]
   );
+  const debouncedCriteria = useDebouncedValue(requestCriteria, 250);
+  const effectiveFilters = debouncedCriteria.filters;
 
   const buildCurrentRange = useCallback(
     () => buildMonitoringRange(timeRange, new Date(), customFrom, customTo),
     [customFrom, customTo, timeRange]
   );
 
-  const loadMonitoring = useCallback(
-    async (append = false) => {
-      const range = append ? activeRangeRef.current : buildCurrentRange();
-      if (!range) {
-        setLoadError(t('request_monitoring.errors.invalid_range'));
-        return;
-      }
-      const cursor = append ? nextCursorRef.current : '';
-      if (append && !cursor) return;
-      const sequence = ++requestSequence.current;
-      if (append) setLoadingMore(true);
-      else setLoading(true);
-      setLoadError('');
-      try {
-        const response = await requestMonitoringApi.get(
-          buildMonitoringRequestQuery(range, effectiveFilters, cursor)
-        );
-        if (requestSequence.current !== sequence) return;
-        setCapabilityUnavailable(false);
-        activeRangeRef.current = range;
-        nextCursorRef.current = response.nextCursor;
-        setData((current) =>
-          append && current
-            ? {
-                ...response,
-                requests: mergeMonitoringRequests(current.requests, response.requests),
-              }
-            : response
-        );
-      } catch (error: unknown) {
-        if (requestSequence.current !== sequence) return;
-        if (isMonitoringCapabilityUnavailable(error)) {
-          setCapabilityUnavailable(true);
-          setData(null);
-        } else {
-          setCapabilityUnavailable(false);
-          setLoadError(getErrorMessage(error, t('request_monitoring.errors.load')));
-        }
-      } finally {
-        if (requestSequence.current === sequence) {
-          setLoading(false);
-          setLoadingMore(false);
-        }
-      }
-    },
-    [buildCurrentRange, effectiveFilters, t]
-  );
+  const loadMonitoring = useCallback(async () => {
+    const range = buildMonitoringRange(
+      debouncedCriteria.timeRange,
+      new Date(),
+      debouncedCriteria.customFrom,
+      debouncedCriteria.customTo
+    );
+    if (!range) {
+      setRangeError(t('request_monitoring.errors.invalid_range'));
+      return;
+    }
+    setRangeError('');
+    const query = {
+      ...buildMonitoringRequestQuery(range, debouncedCriteria.filters),
+      snapshotAt: new Date().toISOString(),
+    };
+    activeQueryRef.current = query;
+    const key = buildMonitoringQuery(query);
+    await Promise.all([
+      runSummary(key, (signal) => requestMonitoringApi.getSummary(query, signal)),
+      runFacets(key, (signal) => requestMonitoringApi.getFacets(query, signal)),
+      runIdentities(key, (signal) => requestMonitoringApi.getIdentities(query, signal)),
+      runRequests(key, (signal) => requestMonitoringApi.getRequests(query, signal)),
+    ]);
+  }, [debouncedCriteria, runFacets, runIdentities, runRequests, runSummary, t]);
 
-  const refreshMonitoring = useCoalescedAsyncTask(() => loadMonitoring(false));
+  const refreshMonitoring = loadMonitoring;
+
+  const loadMoreRequests = useCallback(async () => {
+    const activeQuery = activeQueryRef.current;
+    const current = requestsSectionData;
+    if (!activeQuery || !current?.nextCursor) return;
+    const query = { ...activeQuery, cursor: current.nextCursor };
+    const key = buildMonitoringQuery(query);
+    await runRequests(key, async (signal) => {
+      const next = await requestMonitoringApi.getRequests(query, signal);
+      return {
+        ...next,
+        requests: mergeMonitoringRequests(current.requests, next.requests),
+      };
+    });
+  }, [requestsSectionData, runRequests]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void refreshMonitoring(), 50);
+    const timer = window.setTimeout(() => void refreshMonitoring(), 0);
     return () => window.clearTimeout(timer);
-  }, [credentialInventoryId, credentialRevision, loadMonitoring, refreshMonitoring]);
+  }, [credentialInventoryId, credentialRevision, refreshMonitoring]);
 
   useEffect(
     () => () => {
-      requestSequence.current++;
+      detailControllersRef.current.forEach((controller) => controller.abort());
     },
     []
   );
 
+  const [pageVisible, setPageVisible] = useState(() => document.visibilityState === 'visible');
+
+  useEffect(() => {
+    const onVisibilityChange = () => setPageVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
+
   useEffect(() => {
     const milliseconds = Number(autoRefresh);
-    if (!Number.isFinite(milliseconds) || milliseconds <= 0 || disabled) return;
+    if (!Number.isFinite(milliseconds) || milliseconds <= 0 || disabled || !pageVisible) return;
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refreshMonitoring();
+      void refreshMonitoring();
     }, milliseconds);
     return () => window.clearInterval(timer);
-  }, [autoRefresh, disabled, refreshMonitoring]);
+  }, [autoRefresh, disabled, pageVisible, refreshMonitoring]);
 
   const updateFilter = (field: keyof MonitoringFilters, value: string) => {
     setFilters((current) => ({ ...current, [field]: value }));
@@ -247,13 +294,49 @@ export function RequestMonitoringPage() {
     setAdvancedOpen(false);
   };
 
-  const toggleExpanded = (id: string) => {
+  const loadRequestDetail = useCallback(
+    async (request: MonitoringRequest) => {
+      if (!request.hasDetails || requestDetails[request.id]) return;
+      detailControllersRef.current.get(request.id)?.abort();
+      const controller = new AbortController();
+      detailControllersRef.current.set(request.id, controller);
+      setDetailLoadingIDs((current) => new Set(current).add(request.id));
+      setDetailErrors((current) => ({ ...current, [request.id]: '' }));
+      try {
+        const detail = await requestMonitoringApi.getRequest(request.id, controller.signal);
+        if (!controller.signal.aborted) {
+          setRequestDetails((current) => ({ ...current, [request.id]: detail }));
+        }
+      } catch (error: unknown) {
+        if (!controller.signal.aborted) {
+          setDetailErrors((current) => ({
+            ...current,
+            [request.id]: getErrorMessage(error, t('request_monitoring.errors.load_detail')),
+          }));
+        }
+      } finally {
+        if (detailControllersRef.current.get(request.id) === controller) {
+          detailControllersRef.current.delete(request.id);
+          setDetailLoadingIDs((current) => {
+            const next = new Set(current);
+            next.delete(request.id);
+            return next;
+          });
+        }
+      }
+    },
+    [requestDetails, t]
+  );
+
+  const toggleExpanded = (request: MonitoringRequest) => {
+    const opening = !expandedRequestIDs.has(request.id);
     setExpandedRequestIDs((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(request.id)) next.delete(request.id);
+      else next.add(request.id);
       return next;
     });
+    if (opening) void loadRequestDetail(request);
   };
 
   const focusAggregate = (kind: 'credential' | 'api_key', row: MonitoringIdentityAggregate) => {
@@ -400,44 +483,82 @@ export function RequestMonitoringPage() {
     });
   };
 
+  const summaryData = summarySection.data;
+  const facetsData = facetsSection.data;
+  const identitiesData = identitiesSection.data;
+  const requestsData = requestsSection.data;
+  const loading =
+    summarySection.loading ||
+    facetsSection.loading ||
+    identitiesSection.loading ||
+    requestsSection.loading;
+  const sectionErrors = [
+    summarySection.error,
+    facetsSection.error,
+    identitiesSection.error,
+    requestsSection.error,
+  ].filter((error): error is unknown => Boolean(error));
+  const capabilityUnavailable =
+    !summaryData &&
+    !facetsData &&
+    !identitiesData &&
+    !requestsData &&
+    sectionErrors.some(isMonitoringCapabilityUnavailable);
+  const summaryError = summarySection.error
+    ? getErrorMessage(summarySection.error, t('request_monitoring.errors.load_summary'))
+    : '';
+  const facetsError = facetsSection.error
+    ? getErrorMessage(facetsSection.error, t('request_monitoring.errors.load_facets'))
+    : '';
+  const identitiesError = identitiesSection.error
+    ? getErrorMessage(identitiesSection.error, t('request_monitoring.errors.load_identities'))
+    : '';
+  const requestsError = requestsSection.error
+    ? getErrorMessage(requestsSection.error, t('request_monitoring.errors.load_requests'))
+    : '';
+
   const providerOptions = useMemo(
     () => [
       { value: 'all', label: t('request_monitoring.filters.all_providers') },
-      ...(data?.facets.providers ?? []).map((entry) => ({
+      ...(facetsData?.facets.providers ?? []).map((entry) => ({
         value: entry.value,
         label: `${entry.value} (${formatNumber(entry.count, i18n.language)})`,
       })),
     ],
-    [data?.facets.providers, i18n.language, t]
+    [facetsData?.facets.providers, i18n.language, t]
   );
   const modelOptions = useMemo(
     () => [
       { value: 'all', label: t('request_monitoring.filters.all_models') },
-      ...(data?.facets.resolvedModels ?? []).map((entry) => ({
+      ...(facetsData?.facets.resolvedModels ?? []).map((entry) => ({
         value: entry.value,
         label: `${entry.value} (${formatNumber(entry.count, i18n.language)})`,
       })),
     ],
-    [data?.facets.resolvedModels, i18n.language, t]
+    [facetsData?.facets.resolvedModels, i18n.language, t]
   );
   const requestedModelOptions = useMemo(
     () => [
       { value: 'all', label: t('request_monitoring.filters.all_models') },
-      ...(data?.facets.requestedModels ?? []).map((entry) => ({
+      ...(facetsData?.facets.requestedModels ?? []).map((entry) => ({
         value: entry.value,
         label: `${entry.value} (${formatNumber(entry.count, i18n.language)})`,
       })),
     ],
-    [data?.facets.requestedModels, i18n.language, t]
+    [facetsData?.facets.requestedModels, i18n.language, t]
   );
   const credentialCatalog = useMemo(
-    () => reconcileCredentialIdentityCatalog(data?.credentialCatalog ?? [], authFiles),
-    [authFiles, data?.credentialCatalog]
+    () => reconcileCredentialIdentityCatalog(identitiesData?.credentialCatalog ?? [], authFiles),
+    [authFiles, identitiesData?.credentialCatalog]
   );
   const credentialRows = useMemo(
     () =>
-      mergeMonitoringCredentialRows(data?.credentials ?? [], credentialCatalog, effectiveFilters),
-    [credentialCatalog, data?.credentials, effectiveFilters]
+      mergeMonitoringCredentialRows(
+        identitiesData?.credentials ?? [],
+        credentialCatalog,
+        effectiveFilters
+      ),
+    [credentialCatalog, effectiveFilters, identitiesData?.credentials]
   );
   const credentialOptions = useMemo(
     () => [
@@ -456,14 +577,14 @@ export function RequestMonitoringPage() {
   const apiKeyOptions = useMemo(
     () => [
       { value: 'all', label: t('request_monitoring.filters.all_api_keys') },
-      ...(data?.apiKeys ?? [])
+      ...(identitiesData?.apiKeys ?? [])
         .filter((entry) => entry.recordedId)
         .map((entry) => ({
           value: entry.recordedId,
           label: entry.displayName || t('request_monitoring.api_key_fallback'),
         })),
     ],
-    [data?.apiKeys, t]
+    [identitiesData?.apiKeys, t]
   );
 
   const renderAggregateRows = (
@@ -529,7 +650,8 @@ export function RequestMonitoringPage() {
     );
   };
 
-  const renderRequest = (request: MonitoringRequest) => {
+  const renderRequest = (listRequest: MonitoringRequest) => {
+    const request = requestDetails[listRequest.id] ?? listRequest;
     const expanded = expandedRequestIDs.has(request.id);
     const credential = request.identities.credential;
     const apiKey = request.identities.apiKey;
@@ -544,7 +666,7 @@ export function RequestMonitoringPage() {
           <button
             type="button"
             className={styles.expandButton}
-            onClick={() => toggleExpanded(request.id)}
+            onClick={() => toggleExpanded(listRequest)}
             disabled={!expandable}
             aria-label={t(expanded ? 'common.collapse' : 'common.expand')}
           >
@@ -584,6 +706,15 @@ export function RequestMonitoringPage() {
         </div>
         {expanded ? (
           <div className={styles.requestDetails}>
+            {detailLoadingIDs.has(request.id) ? (
+              <div className={styles.detailStatus}>
+                {t('request_monitoring.states.detail_loading')}
+              </div>
+            ) : detailErrors[request.id] ? (
+              <div className={styles.detailStatus} data-error="true" role="alert">
+                {detailErrors[request.id]}
+              </div>
+            ) : null}
             <div className={styles.detailBlock}>
               <span>{t('request_monitoring.details.request_id')}</span>
               <code>{request.requestId || request.id}</code>
@@ -682,9 +813,13 @@ export function RequestMonitoringPage() {
         <div>
           <h1>{t('request_monitoring.title')}</h1>
           <span>
-            {data
+            {(summaryData ?? requestsData)
               ? t('request_monitoring.last_refresh', {
-                  value: formatTime(data.generatedAt, i18n.language, t('common.not_set')),
+                  value: formatTime(
+                    summaryData?.generatedAt ?? requestsData?.generatedAt ?? null,
+                    i18n.language,
+                    t('common.not_set')
+                  ),
                 })
               : t('request_monitoring.status_pending')}
           </span>
@@ -718,7 +853,7 @@ export function RequestMonitoringPage() {
           <TooltipIconButton
             label={t('request_monitoring.actions.export')}
             onClick={() => void exportData()}
-            disabled={disabled || exporting || !data}
+            disabled={disabled || exporting || (!summaryData && !requestsData)}
           >
             <Download size={16} />
           </TooltipIconButton>
@@ -868,7 +1003,7 @@ export function RequestMonitoringPage() {
               value={filters.failureCategory}
               options={[
                 { value: 'all', label: t('request_monitoring.filters.all_failures') },
-                ...(data?.facets.failureCategories ?? []).map((entry) => ({
+                ...(facetsData?.facets.failureCategories ?? []).map((entry) => ({
                   value: entry.value,
                   label: entry.value,
                 })),
@@ -924,19 +1059,21 @@ export function RequestMonitoringPage() {
         ) : null}
       </section>
 
-      {loading && !data ? (
-        <>
-          <div className={styles.summaryStrip} aria-hidden="true">
-            {[0, 1, 2, 3, 4, 5].map((index) => (
-              <div key={index}>
-                <Skeleton width="50%" height={11} />
-                <Skeleton width="70%" height={22} />
-              </div>
-            ))}
-          </div>
-          <Skeleton height={260} />
-        </>
-      ) : capabilityUnavailable ? (
+      <SectionStatus
+        loading={facetsSection.loading}
+        error={facetsError}
+        updatedAt={facetsData?.generatedAt ?? ''}
+        onRetry={() => void refreshMonitoring()}
+      />
+
+      {rangeError ? (
+        <div className={styles.inlineError} role="alert">
+          <AlertTriangle size={15} />
+          <span>{rangeError}</span>
+        </div>
+      ) : null}
+
+      {capabilityUnavailable ? (
         <section className={styles.statePanel}>
           <AlertTriangle size={22} />
           <div>
@@ -944,58 +1081,57 @@ export function RequestMonitoringPage() {
             <span>{t('request_monitoring.states.unavailable_description')}</span>
           </div>
         </section>
-      ) : loadError && !data ? (
-        <section className={styles.statePanel} role="alert">
-          <AlertTriangle size={22} />
-          <div>
-            <strong>{t('request_monitoring.states.error_title')}</strong>
-            <span>{loadError}</span>
-          </div>
-          <Button size="sm" variant="secondary" onClick={() => void refreshMonitoring()}>
-            <RefreshCw size={16} />
-            {t('common.refresh')}
-          </Button>
-        </section>
-      ) : data ? (
+      ) : (
         <>
-          {loadError ? (
-            <div className={styles.inlineError} role="alert">
-              <AlertTriangle size={15} />
-              <span>{loadError}</span>
+          <SectionStatus
+            loading={summarySection.loading}
+            error={summaryError}
+            updatedAt={summaryData?.generatedAt ?? ''}
+            onRetry={() => void refreshMonitoring()}
+          />
+          {summaryData ? (
+            <section
+              className={styles.summaryStrip}
+              aria-label={t('request_monitoring.summary.label')}
+            >
+              <div>
+                <span>{t('request_monitoring.summary.requests')}</span>
+                <strong>{formatNumber(summaryData.summary.requests, i18n.language)}</strong>
+              </div>
+              <div>
+                <span>{t('request_monitoring.summary.success_rate')}</span>
+                <strong>{`${monitoringSuccessRate(summaryData.summary).toFixed(1)}%`}</strong>
+              </div>
+              <div>
+                <span>{t('request_monitoring.summary.estimated_cost')}</span>
+                <strong>{formatCost(summaryData.cost.amount, summaryData.cost.currency)}</strong>
+                <small>
+                  {summaryData.cost.truncated ? t('request_monitoring.summary.cost_truncated') : ''}
+                </small>
+              </div>
+              <div>
+                <span>{t('request_monitoring.summary.tokens')}</span>
+                <strong>{formatNumber(summaryData.summary.totalTokens, i18n.language)}</strong>
+              </div>
+              <div>
+                <span>{t('request_monitoring.summary.p95_latency')}</span>
+                <strong>{formatDuration(summaryData.summary.p95LatencyMs)}</strong>
+              </div>
+              <div>
+                <span>{t('request_monitoring.summary.cache_rate')}</span>
+                <strong>{`${monitoringCacheRate(summaryData.summary).toFixed(1)}%`}</strong>
+              </div>
+            </section>
+          ) : summarySection.loading || !summaryError ? (
+            <div className={styles.summaryStrip} aria-hidden="true">
+              {[0, 1, 2, 3, 4, 5].map((index) => (
+                <div key={index}>
+                  <Skeleton width="50%" height={11} />
+                  <Skeleton width="70%" height={22} />
+                </div>
+              ))}
             </div>
           ) : null}
-          <section
-            className={styles.summaryStrip}
-            aria-label={t('request_monitoring.summary.label')}
-          >
-            <div>
-              <span>{t('request_monitoring.summary.requests')}</span>
-              <strong>{formatNumber(data.summary.requests, i18n.language)}</strong>
-            </div>
-            <div>
-              <span>{t('request_monitoring.summary.success_rate')}</span>
-              <strong>{`${monitoringSuccessRate(data.summary).toFixed(1)}%`}</strong>
-            </div>
-            <div>
-              <span>{t('request_monitoring.summary.estimated_cost')}</span>
-              <strong>{formatCost(data.cost.amount, data.cost.currency)}</strong>
-              <small>
-                {data.cost.truncated ? t('request_monitoring.summary.cost_truncated') : ''}
-              </small>
-            </div>
-            <div>
-              <span>{t('request_monitoring.summary.tokens')}</span>
-              <strong>{formatNumber(data.summary.totalTokens, i18n.language)}</strong>
-            </div>
-            <div>
-              <span>{t('request_monitoring.summary.p95_latency')}</span>
-              <strong>{formatDuration(data.summary.p95LatencyMs)}</strong>
-            </div>
-            <div>
-              <span>{t('request_monitoring.summary.cache_rate')}</span>
-              <strong>{`${monitoringCacheRate(data.summary).toFixed(1)}%`}</strong>
-            </div>
-          </section>
 
           <section className={styles.dataPanel}>
             <div className={styles.tabsBar} role="tablist">
@@ -1016,17 +1152,37 @@ export function RequestMonitoringPage() {
                     {tab === 'credentials'
                       ? credentialRows.length
                       : tab === 'api_keys'
-                        ? data.apiKeys.length
-                        : data.summary.requests}
+                        ? (identitiesData?.apiKeys.length ?? 0)
+                        : (summaryData?.summary.requests ?? requestsData?.requests.length ?? 0)}
                   </span>
                 </button>
               ))}
             </div>
 
-            {activeTab === 'credentials' ? renderAggregateRows(credentialRows, 'credential') : null}
-            {activeTab === 'api_keys' ? renderAggregateRows(data.apiKeys, 'api_key') : null}
+            {activeTab !== 'requests' ? (
+              <SectionStatus
+                loading={identitiesSection.loading}
+                error={identitiesError}
+                updatedAt={identitiesData?.generatedAt ?? ''}
+                onRetry={() => void refreshMonitoring()}
+              />
+            ) : (
+              <SectionStatus
+                loading={requestsSection.loading}
+                error={requestsError}
+                updatedAt={requestsData?.generatedAt ?? ''}
+                onRetry={() => void refreshMonitoring()}
+              />
+            )}
+            {activeTab === 'credentials' && identitiesData
+              ? renderAggregateRows(credentialRows, 'credential')
+              : null}
+            {activeTab === 'api_keys' && identitiesData
+              ? renderAggregateRows(identitiesData.apiKeys, 'api_key')
+              : null}
+            {activeTab !== 'requests' && !identitiesData ? <Skeleton height={260} /> : null}
             {activeTab === 'requests' ? (
-              data.requests.length ? (
+              requestsData?.requests.length ? (
                 <div className={styles.requestList}>
                   <div className={styles.requestHead}>
                     <span />
@@ -1037,26 +1193,28 @@ export function RequestMonitoringPage() {
                     <span>{t('request_monitoring.columns.cost')}</span>
                     <span>{t('request_monitoring.columns.status')}</span>
                   </div>
-                  {data.requests.map(renderRequest)}
-                  {data.nextCursor ? (
+                  {requestsData.requests.map(renderRequest)}
+                  {requestsData.nextCursor ? (
                     <div className={styles.loadMore}>
                       <Button
                         variant="secondary"
-                        onClick={() => void loadMonitoring(true)}
-                        loading={loadingMore}
+                        onClick={() => void loadMoreRequests()}
+                        loading={requestsSection.loading}
                       >
                         {t('request_monitoring.actions.load_more')}
                       </Button>
                     </div>
                   ) : null}
                 </div>
-              ) : (
+              ) : requestsData ? (
                 <EmptyState title={t('request_monitoring.empty.requests')} />
+              ) : (
+                <Skeleton height={260} />
               )
             ) : null}
           </section>
         </>
-      ) : null}
+      )}
 
       <Modal
         open={retentionOpen}

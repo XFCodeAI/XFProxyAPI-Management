@@ -153,6 +153,8 @@ const zeroAnalyticsMetrics = (currency: string): AnalyticsMetrics => ({
     freeCalls: 0,
     coverageRate: 1,
     missingDimensions: {},
+    state: '',
+    catalogVersion: 0,
   },
 });
 

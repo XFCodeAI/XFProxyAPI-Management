@@ -223,6 +223,65 @@ try {
     });
     assert.equal(response.requests.length, 1);
     assert.match(calls[0], /^\/usage-analytics\/monitoring\?/);
+
+    const sectionMeta = {
+      available: true,
+      generated_at: monitoringWire.generated_at,
+      snapshot_at: monitoringWire.snapshot_at,
+      filter_digest: 'digest-1',
+    };
+    client.apiClient.get = async (url, config) => {
+      calls.push(url);
+      assert.ok(config.signal instanceof AbortSignal);
+      if (url.includes('/summary?')) {
+        return { ...sectionMeta, summary: monitoringWire.summary, cost: monitoringWire.cost };
+      }
+      if (url.includes('/facets?')) {
+        return { ...sectionMeta, facets: monitoringWire.facets };
+      }
+      if (url.includes('/identities?')) {
+        return {
+          ...sectionMeta,
+          credentials: monitoringWire.credentials,
+          credential_catalog: monitoringWire.credential_catalog,
+          credential_inventory_id: monitoringWire.credential_inventory_id,
+          credential_revision: monitoringWire.credential_revision,
+          api_keys: monitoringWire.api_keys,
+        };
+      }
+      if (url.includes('/requests/event-1')) {
+        return { available: true, request: { ...monitoringWire.requests[0], has_details: true } };
+      }
+      return {
+        ...sectionMeta,
+        requests: [{ ...monitoringWire.requests[0], has_details: true }],
+        next_cursor: monitoringWire.next_cursor,
+      };
+    };
+    const signal = new AbortController().signal;
+    const sectionQuery = {
+      from: '2026-07-22T00:00:00Z',
+      to: '2026-07-23T00:00:00Z',
+      snapshotAt: monitoringWire.snapshot_at,
+      limit: 50,
+    };
+    const [summary, facets, identities, requests, detail] = await Promise.all([
+      api.requestMonitoringApi.getSummary(sectionQuery, signal),
+      api.requestMonitoringApi.getFacets(sectionQuery, signal),
+      api.requestMonitoringApi.getIdentities(sectionQuery, signal),
+      api.requestMonitoringApi.getRequests(sectionQuery, signal),
+      api.requestMonitoringApi.getRequest('event-1', signal),
+    ]);
+    assert.equal(summary.summary.requests, 1);
+    assert.equal(facets.facets.providers[0].value, 'codex');
+    assert.equal(identities.credentialRevision, 12);
+    assert.equal(requests.nextCursor, 'cursor-2');
+    assert.equal(requests.requests[0].hasDetails, true);
+    assert.equal(detail.responseHeaders['x-request-id'][0], 'request-1');
+    assert.equal(
+      new URLSearchParams(api.buildMonitoringQuery(sectionQuery)).get('snapshot_at'),
+      monitoringWire.snapshot_at
+    );
   } finally {
     client.apiClient.get = originalGet;
   }

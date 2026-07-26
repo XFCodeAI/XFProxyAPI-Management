@@ -37,6 +37,25 @@ export interface AnalyticsCost {
   freeCalls: number;
   coverageRate: number;
   missingDimensions: Record<string, number>;
+  state: string;
+  catalogVersion: number;
+}
+
+export interface AnalyticsRollupHealth {
+  watermark: string;
+  lastSuccessAt: string;
+  lag: number;
+  dirtyHours: number;
+  catalogVersion: number;
+  worker: boolean;
+  backfillComplete: boolean;
+  degraded: boolean;
+}
+
+export interface AnalyticsPercentileInfo {
+  method: string;
+  distributionVersion: number;
+  approximate: boolean;
 }
 
 export interface AnalyticsMetrics {
@@ -107,6 +126,8 @@ export interface AnalyticsReport {
   dataSource: AnalyticsDataSource;
   fallbackReason: string;
   catalogVersion: number;
+  rollup: AnalyticsRollupHealth;
+  percentiles: AnalyticsPercentileInfo;
   credentialCatalog: CredentialIdentityCatalogEntry[];
   credentialInventoryId: string;
   credentialRevision: number;
@@ -117,6 +138,14 @@ export interface AnalyticsReport {
   rankings: AnalyticsRanking[];
   heatmap: AnalyticsHeatmapCell[];
   anomalies: AnalyticsAnomaly[];
+}
+
+export interface UsageAnalyticsHealth {
+  available: boolean;
+  degraded: boolean;
+  stale: boolean;
+  schemaReady: boolean;
+  rollup: AnalyticsRollupHealth;
 }
 
 const BASE_PATH = '/usage-analytics/reports';
@@ -158,6 +187,18 @@ const booleanValue = (record: Record<string, unknown>, key: string, context: str
     ? (record[key] as boolean)
     : invalidResponse(`${context}.${key}`);
 
+const optionalBooleanValue = (
+  record: Record<string, unknown>,
+  key: string,
+  context: string
+): boolean => (record[key] === undefined ? false : booleanValue(record, key, context));
+
+const optionalCountValue = (
+  record: Record<string, unknown>,
+  key: string,
+  context: string
+): number => (record[key] === undefined ? 0 : countValue(record, key, context));
+
 const arrayValue = (record: Record<string, unknown>, key: string, context: string): unknown[] =>
   Array.isArray(record[key]) ? (record[key] as unknown[]) : invalidResponse(`${context}.${key}`);
 
@@ -185,6 +226,35 @@ const normalizeCost = (value: unknown, context: string): AnalyticsCost => {
           : invalidResponse(`${context}.missing_dimensions.${key}`),
       ])
     ),
+    state: stringValue(record, 'state', context),
+    catalogVersion: optionalCountValue(record, 'catalog_version', context),
+  };
+};
+
+const normalizeRollupHealth = (value: unknown, context: string): AnalyticsRollupHealth => {
+  const record = requireRecord(value ?? {}, context);
+  return {
+    watermark: stringValue(record, 'watermark', context),
+    lastSuccessAt: stringValue(record, 'last_success_at', context),
+    lag: optionalCountValue(record, 'lag', context),
+    dirtyHours: optionalCountValue(record, 'dirty_hours', context),
+    catalogVersion: optionalCountValue(record, 'catalog_version', context),
+    worker: optionalBooleanValue(record, 'worker', context),
+    backfillComplete: optionalBooleanValue(record, 'backfill_complete', context),
+    degraded: optionalBooleanValue(record, 'degraded', context),
+  };
+};
+
+const normalizePercentiles = (value: unknown): AnalyticsPercentileInfo => {
+  const record = requireRecord(value ?? {}, 'analytics.percentiles');
+  return {
+    method: stringValue(record, 'method', 'analytics.percentiles'),
+    distributionVersion: optionalCountValue(
+      record,
+      'distribution_version',
+      'analytics.percentiles'
+    ),
+    approximate: optionalBooleanValue(record, 'approximate', 'analytics.percentiles'),
   };
 };
 
@@ -329,6 +399,8 @@ export const normalizeAnalyticsReport = (value: unknown): AnalyticsReport => {
     dataSource,
     fallbackReason: stringValue(record, 'fallback_reason', 'analytics'),
     catalogVersion: countValue(record, 'catalog_version', 'analytics'),
+    rollup: normalizeRollupHealth(record.rollup, 'analytics.rollup'),
+    percentiles: normalizePercentiles(record.percentiles),
     credentialCatalog,
     credentialInventoryId: stringValue(record, 'credential_inventory_id', 'analytics'),
     credentialRevision:
@@ -373,10 +445,28 @@ export const isAnalyticsCapabilityUnavailable = (error: unknown): boolean => {
 };
 
 export const usageAnalyticsApi = {
-  get: async (view: AnalyticsView, query: AnalyticsQueryInput): Promise<AnalyticsReport> => {
+  get: async (
+    view: AnalyticsView,
+    query: AnalyticsQueryInput,
+    signal?: AbortSignal
+  ): Promise<AnalyticsReport> => {
     const report = normalizeAnalyticsReport(
-      await apiClient.get(`${BASE_PATH}/${view}?${buildAnalyticsQuery(query)}`)
+      await apiClient.get(`${BASE_PATH}/${view}?${buildAnalyticsQuery(query)}`, { signal })
     );
     return report.view === view ? report : invalidResponse('analytics.view_mismatch');
+  },
+
+  getHealth: async (signal?: AbortSignal): Promise<UsageAnalyticsHealth> => {
+    const record = requireRecord(
+      await apiClient.get('/usage-analytics/health', { signal }),
+      'usage_analytics_health'
+    );
+    return {
+      available: record.available === true,
+      degraded: optionalBooleanValue(record, 'degraded', 'usage_analytics_health'),
+      stale: optionalBooleanValue(record, 'stale', 'usage_analytics_health'),
+      schemaReady: optionalBooleanValue(record, 'schema_ready', 'usage_analytics_health'),
+      rollup: normalizeRollupHealth(record.rollup, 'usage_analytics_health.rollup'),
+    };
   },
 };

@@ -1295,7 +1295,12 @@
     "states": {
       "error_title": "无法加载请求监控",
       "unavailable_title": "请求监控不可用",
-      "unavailable_description": "当前服务器未提供基于 SQL 的请求监控能力。"
+      "unavailable_description": "当前服务器未提供基于 SQL 的请求监控能力。",
+      "section_loading": "正在加载当前区域",
+      "section_stale_loading": "正在刷新，继续显示上次加载的数据",
+      "section_stale_error": "刷新失败，继续显示上次加载的数据：{{error}}",
+      "section_fresh": "更新于 {{value}}",
+      "detail_loading": "正在加载请求详情"
     },
     "import_confirm": {
       "title": "导入监控记录",
@@ -1320,6 +1325,11 @@
     },
     "errors": {
       "load": "加载请求监控失败",
+      "load_summary": "加载请求摘要失败",
+      "load_facets": "加载筛选项失败",
+      "load_identities": "加载身份活动失败",
+      "load_requests": "加载请求记录失败",
+      "load_detail": "加载请求详情失败",
       "invalid_range": "请选择有效的时间范围。",
       "export": "导出监控记录失败",
       "import": "导入监控记录失败",
@@ -1447,10 +1457,18 @@
     "states": {
       "error_title": "无法加载用量分析",
       "unavailable_title": "用量分析不可用",
-      "unavailable_description": "当前服务器未提供基于 SQL 的用量分析能力。"
+      "unavailable_description": "当前服务器未提供基于 SQL 的用量分析能力。",
+      "section_loading": "正在加载当前区域",
+      "section_stale_loading": "正在刷新，继续显示上次加载的数据",
+      "section_stale_error": "刷新失败，继续显示上次加载的数据：{{error}}",
+      "section_fresh": "更新于 {{value}}",
+      "rollup_stale": "小时汇总正在追赶进度，当前可用数据会继续显示。",
+      "cost_rebuilding": "成本正在按当前价格目录重建，数据一致前不会显示部分金额。"
     },
     "errors": {
       "load": "加载用量分析失败",
+      "load_overview": "加载用量摘要失败",
+      "load_report": "加载当前分析视图失败",
       "invalid_range": "请选择有效的时间范围。"
     }
   },

@@ -13,6 +13,7 @@ export const isMonitoringAPIKeyID = (value: string): boolean =>
 export interface MonitoringQueryInput {
   from: string;
   to: string;
+  snapshotAt?: string;
   search?: string;
   provider?: string;
   pluginId?: string;
@@ -101,6 +102,7 @@ export interface MonitoringRequest {
   responseHeaders: Record<string, string[]>;
   identities: MonitoringIdentities;
   cost: MonitoringCost;
+  hasDetails: boolean;
 }
 
 export interface MonitoringSummary {
@@ -177,6 +179,35 @@ export interface MonitoringResponse {
   credentialInventoryId: string;
   credentialRevision: number;
   apiKeys: MonitoringIdentityAggregate[];
+  requests: MonitoringRequest[];
+  nextCursor: string;
+}
+
+export interface MonitoringSectionMeta {
+  available: true;
+  generatedAt: string;
+  snapshotAt: string;
+  filterDigest: string;
+}
+
+export interface MonitoringSummaryResponse extends MonitoringSectionMeta {
+  summary: MonitoringSummary;
+  cost: MonitoringCostSummary;
+}
+
+export interface MonitoringFacetsResponse extends MonitoringSectionMeta {
+  facets: MonitoringFacets;
+}
+
+export interface MonitoringIdentitiesResponse extends MonitoringSectionMeta {
+  credentials: MonitoringIdentityAggregate[];
+  credentialCatalog: CredentialIdentityCatalogEntry[];
+  credentialInventoryId: string;
+  credentialRevision: number;
+  apiKeys: MonitoringIdentityAggregate[];
+}
+
+export interface MonitoringRequestsResponse extends MonitoringSectionMeta {
   requests: MonitoringRequest[];
   nextCursor: string;
 }
@@ -370,6 +401,8 @@ const normalizeRequest = (value: unknown, context: string): MonitoringRequest =>
     responseHeaders: normalizeHeaders(record.response_headers, `${context}.response_headers`),
     identities: normalizeIdentities(record.identities, `${context}.identities`),
     cost: normalizeCost(record.cost, `${context}.cost`),
+    hasDetails:
+      record.has_details === undefined ? true : booleanValue(record, 'has_details', context),
   };
 };
 
@@ -518,6 +551,71 @@ export const normalizeMonitoringResponse = (value: unknown): MonitoringResponse 
   };
 };
 
+const normalizeSectionMeta = (record: Record<string, unknown>, context: string) => {
+  if (record.available !== true) return invalidResponse(`${context}.available`);
+  return {
+    available: true as const,
+    generatedAt: requiredString(record, 'generated_at', context),
+    snapshotAt: requiredString(record, 'snapshot_at', context),
+    filterDigest: requiredString(record, 'filter_digest', context),
+  };
+};
+
+export const normalizeMonitoringSummaryResponse = (value: unknown): MonitoringSummaryResponse => {
+  const record = requireRecord(value, 'monitoring_summary');
+  return {
+    ...normalizeSectionMeta(record, 'monitoring_summary'),
+    summary: normalizeSummary(record.summary),
+    cost: normalizeCostSummary(record.cost),
+  };
+};
+
+export const normalizeMonitoringFacetsResponse = (value: unknown): MonitoringFacetsResponse => {
+  const record = requireRecord(value, 'monitoring_facets');
+  return {
+    ...normalizeSectionMeta(record, 'monitoring_facets'),
+    facets: normalizeFacets(record.facets),
+  };
+};
+
+export const normalizeMonitoringIdentitiesResponse = (
+  value: unknown
+): MonitoringIdentitiesResponse => {
+  const record = requireRecord(value, 'monitoring_identities');
+  return {
+    ...normalizeSectionMeta(record, 'monitoring_identities'),
+    credentials: arrayValue(record, 'credentials', 'monitoring_identities').map((entry, index) =>
+      normalizeAggregate(entry, `monitoring_identities.credentials[${index}]`)
+    ),
+    credentialCatalog: normalizeCredentialIdentityCatalog(
+      record.credential_catalog,
+      'monitoring_identities.credential_catalog'
+    ),
+    credentialInventoryId: stringValue(record, 'credential_inventory_id', 'monitoring_identities'),
+    credentialRevision: countValue(record, 'credential_revision', 'monitoring_identities'),
+    apiKeys: arrayValue(record, 'api_keys', 'monitoring_identities').map((entry, index) =>
+      normalizeAggregate(entry, `monitoring_identities.api_keys[${index}]`)
+    ),
+  };
+};
+
+export const normalizeMonitoringRequestsResponse = (value: unknown): MonitoringRequestsResponse => {
+  const record = requireRecord(value, 'monitoring_requests');
+  return {
+    ...normalizeSectionMeta(record, 'monitoring_requests'),
+    requests: arrayValue(record, 'requests', 'monitoring_requests').map((entry, index) =>
+      normalizeRequest(entry, `monitoring_requests.requests[${index}]`)
+    ),
+    nextCursor: stringValue(record, 'next_cursor', 'monitoring_requests'),
+  };
+};
+
+export const normalizeMonitoringRequestDetail = (value: unknown): MonitoringRequest => {
+  const record = requireRecord(value, 'monitoring_request_detail');
+  if (record.available !== true) return invalidResponse('monitoring_request_detail.available');
+  return normalizeRequest(record.request, 'monitoring_request_detail.request');
+};
+
 export const buildMonitoringQuery = (
   input: MonitoringQueryInput,
   options: { maxRecords?: number } = {}
@@ -529,6 +627,7 @@ export const buildMonitoringQuery = (
   };
   append('from', input.from);
   append('to', input.to);
+  append('snapshot_at', input.snapshotAt);
   append('search', input.search?.trim());
   append('provider', input.provider);
   append('plugin_id', input.pluginId);
@@ -587,8 +686,47 @@ export const isMonitoringCapabilityUnavailable = (error: unknown): boolean => {
 };
 
 export const requestMonitoringApi = {
-  get: async (query: MonitoringQueryInput): Promise<MonitoringResponse> =>
-    normalizeMonitoringResponse(await apiClient.get(`${BASE_PATH}?${buildMonitoringQuery(query)}`)),
+  get: async (query: MonitoringQueryInput, signal?: AbortSignal): Promise<MonitoringResponse> =>
+    normalizeMonitoringResponse(
+      await apiClient.get(`${BASE_PATH}?${buildMonitoringQuery(query)}`, { signal })
+    ),
+
+  getSummary: async (
+    query: MonitoringQueryInput,
+    signal?: AbortSignal
+  ): Promise<MonitoringSummaryResponse> =>
+    normalizeMonitoringSummaryResponse(
+      await apiClient.get(`${BASE_PATH}/summary?${buildMonitoringQuery(query)}`, { signal })
+    ),
+
+  getFacets: async (
+    query: MonitoringQueryInput,
+    signal?: AbortSignal
+  ): Promise<MonitoringFacetsResponse> =>
+    normalizeMonitoringFacetsResponse(
+      await apiClient.get(`${BASE_PATH}/facets?${buildMonitoringQuery(query)}`, { signal })
+    ),
+
+  getIdentities: async (
+    query: MonitoringQueryInput,
+    signal?: AbortSignal
+  ): Promise<MonitoringIdentitiesResponse> =>
+    normalizeMonitoringIdentitiesResponse(
+      await apiClient.get(`${BASE_PATH}/identities?${buildMonitoringQuery(query)}`, { signal })
+    ),
+
+  getRequests: async (
+    query: MonitoringQueryInput,
+    signal?: AbortSignal
+  ): Promise<MonitoringRequestsResponse> =>
+    normalizeMonitoringRequestsResponse(
+      await apiClient.get(`${BASE_PATH}/requests?${buildMonitoringQuery(query)}`, { signal })
+    ),
+
+  getRequest: async (id: string, signal?: AbortSignal): Promise<MonitoringRequest> =>
+    normalizeMonitoringRequestDetail(
+      await apiClient.get(`${BASE_PATH}/requests/${encodeURIComponent(id)}`, { signal })
+    ),
 
   export: async (query: MonitoringQueryInput, maxRecords = 5000): Promise<AxiosResponse<Blob>> =>
     apiClient.getRaw(`${BASE_PATH}/export?${buildMonitoringQuery(query, { maxRecords })}`, {
