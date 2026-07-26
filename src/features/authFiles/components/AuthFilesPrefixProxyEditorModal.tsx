@@ -166,7 +166,7 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                       />
                       <div className={fieldHintClass}>{t('auth_files.fallback_hint')}</div>
                     </div>
-                    {editor.providerKey === 'codex' && (
+                    {(editor.providerKey === 'codex' || editor.providerKey === 'xai') && (
                       <div
                         className={cn(
                           fieldRootClass,
@@ -175,17 +175,33 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                         )}
                       >
                         <label className={fieldLabelClass}>
-                          {t('auth_files.codex_websockets_label')}
+                          {t('auth_files.websockets_label')}
                         </label>
                         <ToggleSwitch
                           checked={editor.websockets}
                           onChange={(value) => onChange('websockets', value)}
                           disabled={disableControls || editor.saving || !editor.json}
-                          ariaLabel={t('auth_files.codex_websockets_label')}
+                          ariaLabel={t('auth_files.websockets_label')}
                         />
-                        <div className={fieldHintClass}>
-                          {t('auth_files.codex_websockets_hint')}
-                        </div>
+                        <div className={fieldHintClass}>{t('auth_files.websockets_hint')}</div>
+                      </div>
+                    )}
+                    {editor.providerKey === 'xai' && (
+                      <div
+                        className={cn(
+                          fieldRootClass,
+                          styles.prefixProxyToggleField,
+                          styles.prefixProxyFullField
+                        )}
+                      >
+                        <label className={fieldLabelClass}>{t('auth_files.using_api_label')}</label>
+                        <ToggleSwitch
+                          checked={editor.usingApi}
+                          onChange={(value) => onChange('usingApi', value)}
+                          disabled={disableControls || editor.saving || !editor.json}
+                          ariaLabel={t('auth_files.using_api_label')}
+                        />
+                        <div className={fieldHintClass}>{t('auth_files.using_api_hint')}</div>
                       </div>
                     )}
                     <div className={cn(fieldRootClass, styles.prefixProxyFullField)}>

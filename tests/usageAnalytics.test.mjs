@@ -51,6 +51,18 @@ const reportWire = {
   data_source: 'mixed',
   fallback_reason: '',
   catalog_version: 9,
+  credential_inventory_id: 'inventory-1',
+  credential_revision: 12,
+  credential_catalog: [
+    {
+      recorded_id: 'auth-zero',
+      display_name: 'codex-zero@example.com',
+      provider: 'codex',
+      current_id: 'auth-zero',
+      current: true,
+      has_usage: false,
+    },
+  ],
   summary: null,
   comparison: null,
   series: [],
@@ -85,8 +97,35 @@ try {
   const normalized = api.normalizeAnalyticsReport(reportWire);
   assert.equal(normalized.view, 'models');
   assert.equal(normalized.rankings[0].metrics.cost.coverageRate, 0.75);
+  assert.equal(normalized.credentialCatalog[0].hasUsage, false);
+  assert.equal(normalized.credentialRevision, 12);
   assert.deepEqual(normalized.series, []);
   assert.equal(normalized.summary, null);
+
+  const legacyReportWire = {
+    ...reportWire,
+    view: 'credentials',
+    rankings: [
+      {
+        ...reportWire.rankings[0],
+        identity: {
+          ...reportWire.rankings[0].identity,
+          recorded_id: 'historical-auth',
+          display_name: 'historical-auth.json',
+          current: false,
+          current_id: '',
+        },
+      },
+    ],
+  };
+  delete legacyReportWire.credential_catalog;
+  delete legacyReportWire.credential_inventory_id;
+  delete legacyReportWire.credential_revision;
+  const legacyNormalized = api.normalizeAnalyticsReport(legacyReportWire);
+  assert.equal(legacyNormalized.credentialRevision, 0);
+  assert.equal(legacyNormalized.credentialInventoryId, '');
+  assert.equal(legacyNormalized.credentialCatalog[0].recordedId, 'historical-auth');
+  assert.equal(legacyNormalized.credentialCatalog[0].hasUsage, true);
 
   assert.throws(
     () => api.normalizeAnalyticsReport({ ...reportWire, series: null }),

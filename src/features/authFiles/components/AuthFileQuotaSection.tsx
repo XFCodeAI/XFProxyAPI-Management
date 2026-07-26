@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -8,7 +8,13 @@ import {
   KIMI_CONFIG,
   XAI_CONFIG,
 } from '@/components/quota';
-import { useNotificationStore, useQuotaStore } from '@/stores';
+import {
+  captureQuotaCacheGeneration,
+  commitIfQuotaCacheCurrent,
+  getQuotaCredentialCacheKey,
+  useNotificationStore,
+  useQuotaStore,
+} from '@/stores';
 import type { AuthFileItem } from '@/types';
 import { getStatusFromError } from '@/utils/quota';
 import {
@@ -47,14 +53,19 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
-  const [resettingQuota, setResettingQuota] = useState(false);
+  const [resettingQuotaKey, setResettingQuotaKey] = useState<string | null>(null);
+  const credentialCacheKey = getQuotaCredentialCacheKey(file);
+  const currentCredentialKeyRef = useRef(credentialCacheKey);
+  currentCredentialKeyRef.current = credentialCacheKey;
+  const resettingQuota = resettingQuotaKey === credentialCacheKey;
 
   const quota = useQuotaStore((state) => {
-    if (quotaType === 'antigravity') return state.antigravityQuota[file.name] as QuotaState;
-    if (quotaType === 'claude') return state.claudeQuota[file.name] as QuotaState;
-    if (quotaType === 'codex') return state.codexQuota[file.name] as QuotaState;
-    if (quotaType === 'kimi') return state.kimiQuota[file.name] as QuotaState;
-    if (quotaType === 'xai') return state.xaiQuota[file.name] as QuotaState;
+    if (quotaType === 'antigravity')
+      return state.antigravityQuota[credentialCacheKey] as QuotaState;
+    if (quotaType === 'claude') return state.claudeQuota[credentialCacheKey] as QuotaState;
+    if (quotaType === 'codex') return state.codexQuota[credentialCacheKey] as QuotaState;
+    if (quotaType === 'kimi') return state.kimiQuota[credentialCacheKey] as QuotaState;
+    if (quotaType === 'xai') return state.xaiQuota[credentialCacheKey] as QuotaState;
     return assertNever(quotaType);
   });
 
@@ -83,29 +94,65 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
       buildErrorState: (message: string, status?: number) => unknown;
       renderQuotaItems: (quota: unknown, t: TFunction, helpers: unknown) => unknown;
     };
+    const requestCredentialKey = credentialCacheKey;
+    const cacheGeneration = captureQuotaCacheGeneration();
+    const loadingState = config.buildLoadingState();
 
     updateQuotaState((prev: Record<string, unknown>) => ({
       ...prev,
-      [file.name]: config.buildLoadingState(),
+      [requestCredentialKey]: loadingState,
     }));
 
     try {
       const data = await config.fetchQuota(file, t);
-      updateQuotaState((prev: Record<string, unknown>) => ({
-        ...prev,
-        [file.name]: config.buildSuccessState(data),
-      }));
-      showNotification(t('auth_files.quota_refresh_success', { name: file.name }), 'success');
+      commitIfQuotaCacheCurrent(
+        cacheGeneration,
+        () => {
+          updateQuotaState((prev: Record<string, unknown>) => ({
+            ...prev,
+            [requestCredentialKey]: config.buildSuccessState(data),
+          }));
+          showNotification(t('auth_files.quota_refresh_success', { name: file.name }), 'success');
+        },
+        () => currentCredentialKeyRef.current === requestCredentialKey
+      );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('common.unknown_error');
       const status = getStatusFromError(err);
-      updateQuotaState((prev: Record<string, unknown>) => ({
-        ...prev,
-        [file.name]: config.buildErrorState(message, status),
-      }));
-      showNotification(t('auth_files.quota_refresh_failed', { name: file.name, message }), 'error');
+      commitIfQuotaCacheCurrent(
+        cacheGeneration,
+        () => {
+          updateQuotaState((prev: Record<string, unknown>) => ({
+            ...prev,
+            [requestCredentialKey]: config.buildErrorState(message, status),
+          }));
+          showNotification(
+            t('auth_files.quota_refresh_failed', { name: file.name, message }),
+            'error'
+          );
+        },
+        () => currentCredentialKeyRef.current === requestCredentialKey
+      );
+    } finally {
+      commitIfQuotaCacheCurrent(cacheGeneration, () => {
+        updateQuotaState((prev: Record<string, unknown>) => {
+          if (prev[requestCredentialKey] !== loadingState) return prev;
+          const nextState = { ...prev };
+          delete nextState[requestCredentialKey];
+          return nextState;
+        });
+      });
     }
-  }, [disableControls, file, quota?.status, quotaType, showNotification, t, updateQuotaState]);
+  }, [
+    credentialCacheKey,
+    disableControls,
+    file,
+    quota?.status,
+    quotaType,
+    showNotification,
+    t,
+    updateQuotaState,
+  ]);
 
   const resetQuotaForFile = useCallback(() => {
     if (disableControls) return;
@@ -127,24 +174,43 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
       confirmText: t('codex_quota.reset_confirm_button'),
       variant: 'primary',
       onConfirm: async () => {
-        setResettingQuota(true);
+        const requestCredentialKey = credentialCacheKey;
+        if (currentCredentialKeyRef.current !== requestCredentialKey) return;
+        const cacheGeneration = captureQuotaCacheGeneration();
+        setResettingQuotaKey(requestCredentialKey);
         try {
           const data = await resetQuota(file, t);
-          updateQuotaState((prev: Record<string, unknown>) => ({
-            ...prev,
-            [file.name]: config.buildSuccessState(data),
-          }));
-          showNotification(t('codex_quota.reset_success', { name: file.name }), 'success');
+          commitIfQuotaCacheCurrent(
+            cacheGeneration,
+            () => {
+              updateQuotaState((prev: Record<string, unknown>) => ({
+                ...prev,
+                [requestCredentialKey]: config.buildSuccessState(data),
+              }));
+              showNotification(t('codex_quota.reset_success', { name: file.name }), 'success');
+            },
+            () => currentCredentialKeyRef.current === requestCredentialKey
+          );
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : t('common.unknown_error');
-          showNotification(t('codex_quota.reset_failed', { name: file.name, message }), 'error');
+          commitIfQuotaCacheCurrent(
+            cacheGeneration,
+            () => {
+              showNotification(
+                t('codex_quota.reset_failed', { name: file.name, message }),
+                'error'
+              );
+            },
+            () => currentCredentialKeyRef.current === requestCredentialKey
+          );
         } finally {
-          setResettingQuota(false);
+          setResettingQuotaKey((current) => (current === requestCredentialKey ? null : current));
         }
       },
     });
   }, [
     disableControls,
+    credentialCacheKey,
     file,
     quota?.status,
     quotaType,

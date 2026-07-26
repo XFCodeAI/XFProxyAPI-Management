@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/icons';
 import { INLINE_LOGO_JPEG } from '@/assets/logoInline';
 import {
+  useAuthInventoryStore,
   useAuthStore,
   useLanguageStore,
   useNotificationStore,
@@ -87,6 +88,9 @@ interface SidebarNavLinkItem {
   metaKey?: string;
   label?: string;
   meta?: string;
+  badge?: number;
+  badgeLabel?: string;
+  badgeRevision?: number;
   icon: ReactNode;
 }
 
@@ -95,6 +99,9 @@ interface SidebarNavDrawerItem {
   id: string;
   label: string;
   meta?: string;
+  badge?: number;
+  badgeLabel?: string;
+  badgeRevision?: number;
   icon: ReactNode;
   children: SidebarNavLinkItem[];
 }
@@ -109,6 +116,32 @@ interface SidebarNavGroup {
 
 const flattenNavItems = (items: SidebarNavItem[]): SidebarNavLinkItem[] =>
   items.flatMap((item) => (item.kind === 'drawer' ? item.children : [item]));
+
+type CredentialNavigationInventory = {
+  files: readonly unknown[];
+  inventoryId: string;
+  revision: number;
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const resolveCredentialNavigationBadge = ({
+  files,
+  inventoryId,
+  revision,
+}: CredentialNavigationInventory): { count: number; revision: number } | null => {
+  if (!inventoryId && revision === 0) return null;
+  return { count: files.length, revision };
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const resolveNavigationItemAccessibility = (
+  label: string,
+  badgeLabel: string | undefined,
+  showLabels: boolean
+) => ({
+  ariaLabel: badgeLabel ? `${label}, ${badgeLabel}` : showLabels ? undefined : label,
+  showTooltip: !showLabels || Boolean(badgeLabel),
+});
 
 function PluginSidebarIcon({ src }: { src: string }) {
   const [failed, setFailed] = useState(false);
@@ -192,6 +225,10 @@ export function MainLayout() {
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const apiBase = useAuthStore((state) => state.apiBase);
   const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
+
+  const credentialFiles = useAuthInventoryStore((state) => state.files);
+  const credentialInventoryId = useAuthInventoryStore((state) => state.inventoryId);
+  const credentialRevision = useAuthInventoryStore((state) => state.revision);
 
   const fetchConfig = useConfigStore((state) => state.fetchConfig);
   const clearCache = useConfigStore((state) => state.clearCache);
@@ -399,6 +436,15 @@ export function MainLayout() {
       })
     : [];
 
+  const credentialBadge = resolveCredentialNavigationBadge({
+    files: credentialFiles,
+    inventoryId: credentialInventoryId,
+    revision: credentialRevision,
+  });
+  const credentialBadgeLabel = credentialBadge
+    ? t('sidebar.credential_count', { count: credentialBadge.count })
+    : undefined;
+
   const navGroups: SidebarNavGroup[] = [
     {
       id: 'operate',
@@ -438,6 +484,10 @@ export function MainLayout() {
           kind: 'drawer',
           id: 'credential-management',
           label: t('nav.quota_management'),
+          meta: t('nav_meta.quota_management'),
+          badge: credentialBadge?.count,
+          badgeLabel: credentialBadgeLabel,
+          badgeRevision: credentialBadge?.revision,
           icon: sidebarIcons.quota,
           children: [
             {
@@ -628,9 +678,36 @@ export function MainLayout() {
     });
   }, []);
 
+  const renderNavigationTooltip = (label: string, meta?: string, badgeLabel?: string) => (
+    <span className="nav-tooltip-copy">
+      <span className="nav-tooltip-label">{label}</span>
+      {badgeLabel ? <span className="nav-tooltip-badge-label">{badgeLabel}</span> : null}
+      {meta ? <span className="nav-tooltip-meta">{meta}</span> : null}
+    </span>
+  );
+
+  const renderNavBadge = (badge?: number, badgeLabel?: string, badgeRevision?: number) => {
+    if (typeof badge !== 'number') return null;
+    const displayCount = badge > 999 ? '999+' : badge;
+    return (
+      <>
+        <span className="nav-badge" aria-hidden="true" data-inventory-revision={badgeRevision}>
+          {displayCount}
+        </span>
+        {badgeLabel ? <span className="nav-badge-sr-only">{badgeLabel}</span> : null}
+      </>
+    );
+  };
+
   const renderNavLink = (item: SidebarNavLinkItem, className = 'nav-item') => {
     const itemLabel = item.label ?? (item.labelKey ? t(item.labelKey) : '');
+    const itemMeta = item.meta ?? (item.metaKey ? t(item.metaKey) : '');
     const isActive = isNavPathActive(item.path);
+    const accessibility = resolveNavigationItemAccessibility(
+      itemLabel,
+      item.badgeLabel,
+      showSidebarLabels
+    );
 
     const link = (
       <Link
@@ -638,6 +715,7 @@ export function MainLayout() {
         to={item.path}
         className={`${className}${isActive ? ' active' : ''}`}
         onClick={() => setSidebarOpen(false)}
+        aria-label={accessibility.ariaLabel}
       >
         <span className="nav-icon">{item.icon}</span>
         {showSidebarLabels && (
@@ -645,11 +723,20 @@ export function MainLayout() {
             <span className="nav-label">{itemLabel}</span>
           </span>
         )}
+        {renderNavBadge(item.badge, item.badgeLabel, item.badgeRevision)}
       </Link>
     );
 
     return (
-      <TooltipElement key={item.path} label={showSidebarLabels ? undefined : itemLabel}>
+      <TooltipElement
+        key={item.path}
+        label={
+          accessibility.showTooltip
+            ? renderNavigationTooltip(itemLabel, itemMeta, item.badgeLabel)
+            : undefined
+        }
+        side="right"
+      >
         {link}
       </TooltipElement>
     );
@@ -662,16 +749,31 @@ export function MainLayout() {
 
     const isActive = item.children.some((child) => isNavPathActive(child.path));
     const isOpen = isActive || expandedPluginResourceIDs.has(item.id);
+    const accessibility = resolveNavigationItemAccessibility(
+      item.label,
+      item.badgeLabel,
+      showSidebarLabels
+    );
+    const subListID = `nav-drawer-${item.id}`;
 
     return (
       <div className={`nav-drawer ${isOpen ? 'open' : ''}`} key={item.id}>
-        <TooltipElement label={showSidebarLabels ? undefined : item.label}>
+        <TooltipElement
+          label={
+            accessibility.showTooltip
+              ? renderNavigationTooltip(item.label, item.meta, item.badgeLabel)
+              : undefined
+          }
+          side="right"
+        >
           <button
             type="button"
             className={`nav-item nav-drawer-toggle ${isActive ? 'active' : ''} ${
               isOpen ? 'open' : ''
             }`}
             onClick={() => togglePluginResourceDrawer(item.id)}
+            aria-label={accessibility.ariaLabel}
+            aria-controls={subListID}
             aria-expanded={isOpen}
           >
             <span className="nav-icon">{item.icon}</span>
@@ -680,15 +782,17 @@ export function MainLayout() {
                 <span className="nav-text">
                   <span className="nav-label">{item.label}</span>
                 </span>
+                {renderNavBadge(item.badge, item.badgeLabel, item.badgeRevision)}
                 <span className="nav-drawer-caret" aria-hidden="true">
                   <IconChevronDown size={14} />
                 </span>
               </>
             )}
+            {!showSidebarLabels && renderNavBadge(item.badge, item.badgeLabel, item.badgeRevision)}
           </button>
         </TooltipElement>
         {isOpen ? (
-          <div className="nav-sub-list">
+          <div className="nav-sub-list" id={subListID}>
             {item.children.map((child) => renderNavLink(child, 'nav-item nav-sub-item'))}
           </div>
         ) : null}
@@ -912,6 +1016,18 @@ export function MainLayout() {
                 </div>
               ))}
             </div>
+
+            {credentialBadgeLabel ? (
+              <span
+                className="nav-inventory-live"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                data-inventory-revision={credentialBadge?.revision}
+              >
+                {credentialBadgeLabel}
+              </span>
+            ) : null}
           </aside>
 
           <div

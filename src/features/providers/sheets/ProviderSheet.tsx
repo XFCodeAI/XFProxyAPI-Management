@@ -14,6 +14,7 @@ import type { ProviderRecentUsageMap } from '@/components/providers/utils';
 import { useCredentialGroupsCatalog } from '@/hooks/useCredentialGroupsCatalog';
 import { useNotificationStore } from '@/stores';
 import { PROVIDER_DESCRIPTORS } from '../descriptors';
+import { isMultiProtocolSponsorBrand } from '../sponsorDefinitions';
 import type { ProviderBrand, ProviderEntryFormInput, ProviderResource } from '../types';
 import type { UseProviderWorkbenchResult } from '../useProviderWorkbench';
 import { BaseProviderForm } from './forms/BaseProviderForm';
@@ -68,7 +69,7 @@ export function ProviderSheet({
   const discardConfirmationRef = useRef<Promise<boolean> | null>(null);
 
   // Reset dirty flag whenever the sheet is closed or the editing target
-  // (brand / resource / mode) changes — the child form will re-mount and
+  // (brand / resource / mode) changes; the child form will re-mount and
   // re-report its own dirty state.
   useEffect(() => {
     setIsDirty(false);
@@ -126,7 +127,9 @@ export function ProviderSheet({
     });
   }, [confirmDiscardIfDirty, onClose]);
 
-  const providerName = t(`providersPage.providerNames.${state.brand}`);
+  const providerName = t(`providersPage.providerNames.${state.brand}`, {
+    defaultValue: descriptor.displayName,
+  });
 
   const handleCreate = useCallback(
     async (input: ProviderEntryFormInput) => {
@@ -164,10 +167,11 @@ export function ProviderSheet({
       return <ResourceDetailView resource={state.resource} usageByProvider={usageByProvider} />;
     }
     const formKey = `${state.brand}:${state.resource?.id ?? 'new'}:${state.mode}`;
-    if (state.brand === 'apikeyFun') {
+    if (isMultiProtocolSponsorBrand(state.brand)) {
       return (
         <SponsorProviderForm
           key={formKey}
+          brand={state.brand}
           resource={state.resource}
           mode={state.mode}
           mutating={formMutating}

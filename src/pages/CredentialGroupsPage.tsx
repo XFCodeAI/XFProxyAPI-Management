@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bot, FileKey2, KeyRound, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -14,7 +14,9 @@ import {
   pluginsApi,
   providersApi,
 } from '@/services/api';
-import { getPluginTitle } from '@/features/plugins/pluginResources';
+import { getPluginTitle, PLUGIN_RESOURCES_REFRESH_EVENT } from '@/features/plugins/pluginResources';
+import { usePageActivityRefresh } from '@/hooks/usePageActivityRefresh';
+import { invalidateProviderRecentRequests } from '@/services/providerRecentRequests';
 import { useAuthInventoryStore, useConfigStore, useNotificationStore } from '@/stores';
 import type {
   ApiError,
@@ -424,6 +426,7 @@ export function CredentialGroupsPage() {
   const authFiles = useAuthInventoryStore((state) => state.files);
   const setAuthFiles = useAuthInventoryStore((state) => state.setFiles);
   const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
+  const loadSequence = useRef(0);
   const [apiKeyEntries, setApiKeyEntries] = useState<ManagedApiKeyEntry[]>([]);
   const [plugins, setPlugins] = useState<PluginListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -581,6 +584,7 @@ export function CredentialGroupsPage() {
 
   const loadGroups = useCallback(
     async (silent = false) => {
+      const sequence = ++loadSequence.current;
       if (silent) {
         setRefreshing(true);
       } else {
@@ -589,38 +593,50 @@ export function CredentialGroupsPage() {
       setLoadError('');
 
       try {
-        const [authFilesResponse, nextGroups, nextApiKeyEntries, pluginResponse] =
-          await Promise.all([
-            refreshAuthFiles(),
-            credentialGroupsApi.list(),
-            apiKeysApi.listEntries(),
-            pluginsApi.list().catch(() => ({ plugins: [] })),
-            fetchConfig(undefined, true),
-          ]);
+        const [, nextGroups, nextApiKeyEntries, pluginResponse] = await Promise.all([
+          refreshAuthFiles(),
+          credentialGroupsApi.list(),
+          apiKeysApi.listEntries(),
+          pluginsApi.list().catch(() => ({ plugins: [] })),
+          fetchConfig(undefined, true),
+        ]);
+        if (sequence !== loadSequence.current) return;
         setGroups(nextGroups);
-        setAuthFiles(authFilesResponse.files ?? []);
         setApiKeyEntries(nextApiKeyEntries);
         setPlugins(pluginResponse.plugins ?? []);
       } catch (err: unknown) {
+        if (sequence !== loadSequence.current) return;
         const message = getErrorMessage(err, t('credential_groups_page.load_failed'));
         setLoadError(message);
         if (silent) {
           showNotification(message, 'error');
         }
       } finally {
-        if (silent) {
-          setRefreshing(false);
-        } else {
-          setLoading(false);
+        if (sequence === loadSequence.current) {
+          if (silent) {
+            setRefreshing(false);
+          } else {
+            setLoading(false);
+          }
         }
       }
     },
-    [fetchConfig, refreshAuthFiles, setAuthFiles, showNotification, t]
+    [fetchConfig, refreshAuthFiles, showNotification, t]
   );
+
+  const refreshGroups = useCallback(() => loadGroups(true), [loadGroups]);
 
   useEffect(() => {
     void loadGroups();
   }, [loadGroups]);
+
+  useEffect(() => {
+    const refresh = () => void refreshGroups();
+    window.addEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, refresh);
+  }, [refreshGroups]);
+
+  usePageActivityRefresh(refreshGroups);
 
   useEffect(() => {
     if (!resolvedActiveGroup) return;
@@ -796,6 +812,7 @@ export function CredentialGroupsPage() {
         await providersApi.saveOpenAIProviders(next);
         updateConfigValue('openai-compatibility', next);
       }
+      invalidateProviderRecentRequests();
     } catch (err: unknown) {
       showNotification(
         getErrorMessage(
@@ -854,7 +871,7 @@ export function CredentialGroupsPage() {
           type="button"
           variant="secondary"
           size="sm"
-          onClick={() => void loadGroups(true)}
+          onClick={() => void refreshGroups()}
           loading={refreshing}
         >
           <RefreshCw />

@@ -1,9 +1,11 @@
 import type { PluginListEntry, PluginMenu, PluginStoreEntry } from '@/types';
+import { invalidateProviderRecentRequests } from '@/services/providerRecentRequests';
 import { normalizeApiBase } from '@/utils/connection';
 
 export const PLUGIN_RESOURCES_REFRESH_EVENT = 'plugin-resources-refresh';
 
 export const notifyPluginResourcesChanged = () => {
+  invalidateProviderRecentRequests();
   window.dispatchEvent(new Event(PLUGIN_RESOURCES_REFRESH_EVENT));
 };
 
@@ -41,11 +43,6 @@ export const buildRepositoryURL = (repository: string) => {
   return `https://github.com/${trimmed.replace(/^\/+/, '')}`;
 };
 
-// The exact, fully-qualified prefix every first-party repository lives under.
-// Matching the whole URL (not just the extracted owner) prevents look-alike
-// hosts like "https://github.com.evil.com/router-for-me/..." from being
-// mistaken for the official org.
-export const OFFICIAL_PLUGIN_REPO_PREFIX = 'https://github.com/router-for-me/';
 export const DEFAULT_PLUGIN_STORE_SOURCE_ID = 'official';
 const DEFAULT_PLUGIN_STORE_SOURCE_NAME = 'official';
 
@@ -63,13 +60,31 @@ export const getPluginRepositorySlug = (repository: string): string => {
 // under the router-for-me org prefix. Slugs ("router-for-me/repo") and full URLs
 // are both normalized first; anything else (other hosts, look-alike domains,
 // other owners) is untrusted.
-export const isOfficialRepository = (repository: string): boolean =>
-  buildRepositoryURL(repository).toLowerCase().startsWith(OFFICIAL_PLUGIN_REPO_PREFIX);
+export const isOfficialRepository = (repository: string): boolean => {
+  const trimmed = repository.trim();
+  if (!trimmed) return false;
+  if (!/^https?:\/\//i.test(trimmed)) {
+    const [owner = '', repo = '', extra = ''] = trimmed.replace(/^\/+/, '').split('/');
+    return owner.toLowerCase() === 'router-for-me' && Boolean(repo) && !extra;
+  }
+  try {
+    const url = new URL(trimmed);
+    const [owner = '', repo = '', extra = ''] = url.pathname.replace(/^\/+/, '').split('/');
+    return (
+      url.hostname.toLowerCase() === 'github.com' &&
+      owner.toLowerCase() === 'router-for-me' &&
+      Boolean(repo) &&
+      !extra
+    );
+  } catch {
+    return false;
+  }
+};
 
-// A plugin is official iff its code repository sits under the router-for-me org.
-// Every first-party plugin lives there, so the repository URL is the single
-// source of truth — see isOfficialRepository for the exact match.
+// Both source identity and canonical repository ownership are required. A
+// third-party registry can copy official repository metadata.
 export const isOfficialPlugin = (entry: PluginStoreEntry): boolean =>
+  entry.sourceId.trim().toLowerCase() === DEFAULT_PLUGIN_STORE_SOURCE_ID &&
   isOfficialRepository(entry.repository);
 
 export const isDefaultPluginStoreSource = (

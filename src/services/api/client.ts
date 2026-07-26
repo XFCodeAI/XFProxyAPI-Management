@@ -1,6 +1,5 @@
 /**
- * Axios API 客户端
- * 替代原项目 src/core/api-client.js
+ * Axios API client replacing the original src/core/api-client.js module.
  */
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
@@ -18,6 +17,7 @@ import {
 import { computeApiUrl } from '@/utils/connection';
 import { isRecord } from '@/utils/helpers';
 import type { ServerRuntimeKind } from '@/types';
+import { parseApiErrorResponse } from './apiError';
 
 class ApiClient {
   private instance: AxiosInstance;
@@ -36,7 +36,7 @@ class ApiClient {
   }
 
   /**
-   * 设置 API 配置
+   * Set the API connection configuration.
    */
   setConfig(config: ApiClientConfig): void {
     this.apiBase = computeApiUrl(config.apiBase);
@@ -101,20 +101,20 @@ class ApiClient {
   }
 
   /**
-   * 设置请求/响应拦截器
+   * Configure request and response interceptors.
    */
   private setupInterceptors(): void {
-    // 请求拦截器
+    // Request interceptor
     this.instance.interceptors.request.use(
       (config) => {
-        // 设置 baseURL
+        // Set baseURL
         config.baseURL = this.apiBase;
         if (config.url) {
           // Normalize deprecated Gemini endpoint to the current path.
           config.url = config.url.replace(/\/generative-language-api-key\b/g, '/gemini-api-key');
         }
 
-        // 添加认证头
+        // Add the authentication header
         if (this.managementKey) {
           config.headers.Authorization = `Bearer ${this.managementKey}`;
         }
@@ -139,7 +139,7 @@ class ApiClient {
         const runtimeKind: ServerRuntimeKind | null =
           homeVersion || homeBuildDate ? 'home' : cpaVersion || cpaBuildDate ? 'cpa' : null;
 
-        // 触发版本更新事件（后续通过 store 处理）
+        // Dispatch version updates for store synchronization
         if (version || buildDate || runtimeKind) {
           window.dispatchEvent(
             new CustomEvent('server-version-update', {
@@ -162,49 +162,47 @@ class ApiClient {
   }
 
   /**
-   * 错误处理
+   * Normalize request errors.
    */
   private handleError(error: unknown): ApiError {
-    if (axios.isAxiosError(error)) {
-      const responseData: unknown = error.response?.data;
-      const responseRecord = isRecord(responseData) ? responseData : null;
-      const errorValue = responseRecord?.error;
-      const message =
-        typeof errorValue === 'string'
-          ? errorValue
-          : isRecord(errorValue) && typeof errorValue.message === 'string'
-            ? errorValue.message
-            : typeof responseRecord?.message === 'string'
-              ? responseRecord.message
-              : error.message || 'Request failed';
-      const apiError = new Error(message) as ApiError;
-      apiError.name = 'ApiError';
-      apiError.status = error.response?.status;
-      apiError.code = error.code;
-      apiError.details = responseData;
-      apiError.data = responseData;
+    const axiosError = axios.isAxiosError(error) ? error : null;
+    const errorRecord = isRecord(error) ? error : null;
+    const responseData = axiosError?.response?.data;
+    const fallbackResponseData =
+      !axiosError && !(error instanceof Error) && isRecord(error) ? error : undefined;
+    const parsedError = parseApiErrorResponse(axiosError ? responseData : fallbackResponseData, {
+      status:
+        axiosError?.response?.status ??
+        (typeof errorRecord?.status === 'number' ? errorRecord.status : undefined),
+      code:
+        axiosError?.code ?? (typeof errorRecord?.code === 'string' ? errorRecord.code : undefined),
+      message:
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : typeof errorRecord?.message === 'string'
+              ? errorRecord.message
+              : 'Unknown error occurred',
+      details: errorRecord?.details ?? errorRecord?.data,
+    });
+    const apiError = new Error(parsedError.message) as ApiError;
+    apiError.name = 'ApiError';
+    apiError.status = parsedError.status;
+    apiError.code = parsedError.code;
+    apiError.details = parsedError.details;
+    apiError.data = parsedError.details;
 
-      // 401 未授权 - 触发登出事件
-      if (error.response?.status === 401) {
-        window.dispatchEvent(new Event('unauthorized'));
-      }
-
-      return apiError;
+    // A 401 response invalidates the current management session
+    if (axiosError?.response?.status === 401) {
+      window.dispatchEvent(new Event('unauthorized'));
     }
 
-    const fallbackMessage =
-      error instanceof Error
-        ? error.message
-        : typeof error === 'string'
-          ? error
-          : 'Unknown error occurred';
-    const fallback = new Error(fallbackMessage) as ApiError;
-    fallback.name = 'ApiError';
-    return fallback;
+    return apiError;
   }
 
   /**
-   * GET 请求
+   * Send a GET request.
    */
   async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.instance.get<T>(url, config);
@@ -212,7 +210,7 @@ class ApiClient {
   }
 
   /**
-   * POST 请求
+   * Send a POST request.
    */
   async post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.instance.post<T>(url, data, config);
@@ -220,7 +218,7 @@ class ApiClient {
   }
 
   /**
-   * PUT 请求
+   * Send a PUT request.
    */
   async put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.instance.put<T>(url, data, config);
@@ -228,7 +226,7 @@ class ApiClient {
   }
 
   /**
-   * PATCH 请求
+   * Send a PATCH request.
    */
   async patch<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.instance.patch<T>(url, data, config);
@@ -236,7 +234,7 @@ class ApiClient {
   }
 
   /**
-   * DELETE 请求
+   * Send a DELETE request.
    */
   async delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.instance.delete<T>(url, config);
@@ -244,14 +242,14 @@ class ApiClient {
   }
 
   /**
-   * 获取原始响应（用于下载等场景）
+   * Return the raw response for downloads and similar flows.
    */
   async getRaw(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse> {
     return this.instance.get(url, config);
   }
 
   /**
-   * 发送 FormData
+   * Send FormData.
    */
   async postForm<T = unknown>(
     url: string,
@@ -269,12 +267,12 @@ class ApiClient {
   }
 
   /**
-   * 保留对 axios.request 的访问，便于下载等场景
+   * Expose axios.request for raw response flows.
    */
   async requestRaw(config: AxiosRequestConfig): Promise<AxiosResponse> {
     return this.instance.request(config);
   }
 }
 
-// 导出单例
+// Shared API client instance
 export const apiClient = new ApiClient();

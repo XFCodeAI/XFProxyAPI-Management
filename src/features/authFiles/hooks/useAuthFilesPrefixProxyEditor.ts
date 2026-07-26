@@ -3,12 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api';
 import type { AuthFileItem } from '@/types';
 import { useNotificationStore } from '@/stores';
+import { normalizeProviderKey, parsePriorityValue } from '@/features/authFiles/constants';
 import {
-  applyCodexAuthFileWebsockets,
-  normalizeProviderKey,
-  parsePriorityValue,
-  readCodexAuthFileWebsockets,
-} from '@/features/authFiles/constants';
+  applyAuthFileProviderFieldsPatch,
+  buildAuthFileProviderFieldsPatch,
+  readAuthFileWebsockets,
+  readXAIAuthFileUsingAPI,
+  supportsAuthFileWebsockets,
+} from '@/features/authFiles/authFileProviderFields';
 import { normalizeCredentialGroups } from '@/utils/credentialGroups';
 
 type AuthFileHeaders = Record<string, string>;
@@ -20,7 +22,14 @@ type AuthFileContentErrorKey =
   'auth_files.prefix_proxy_invalid_json' | 'auth_files.prefix_proxy_html_challenge';
 
 export type PrefixProxyEditorField =
-  'prefix' | 'proxyUrl' | 'priority' | 'fallback' | 'websockets' | 'note' | 'headersText';
+  | 'prefix'
+  | 'proxyUrl'
+  | 'priority'
+  | 'fallback'
+  | 'websockets'
+  | 'usingApi'
+  | 'note'
+  | 'headersText';
 
 export type PrefixProxyEditorFieldValue = string | boolean;
 
@@ -42,6 +51,8 @@ export type PrefixProxyEditorState = {
   fallback: boolean;
   websockets: boolean;
   websocketsTouched: boolean;
+  usingApi: boolean;
+  usingApiTouched: boolean;
   note: string;
   noteTouched: boolean;
   headersText: string;
@@ -258,13 +269,17 @@ const buildAuthFileFieldsPatch = (
     }
   }
 
-  if (editor.providerKey === 'codex' && editor.websocketsTouched) {
-    const originalWebsockets = readCodexAuthFileWebsockets(original);
-    const nextWebsockets = Boolean(editor.websockets);
-    if (nextWebsockets !== originalWebsockets) {
-      patch.websockets = nextWebsockets;
-    }
-  }
+  Object.assign(
+    patch,
+    buildAuthFileProviderFieldsPatch({
+      providerKey: editor.providerKey,
+      original,
+      websockets: editor.websockets,
+      websocketsTouched: editor.websocketsTouched,
+      usingApi: editor.usingApi,
+      usingApiTouched: editor.usingApiTouched,
+    })
+  );
 
   if (editor.headersTouched) {
     const { value: parsedHeaders, errorKey } = parseHeadersText(editor.headersText);
@@ -328,9 +343,7 @@ const buildPrefixProxyUpdatedText = (
 
   applyHeadersPatch(next, patch.headers);
 
-  if (patch.websockets !== undefined) {
-    next = applyCodexAuthFileWebsockets(next, patch.websockets);
-  }
+  next = applyAuthFileProviderFieldsPatch(next, patch);
 
   return JSON.stringify(next);
 };
@@ -391,6 +404,8 @@ export function useAuthFilesPrefixProxyEditor(
       fallback: false,
       websockets: false,
       websocketsTouched: false,
+      usingApi: false,
+      usingApiTouched: false,
       note: '',
       noteTouched: false,
       headersText: '',
@@ -437,7 +452,10 @@ export function useAuthFilesPrefixProxyEditor(
       const proxyUrl = typeof json.proxy_url === 'string' ? json.proxy_url : '';
       const priority = parsePriorityValue(json.priority);
       const fallback = json.fallback === true;
-      const websockets = providerKey === 'codex' ? readCodexAuthFileWebsockets(json) : false;
+      const websockets = supportsAuthFileWebsockets(providerKey)
+        ? readAuthFileWebsockets(json)
+        : false;
+      const usingApi = providerKey === 'xai' ? readXAIAuthFileUsingAPI(json) : false;
       const note = typeof json.note === 'string' ? json.note : '';
       const headers = json.headers;
       let headersText = '';
@@ -465,6 +483,8 @@ export function useAuthFilesPrefixProxyEditor(
           fallback,
           websockets,
           websocketsTouched: false,
+          usingApi,
+          usingApiTouched: false,
           note,
           noteTouched: false,
           headersText,
@@ -495,6 +515,9 @@ export function useAuthFilesPrefixProxyEditor(
       if (field === 'fallback') return { ...prev, fallback: Boolean(value) };
       if (field === 'websockets') {
         return { ...prev, websockets: Boolean(value), websocketsTouched: true };
+      }
+      if (field === 'usingApi') {
+        return { ...prev, usingApi: Boolean(value), usingApiTouched: true };
       }
       if (field === 'note') return { ...prev, note: String(value), noteTouched: true };
       if (field === 'headersText') {

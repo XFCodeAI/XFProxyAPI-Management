@@ -19,6 +19,26 @@ const monitoringWire = {
   available: true,
   generated_at: '2026-07-23T02:00:00Z',
   snapshot_at: '2026-07-23T02:00:00Z',
+  credential_inventory_id: 'inventory-1',
+  credential_revision: 12,
+  credential_catalog: [
+    {
+      recorded_id: 'auth-1',
+      display_name: 'codex-user@example.com',
+      provider: 'codex',
+      current_id: 'auth-1',
+      current: true,
+      has_usage: true,
+    },
+    {
+      recorded_id: 'auth-zero',
+      display_name: 'codex-zero@example.com',
+      provider: 'codex',
+      current_id: 'auth-zero',
+      current: true,
+      has_usage: false,
+    },
+  ],
   summary: {
     requests: 1,
     successes: 1,
@@ -135,7 +155,20 @@ try {
   assert.deepEqual(normalized.requests[0].cost.missingDimensions, []);
   assert.deepEqual(normalized.cost.missingDimensions, {});
   assert.equal(normalized.credentials[0].currentId, 'auth-1');
+  assert.equal(normalized.credentialCatalog[1].hasUsage, false);
+  assert.equal(normalized.credentialRevision, 12);
   assert.equal(normalized.nextCursor, 'cursor-2');
+
+  const legacyMonitoringWire = { ...monitoringWire };
+  delete legacyMonitoringWire.credential_catalog;
+  delete legacyMonitoringWire.credential_inventory_id;
+  delete legacyMonitoringWire.credential_revision;
+  const legacyNormalized = api.normalizeMonitoringResponse(legacyMonitoringWire);
+  assert.equal(legacyNormalized.credentialRevision, 0);
+  assert.equal(legacyNormalized.credentialInventoryId, '');
+  assert.equal(legacyNormalized.credentialCatalog.length, 1);
+  assert.equal(legacyNormalized.credentialCatalog[0].recordedId, 'auth-1');
+  assert.equal(legacyNormalized.credentialCatalog[0].hasUsage, true);
 
   assert.throws(
     () =>

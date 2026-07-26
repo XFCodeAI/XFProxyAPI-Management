@@ -283,7 +283,7 @@ export function useConnectivityTest(
   }, [apiKeyEntries, brand, runOpenAIKey]);
 
   const runCodex = useCallback(async (): Promise<void> => {
-    if (brand !== 'codex') return;
+    if (brand !== 'codex' && brand !== 'xai') return;
 
     const trimmedBase = baseUrl.trim();
     if (!trimmedBase) {
@@ -428,7 +428,7 @@ export function useConnectivityTest(
   }, [apiKey, authIndex, baseUrl, brand, fallbackApiKey, formHeaders, messages, models, testModel]);
 
   const runClaude = useCallback(async (): Promise<void> => {
-    if (brand !== 'claude') return;
+    if (brand !== 'claude' && brand !== 'claudeApi') return;
 
     const endpoint = buildClaudeMessagesEndpoint(baseUrl ?? '');
     if (!endpoint) {

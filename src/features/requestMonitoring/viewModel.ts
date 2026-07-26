@@ -2,10 +2,12 @@ import {
   buildMonitoringQuery,
   isMonitoringAPIKeyID,
   type MonitoringIdentity,
+  type MonitoringIdentityAggregate,
   type MonitoringQueryInput,
   type MonitoringRequest,
   type MonitoringSummary,
 } from '@/services/api/requestMonitoring';
+import type { ReconciledCredentialIdentity } from '@/features/authFiles/credentialIdentityCatalog';
 
 export type MonitoringTimeRange = '1h' | '24h' | '7d' | '30d' | 'custom';
 
@@ -266,6 +268,85 @@ export const monitoringCacheRate = (summary: MonitoringSummary): number =>
 
 export const monitoringIdentityLabel = (identity: MonitoringIdentity, fallback: string): string =>
   identity.displayName || identity.recordedId || fallback;
+
+export const credentialVisibleWithoutUsage = (
+  identity: ReconciledCredentialIdentity,
+  filters: MonitoringFilters
+): boolean => {
+  if (!identity.current || identity.hasUsage) return false;
+  if (filters.provider !== 'all' && filters.provider !== identity.provider) return false;
+  if (filters.authId !== 'all' && filters.authId !== identity.recordedId) return false;
+  if (
+    filters.credentialGroupId &&
+    !identity.groups.some(
+      (group) => group.toLowerCase() === filters.credentialGroupId.trim().toLowerCase()
+    )
+  ) {
+    return false;
+  }
+  const search = filters.search.trim().toLowerCase();
+  if (
+    search &&
+    ![identity.recordedId, identity.displayName, identity.provider].some((value) =>
+      value.toLowerCase().includes(search)
+    )
+  ) {
+    return false;
+  }
+  return !(
+    filters.pluginId ||
+    filters.requestedModel !== 'all' ||
+    filters.resolvedModel !== 'all' ||
+    filters.result !== 'all' ||
+    filters.failureCategory !== 'all' ||
+    filters.apiKeyId !== 'all' ||
+    filters.apiKeyGroupId ||
+    filters.proxyPoolId ||
+    filters.cache !== 'all' ||
+    filters.statusCode ||
+    filters.minLatencyMs ||
+    filters.maxLatencyMs ||
+    filters.requestId ||
+    filters.trace
+  );
+};
+
+export const mergeMonitoringCredentialRows = (
+  rows: MonitoringIdentityAggregate[],
+  catalog: ReconciledCredentialIdentity[],
+  filters: MonitoringFilters
+): MonitoringIdentityAggregate[] => {
+  const catalogByID = new Map(catalog.map((entry) => [entry.recordedId, entry]));
+  const seen = new Set<string>();
+  const merged = rows.map((row) => {
+    const identity = catalogByID.get(row.recordedId);
+    seen.add(row.recordedId);
+    if (!identity) return row;
+    return {
+      ...row,
+      displayName: row.displayName || identity.displayName,
+      provider: row.provider || identity.provider,
+      currentId: identity.currentId,
+      current: identity.current,
+    };
+  });
+  catalog.forEach((identity) => {
+    if (seen.has(identity.recordedId) || !credentialVisibleWithoutUsage(identity, filters)) return;
+    merged.push({
+      recordedId: identity.recordedId,
+      displayName: identity.displayName,
+      provider: identity.provider,
+      requests: 0,
+      failures: 0,
+      totalTokens: 0,
+      averageLatencyMs: 0,
+      lastRequestAt: '',
+      currentId: identity.currentId,
+      current: true,
+    });
+  });
+  return merged;
+};
 
 export const isCurrentMonitoringIdentity = (
   identity: Pick<MonitoringIdentity, 'current' | 'currentId'>

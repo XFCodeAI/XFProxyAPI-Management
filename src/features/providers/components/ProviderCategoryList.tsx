@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { PROVIDER_LOGOS } from '../brandLogos';
+import { PROVIDER_DESCRIPTORS } from '../descriptors';
 import type { ProviderBrand, ProviderGroup } from '../types';
 import styles from './ProviderCategoryList.module.scss';
 
@@ -61,7 +62,9 @@ export function ProviderCategoryList({ groups, activeBrand, onSelect }: Provider
               ) : null}
               <span className={styles.itemText}>
                 <span className={styles.itemTitle}>
-                  {t(`providersPage.providerNames.${group.id}`)}
+                  {t(`providersPage.providerNames.${group.id}`, {
+                    defaultValue: PROVIDER_DESCRIPTORS[group.id].displayName,
+                  })}
                 </span>
                 <span className={styles.itemSubtitle}>
                   {t('providersPage.categories.activeCount', {

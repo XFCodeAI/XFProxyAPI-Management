@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
@@ -11,6 +11,7 @@ import { inputClass } from '@/components/ui/formStyles';
 import { IconInfo, IconX } from '@/components/ui/icons';
 import { SecondaryScreenShell } from '@/components/common/SecondaryScreenShell';
 import { useEdgeSwipeBack } from '@/hooks/useEdgeSwipeBack';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
 import { cn } from '@/lib/utils';
 import { authFilesApi } from '@/services/api';
@@ -19,15 +20,24 @@ import {
   getTypeLabel,
   normalizeProviderKey,
 } from '@/features/authFiles/constants';
+import {
+  getModelAliasDraftSignature,
+  isOAuthEditorDirty,
+} from '@/features/authFiles/oauthEditorState';
 import type { OAuthModelAliasEntry } from '@/types';
-import { generateId } from '@/utils/helpers';
+import { generateId, getErrorMessage } from '@/utils/helpers';
 import styles from './AuthFilesOAuthModelAliasEditPage.module.scss';
 
 type AuthFileModelItem = { id: string; display_name?: string; type?: string; owned_by?: string };
 
 type LocationState = { fromAuthFiles?: boolean } | null;
 
-type OAuthModelMappingFormEntry = OAuthModelAliasEntry & { id: string };
+type OAuthModelAliasDraftEntry = OAuthModelAliasEntry & {
+  displayName?: string;
+  forceMapping?: boolean;
+};
+
+type OAuthModelMappingFormEntry = OAuthModelAliasDraftEntry & { id: string };
 
 const buildEmptyMappingEntry = (): OAuthModelMappingFormEntry => ({
   id: generateId(),
@@ -42,12 +52,17 @@ const normalizeMappingEntries = (
   if (!Array.isArray(entries) || entries.length === 0) {
     return [buildEmptyMappingEntry()];
   }
-  return entries.map((entry) => ({
-    id: generateId(),
-    name: entry.name ?? '',
-    alias: entry.alias ?? '',
-    fork: Boolean(entry.fork),
-  }));
+  return entries.map((entry) => {
+    const draft = entry as OAuthModelAliasDraftEntry;
+    return {
+      id: generateId(),
+      name: entry.name ?? '',
+      alias: entry.alias ?? '',
+      fork: Boolean(entry.fork),
+      displayName: draft.displayName,
+      forceMapping: draft.forceMapping,
+    };
+  });
 };
 
 export type AuthFilesOAuthModelAliasEditPageProps = {
@@ -66,7 +81,7 @@ export function AuthFilesOAuthModelAliasEditPage({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const { showNotification } = useNotificationStore();
+  const { showConfirmation, showNotification } = useNotificationStore();
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const disableControls = connectionStatus !== 'connected';
 
@@ -74,6 +89,7 @@ export function AuthFilesOAuthModelAliasEditPage({
   const providerFromParams = embedded
     ? (initialProvider ?? '')
     : (searchParams.get('provider') ?? '');
+  const [initialProviderKey] = useState(() => normalizeProviderKey(providerFromParams));
 
   const [provider, setProvider] = useState(providerFromParams);
   const files = useAuthInventoryStore((state) => state.files);
@@ -81,7 +97,10 @@ export function AuthFilesOAuthModelAliasEditPage({
   const [excluded, setExcluded] = useState<Record<string, string[]>>({});
   const [modelAlias, setModelAlias] = useState<Record<string, OAuthModelAliasEntry[]>>({});
   const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
+  const [baselineReady, setBaselineReady] = useState(false);
   const [modelAliasUnsupported, setModelAliasUnsupported] = useState(false);
+  const loadRequestRef = useRef(0);
 
   const [mappings, setMappings] = useState<OAuthModelMappingFormEntry[]>([
     buildEmptyMappingEntry(),
@@ -116,6 +135,31 @@ export function AuthFilesOAuthModelAliasEditPage({
     if (!resolvedProviderKey) return false;
     return Object.prototype.hasOwnProperty.call(modelAlias, resolvedProviderKey);
   }, [modelAlias, resolvedProviderKey]);
+  const baselineMappingsSignature = useMemo(
+    () => getModelAliasDraftSignature(modelAlias[resolvedProviderKey] ?? []),
+    [modelAlias, resolvedProviderKey]
+  );
+  const mappingsSignature = useMemo(() => getModelAliasDraftSignature(mappings), [mappings]);
+  const contentDirty = baselineMappingsSignature !== mappingsSignature;
+  const isDirty = isOAuthEditorDirty(
+    initialProviderKey,
+    resolvedProviderKey,
+    baselineMappingsSignature,
+    mappingsSignature
+  );
+  const unsavedChangesDialog = useMemo(
+    () => ({
+      title: t('common.unsaved_changes_title'),
+      message: t('common.unsaved_changes_message'),
+      confirmText: t('common.leave'),
+      cancelText: t('common.stay'),
+    }),
+    [t]
+  );
+  const { allowNextNavigation } = useUnsavedChangesGuard({
+    shouldBlock: isDirty,
+    dialog: unsavedChangesDialog,
+  });
   const title = useMemo(() => {
     if (isEditing) {
       return t('oauth_model_alias.edit_title', {
@@ -137,7 +181,7 @@ export function AuthFilesOAuthModelAliasEditPage({
     return t('oauth_model_alias.model_source_loaded', { count: modelsList.length });
   }, [modelsError, modelsList.length, modelsLoading, provider, t]);
 
-  const handleBack = useCallback(() => {
+  const leaveEditor = useCallback(() => {
     if (embedded) {
       onClose?.();
       return;
@@ -150,10 +194,24 @@ export function AuthFilesOAuthModelAliasEditPage({
     navigate('/quota', { replace: true });
   }, [embedded, location.state, navigate, onClose]);
 
+  const handleBack = useCallback(() => {
+    if (!isDirty) {
+      leaveEditor();
+      return;
+    }
+    showConfirmation({
+      ...unsavedChangesDialog,
+      variant: 'danger',
+      onConfirm: () => {
+        allowNextNavigation();
+        leaveEditor();
+      },
+    });
+  }, [allowNextNavigation, isDirty, leaveEditor, showConfirmation, unsavedChangesDialog]);
+
   const swipeRef = useEdgeSwipeBack({ enabled: !embedded, onBack: handleBack });
 
   useEffect(() => {
-    if (embedded) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         handleBack();
@@ -161,59 +219,72 @@ export function AuthFilesOAuthModelAliasEditPage({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [embedded, handleBack]);
+  }, [handleBack]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      setInitialLoading(true);
-      setModelAliasUnsupported(false);
-      try {
-        const [, excludedResult, aliasResult] = await Promise.allSettled([
-          refreshAuthFiles(),
-          authFilesApi.getOauthExcludedModels(),
-          authFilesApi.getOauthModelAlias(),
-        ]);
-
-        if (cancelled) return;
-
-        if (excludedResult.status === 'fulfilled') {
-          setExcluded(excludedResult.value ?? {});
-        }
-
-        if (aliasResult.status === 'fulfilled') {
-          setModelAlias(aliasResult.value ?? {});
-          return;
-        }
-
-        const err = aliasResult.status === 'rejected' ? aliasResult.reason : null;
-        const status =
-          typeof err === 'object' && err !== null && 'status' in err
-            ? (err as { status?: unknown }).status
-            : undefined;
-
-        if (status === 404) {
-          setModelAliasUnsupported(true);
-          return;
-        }
-      } finally {
-        if (!cancelled) {
-          setInitialLoading(false);
-        }
-      }
+    if (!isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
     };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
-    load().catch(() => {
-      if (!cancelled) {
+  const loadInitialData = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
+    setInitialLoading(true);
+    setInitialLoadError(null);
+    setBaselineReady(false);
+    setModelAliasUnsupported(false);
+
+    try {
+      const [, excludedResult, aliasResult] = await Promise.allSettled([
+        refreshAuthFiles(),
+        authFilesApi.getOauthExcludedModels(),
+        authFilesApi.getOauthModelAlias(),
+      ]);
+
+      if (requestId !== loadRequestRef.current) return;
+
+      if (excludedResult.status === 'fulfilled') {
+        setExcluded(excludedResult.value ?? {});
+      }
+
+      if (aliasResult.status === 'fulfilled') {
+        setModelAlias(aliasResult.value ?? {});
+        setBaselineReady(true);
+        return;
+      }
+
+      const err = aliasResult.reason;
+      const status =
+        typeof err === 'object' && err !== null && 'status' in err
+          ? (err as { status?: unknown }).status
+          : undefined;
+
+      if (status === 404) {
+        setModelAliasUnsupported(true);
+        return;
+      }
+      setInitialLoadError(getErrorMessage(err, t('notification.refresh_failed')));
+    } catch (err: unknown) {
+      if (requestId === loadRequestRef.current) {
+        setInitialLoadError(getErrorMessage(err, t('notification.refresh_failed')));
+      }
+    } finally {
+      if (requestId === loadRequestRef.current) {
         setInitialLoading(false);
       }
-    });
+    }
+  }, [refreshAuthFiles, t]);
 
+  useEffect(() => {
+    void loadInitialData();
     return () => {
-      cancelled = true;
+      loadRequestRef.current += 1;
     };
-  }, [refreshAuthFiles]);
+  }, [loadInitialData]);
 
   useEffect(() => {
     if (!resolvedProviderKey) {
@@ -268,7 +339,7 @@ export function AuthFilesOAuthModelAliasEditPage({
     };
   }, [modelAliasUnsupported, resolvedProviderKey, showNotification, t]);
 
-  const updateProvider = useCallback(
+  const applyProviderChange = useCallback(
     (value: string) => {
       setProvider(value);
       if (embedded) return;
@@ -279,13 +350,29 @@ export function AuthFilesOAuthModelAliasEditPage({
       } else {
         next.delete('provider');
       }
+      allowNextNavigation();
       setSearchParams(next, { replace: true });
     },
-    [embedded, searchParams, setSearchParams]
+    [allowNextNavigation, embedded, searchParams, setSearchParams]
+  );
+
+  const updateProvider = useCallback(
+    (value: string) => {
+      if (!contentDirty || normalizeProviderKey(value) === resolvedProviderKey) {
+        applyProviderChange(value);
+        return;
+      }
+      showConfirmation({
+        ...unsavedChangesDialog,
+        variant: 'danger',
+        onConfirm: () => applyProviderChange(value),
+      });
+    },
+    [applyProviderChange, contentDirty, resolvedProviderKey, showConfirmation, unsavedChangesDialog]
   );
 
   const updateMappingEntry = useCallback(
-    (index: number, field: keyof OAuthModelAliasEntry, value: string | boolean) => {
+    (index: number, field: 'name' | 'alias' | 'fork', value: string | boolean) => {
       setMappings((prev) =>
         prev.map((entry, idx) => (idx === index ? { ...entry, [field]: value } : entry))
       );
@@ -324,7 +411,14 @@ export function AuthFilesOAuthModelAliasEditPage({
           return null;
         }
         seenAlias.add(aliasKey);
-        return entry.fork ? { name, alias, fork: true } : { name, alias };
+        const normalizedEntry: OAuthModelAliasDraftEntry = { name, alias };
+        if (entry.fork) normalizedEntry.fork = true;
+        const displayName = entry.displayName?.trim();
+        if (displayName) normalizedEntry.displayName = displayName;
+        if (typeof entry.forceMapping === 'boolean') {
+          normalizedEntry.forceMapping = entry.forceMapping;
+        }
+        return normalizedEntry;
       })
       .filter(Boolean) as OAuthModelAliasEntry[];
 
@@ -342,16 +436,31 @@ export function AuthFilesOAuthModelAliasEditPage({
       }
       showNotification(t('oauth_model_alias.save_success'), 'success');
       onSaved?.();
-      handleBack();
+      allowNextNavigation();
+      leaveEditor();
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '';
       showNotification(`${t('oauth_model_alias.save_failed')}: ${errorMessage}`, 'error');
     } finally {
       setSaving(false);
     }
-  }, [handleBack, isEditing, mappings, onSaved, provider, showNotification, t]);
+  }, [
+    allowNextNavigation,
+    isEditing,
+    leaveEditor,
+    mappings,
+    onSaved,
+    provider,
+    showNotification,
+    t,
+  ]);
 
-  const canSave = !disableControls && !saving && !modelAliasUnsupported;
+  const canSave =
+    !disableControls &&
+    !saving &&
+    baselineReady &&
+    !modelAliasUnsupported &&
+    initialLoadError === null;
   const shellClassName = embedded ? styles.embeddedShell : undefined;
   const contentClassName = embedded
     ? `${styles.pageContent} ${styles.embeddedPageContent}`
@@ -379,6 +488,18 @@ export function AuthFilesOAuthModelAliasEditPage({
           <EmptyState
             title={t('oauth_model_alias.upgrade_required_title')}
             description={t('oauth_model_alias.upgrade_required_desc')}
+          />
+        </Card>
+      ) : initialLoadError !== null ? (
+        <Card>
+          <EmptyState
+            title={t('notification.refresh_failed')}
+            description={initialLoadError}
+            action={
+              <Button variant="secondary" size="sm" onClick={() => void loadInitialData()}>
+                {t('common.refresh')}
+              </Button>
+            }
           />
         </Card>
       ) : (

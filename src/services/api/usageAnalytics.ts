@@ -1,7 +1,12 @@
 import type { ApiError } from '@/types/api';
 import { isRecord } from '@/utils/helpers';
 import { apiClient } from './client';
-import { buildMonitoringQuery, type MonitoringQueryInput } from './requestMonitoring';
+import {
+  buildMonitoringQuery,
+  normalizeCredentialIdentityCatalog,
+  type CredentialIdentityCatalogEntry,
+  type MonitoringQueryInput,
+} from './requestMonitoring';
 
 export type AnalyticsView =
   | 'overview'
@@ -102,6 +107,9 @@ export interface AnalyticsReport {
   dataSource: AnalyticsDataSource;
   fallbackReason: string;
   catalogVersion: number;
+  credentialCatalog: CredentialIdentityCatalogEntry[];
+  credentialInventoryId: string;
+  credentialRevision: number;
   summary: AnalyticsMetrics | null;
   comparison: AnalyticsMetrics | null;
   series: AnalyticsBucket[];
@@ -180,10 +188,7 @@ const normalizeCost = (value: unknown, context: string): AnalyticsCost => {
   };
 };
 
-export const normalizeAnalyticsMetrics = (
-  value: unknown,
-  context: string
-): AnalyticsMetrics => {
+export const normalizeAnalyticsMetrics = (value: unknown, context: string): AnalyticsMetrics => {
   const record = requireRecord(value, context);
   return {
     calls: countValue(record, 'calls', context),
@@ -289,6 +294,27 @@ export const normalizeAnalyticsReport = (value: unknown): AnalyticsReport => {
   }
   const summary = record.summary;
   const comparison = record.comparison;
+  const rankings = arrayValue(record, 'rankings', 'analytics').map((entry, index) =>
+    normalizeAnalyticsRanking(entry, `analytics.rankings[${index}]`)
+  );
+  const credentialCatalog =
+    record.credential_catalog === undefined
+      ? view === 'credentials'
+        ? rankings
+            .filter((ranking) => ranking.identity.recordedId)
+            .map((ranking) => ({
+              recordedId: ranking.identity.recordedId,
+              displayName: ranking.identity.displayName,
+              provider: ranking.identity.provider,
+              currentId: ranking.identity.currentId,
+              current: ranking.identity.current,
+              hasUsage: true,
+            }))
+        : []
+      : normalizeCredentialIdentityCatalog(
+          record.credential_catalog,
+          'analytics.credential_catalog'
+        );
   return {
     available: true,
     view,
@@ -303,6 +329,12 @@ export const normalizeAnalyticsReport = (value: unknown): AnalyticsReport => {
     dataSource,
     fallbackReason: stringValue(record, 'fallback_reason', 'analytics'),
     catalogVersion: countValue(record, 'catalog_version', 'analytics'),
+    credentialCatalog,
+    credentialInventoryId: stringValue(record, 'credential_inventory_id', 'analytics'),
+    credentialRevision:
+      record.credential_revision === undefined
+        ? 0
+        : countValue(record, 'credential_revision', 'analytics'),
     summary:
       summary === undefined || summary === null
         ? null
@@ -317,9 +349,7 @@ export const normalizeAnalyticsReport = (value: unknown): AnalyticsReport => {
     comparisonSeries: arrayValue(record, 'comparison_series', 'analytics').map((entry, index) =>
       normalizeAnalyticsBucket(entry, `analytics.comparison_series[${index}]`)
     ),
-    rankings: arrayValue(record, 'rankings', 'analytics').map((entry, index) =>
-      normalizeAnalyticsRanking(entry, `analytics.rankings[${index}]`)
-    ),
+    rankings,
     heatmap: arrayValue(record, 'heatmap', 'analytics').map((entry, index) =>
       normalizeHeatmapCell(entry, `analytics.heatmap[${index}]`)
     ),

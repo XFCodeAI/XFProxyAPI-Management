@@ -3,8 +3,8 @@
 :root {
   --header-height: 80px;
   --shell-gutter: 24px;
-  --sidebar-panel-width: 256px;
-  --sidebar-collapsed-width: 68px;
+  --sidebar-panel-width: 240px;
+  --sidebar-collapsed-width: 64px;
   --sidebar-active-width: var(--sidebar-panel-width);
   --sidebar-gap: 0px;
   --floating-control-size: 38px;
@@ -200,10 +200,10 @@
   z-index: $z-dropdown - 1;
   width: var(--sidebar-panel-width);
   height: 100vh;
-  padding: 18px 14px;
+  padding: 14px 10px;
   display: flex;
   flex-direction: column;
-  gap: $spacing-md;
+  gap: $spacing-sm;
   flex-shrink: 0;
   overflow-y: auto;
   background: var(--card);
@@ -227,7 +227,7 @@
 
   &.collapsed:not(.open) {
     width: var(--sidebar-collapsed-width);
-    padding: 18px 10px;
+    padding: 14px 8px;
 
     .sidebar-brand {
       justify-content: center;
@@ -246,8 +246,9 @@
     }
 
     .nav-item {
-      width: 44px;
-      min-height: 40px;
+      position: relative;
+      width: 40px;
+      min-height: 38px;
       justify-content: center;
       gap: 0;
       padding: 0;
@@ -274,9 +275,21 @@
     }
 
     .nav-sub-item {
-      width: 32px;
-      min-height: 32px;
+      width: 30px;
+      min-height: 30px;
       padding: 0;
+    }
+
+    .nav-badge {
+      position: absolute;
+      top: -2px;
+      right: -3px;
+      min-width: 16px;
+      height: 16px;
+      margin-left: 0;
+      padding: 0 4px;
+      border-color: var(--card);
+      font-size: 9px;
     }
   }
 
@@ -284,17 +297,17 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    min-height: 42px;
-    padding: 4px 10px 14px;
-    margin-bottom: 4px;
+    min-height: 38px;
+    padding: 2px 8px 10px;
+    margin-bottom: 2px;
     border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
     color: var(--foreground);
     flex-shrink: 0;
   }
 
   .sidebar-brand-logo {
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
     object-fit: contain;
     border-radius: var(--radius-lg);
     box-shadow: none;
@@ -305,7 +318,7 @@
     min-width: 0;
     overflow: hidden;
     color: var(--foreground);
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 650;
     letter-spacing: 0;
     white-space: nowrap;
@@ -314,7 +327,7 @@
   .nav-section {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
     flex: 1;
   }
 
@@ -331,8 +344,8 @@
   }
 
   .nav-group-label {
-    padding: 0 12px 4px;
-    font-size: 10.5px;
+    padding: 0 10px 2px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -351,7 +364,7 @@
   .nav-drawer {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     flex-shrink: 0;
   }
 
@@ -363,7 +376,7 @@
   }
 
   .nav-drawer-caret {
-    margin-left: auto;
+    margin-left: 0;
     color: color-mix(in srgb, var(--foreground) 46%, transparent);
     line-height: 0;
     transition: transform 150ms ease;
@@ -376,14 +389,16 @@
   .nav-sub-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    margin-left: 21px;
-    padding-left: 10px;
+    gap: 2px;
+    margin-left: 18px;
+    padding-left: 8px;
     border-left: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   }
 
   .nav-item {
-    padding: 9px 12px;
+    min-width: 0;
+    min-height: 38px;
+    padding: 6px 10px;
     border-radius: var(--radius-md);
     border: 1px solid transparent;
     color: var(--muted-foreground);
@@ -391,7 +406,7 @@
     text-decoration: none;
     display: flex;
     align-items: center;
-    gap: $spacing-sm;
+    gap: 8px;
     flex-shrink: 0;
     cursor: pointer;
     transition:
@@ -401,8 +416,8 @@
       box-shadow 150ms ease;
 
     .nav-icon {
-      width: 28px;
-      height: 28px;
+      width: 24px;
+      height: 24px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -435,6 +450,7 @@
     .nav-text {
       display: flex;
       flex-direction: column;
+      flex: 1 1 auto;
       min-width: 0;
       line-height: 1.2;
     }
@@ -454,6 +470,38 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .nav-badge {
+      display: inline-flex;
+      min-width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
+      margin-left: auto;
+      padding: 0 6px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-full);
+      background: var(--secondary);
+      color: var(--secondary-foreground);
+      font-size: 10.5px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      box-sizing: border-box;
+    }
+
+    .nav-badge-sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
 
     &:hover {
@@ -510,6 +558,48 @@
       opacity: 0.62;
     }
   }
+}
+
+.nav-tooltip-copy {
+  display: flex;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 24px));
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-tooltip-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--popover-foreground);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-tooltip-badge-label,
+.nav-tooltip-meta {
+  min-width: 0;
+  color: var(--muted-foreground);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.nav-tooltip-badge-label {
+  color: var(--popover-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-inventory-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .content {
@@ -584,7 +674,7 @@
   :root {
     --header-height: 74px;
     --shell-gutter: 12px;
-    --sidebar-panel-width: min(280px, calc(100vw - 24px));
+    --sidebar-panel-width: min(292px, calc(100vw - 24px));
     --floating-control-size: 36px;
   }
 
@@ -667,7 +757,7 @@
 
     &.collapsed {
       width: var(--sidebar-panel-width);
-      padding: 18px 14px;
+      padding: 14px 10px;
 
       .sidebar-brand,
       .nav-item {

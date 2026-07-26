@@ -144,6 +144,15 @@ export interface MonitoringIdentityAggregate {
   current: boolean;
 }
 
+export interface CredentialIdentityCatalogEntry {
+  recordedId: string;
+  displayName: string;
+  provider: string;
+  currentId: string;
+  current: boolean;
+  hasUsage: boolean;
+}
+
 export interface MonitoringFacetValue {
   value: string;
   count: number;
@@ -164,6 +173,9 @@ export interface MonitoringResponse {
   cost: MonitoringCostSummary;
   facets: MonitoringFacets;
   credentials: MonitoringIdentityAggregate[];
+  credentialCatalog: CredentialIdentityCatalogEntry[];
+  credentialInventoryId: string;
+  credentialRevision: number;
   apiKeys: MonitoringIdentityAggregate[];
   requests: MonitoringRequest[];
   nextCursor: string;
@@ -419,6 +431,31 @@ const normalizeAggregate = (value: unknown, context: string): MonitoringIdentity
   };
 };
 
+const normalizeCredentialCatalogEntry = (
+  value: unknown,
+  context: string
+): CredentialIdentityCatalogEntry => {
+  const record = requireRecord(value, context);
+  return {
+    recordedId: requiredString(record, 'recorded_id', context),
+    displayName: stringValue(record, 'display_name', context),
+    provider: stringValue(record, 'provider', context),
+    currentId: stringValue(record, 'current_id', context),
+    current: booleanValue(record, 'current', context),
+    hasUsage: booleanValue(record, 'has_usage', context),
+  };
+};
+
+export const normalizeCredentialIdentityCatalog = (
+  value: unknown,
+  context: string
+): CredentialIdentityCatalogEntry[] => {
+  if (!Array.isArray(value)) return invalidResponse(context);
+  return value.map((entry, index) =>
+    normalizeCredentialCatalogEntry(entry, `${context}[${index}]`)
+  );
+};
+
 const normalizeFacets = (value: unknown): MonitoringFacets => {
   const record = requireRecord(value, 'facets');
   const normalizeValues = (key: string) =>
@@ -440,6 +477,23 @@ const normalizeFacets = (value: unknown): MonitoringFacets => {
 export const normalizeMonitoringResponse = (value: unknown): MonitoringResponse => {
   const record = requireRecord(value, 'monitoring');
   if (record.available !== true) return invalidResponse('monitoring.available');
+  const credentials = arrayValue(record, 'credentials', 'monitoring').map((entry, index) =>
+    normalizeAggregate(entry, `monitoring.credentials[${index}]`)
+  );
+  const credentialCatalog =
+    record.credential_catalog === undefined
+      ? credentials.map((identity) => ({
+          recordedId: identity.recordedId,
+          displayName: identity.displayName,
+          provider: identity.provider,
+          currentId: identity.currentId,
+          current: identity.current,
+          hasUsage: true,
+        }))
+      : normalizeCredentialIdentityCatalog(
+          record.credential_catalog,
+          'monitoring.credential_catalog'
+        );
   return {
     available: true,
     generatedAt: requiredString(record, 'generated_at', 'monitoring'),
@@ -447,9 +501,13 @@ export const normalizeMonitoringResponse = (value: unknown): MonitoringResponse 
     summary: normalizeSummary(record.summary),
     cost: normalizeCostSummary(record.cost),
     facets: normalizeFacets(record.facets),
-    credentials: arrayValue(record, 'credentials', 'monitoring').map((entry, index) =>
-      normalizeAggregate(entry, `monitoring.credentials[${index}]`)
-    ),
+    credentials,
+    credentialCatalog,
+    credentialInventoryId: stringValue(record, 'credential_inventory_id', 'monitoring'),
+    credentialRevision:
+      record.credential_revision === undefined
+        ? 0
+        : countValue(record, 'credential_revision', 'monitoring'),
     apiKeys: arrayValue(record, 'api_keys', 'monitoring').map((entry, index) =>
       normalizeAggregate(entry, `monitoring.api_keys[${index}]`)
     ),

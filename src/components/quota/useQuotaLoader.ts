@@ -5,7 +5,12 @@
 import { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AuthFileItem } from '@/types';
-import { useQuotaStore } from '@/stores';
+import {
+  captureQuotaCacheGeneration,
+  commitIfQuotaCacheCurrent,
+  getQuotaCredentialCacheKey,
+  useQuotaStore,
+} from '@/stores';
 import { getStatusFromError } from '@/utils/quota';
 import type { QuotaConfig } from './quotaConfigs';
 
@@ -16,14 +21,17 @@ type QuotaUpdater<T> = T | ((prev: T) => T);
 type QuotaSetter<T> = (updater: QuotaUpdater<T>) => void;
 
 interface LoadQuotaResult<TData> {
-  name: string;
+  cacheKey: string;
   status: 'success' | 'error';
   data?: TData;
   error?: string;
   errorStatus?: number;
 }
 
-export function useQuotaLoader<TState, TData>(config: QuotaConfig<TState, TData>) {
+export function useQuotaLoader<TState, TData>(
+  config: QuotaConfig<TState, TData>,
+  currentFiles: AuthFileItem[]
+) {
   const { t } = useTranslation();
   const quota = useQuotaStore(config.storeSelector);
   const setQuota = useQuotaStore((state) => state[config.storeSetter]) as QuotaSetter<
@@ -32,6 +40,8 @@ export function useQuotaLoader<TState, TData>(config: QuotaConfig<TState, TData>
 
   const loadingRef = useRef(false);
   const requestIdRef = useRef(0);
+  const currentCredentialKeysRef = useRef<Set<string>>(new Set());
+  currentCredentialKeysRef.current = new Set(currentFiles.map(getQuotaCredentialCacheKey));
 
   const loadQuota = useCallback(
     async (
@@ -43,6 +53,7 @@ export function useQuotaLoader<TState, TData>(config: QuotaConfig<TState, TData>
       if (loadingRef.current) return;
       loadingRef.current = true;
       const requestId = ++requestIdRef.current;
+      const cacheGeneration = captureQuotaCacheGeneration();
       setLoading(true, scope);
 
       try {
@@ -51,7 +62,7 @@ export function useQuotaLoader<TState, TData>(config: QuotaConfig<TState, TData>
         setQuota((prev) => {
           const nextState = { ...prev };
           targets.forEach((file) => {
-            nextState[file.name] = config.buildLoadingState();
+            nextState[getQuotaCredentialCacheKey(file)] = config.buildLoadingState();
           });
           return nextState;
         });
@@ -61,33 +72,38 @@ export function useQuotaLoader<TState, TData>(config: QuotaConfig<TState, TData>
           const batch = targets.slice(start, start + resolvedBatchSize);
           const results = await Promise.all(
             batch.map(async (file): Promise<LoadQuotaResult<TData>> => {
+              const cacheKey = getQuotaCredentialCacheKey(file);
               try {
                 const data = await config.fetchQuota(file, t);
-                return { name: file.name, status: 'success', data };
+                return { cacheKey, status: 'success', data };
               } catch (err: unknown) {
                 const message = err instanceof Error ? err.message : t('common.unknown_error');
                 const errorStatus = getStatusFromError(err);
-                return { name: file.name, status: 'error', error: message, errorStatus };
+                return { cacheKey, status: 'error', error: message, errorStatus };
               }
             })
           );
 
           if (requestId !== requestIdRef.current) return;
 
-          setQuota((prev) => {
-            const nextState = { ...prev };
-            results.forEach((result) => {
-              if (result.status === 'success') {
-                nextState[result.name] = config.buildSuccessState(result.data as TData);
-              } else {
-                nextState[result.name] = config.buildErrorState(
-                  result.error || t('common.unknown_error'),
-                  result.errorStatus
-                );
-              }
+          const committed = commitIfQuotaCacheCurrent(cacheGeneration, () => {
+            setQuota((prev) => {
+              const nextState = { ...prev };
+              results.forEach((result) => {
+                if (!currentCredentialKeysRef.current.has(result.cacheKey)) return;
+                if (result.status === 'success') {
+                  nextState[result.cacheKey] = config.buildSuccessState(result.data as TData);
+                } else {
+                  nextState[result.cacheKey] = config.buildErrorState(
+                    result.error || t('common.unknown_error'),
+                    result.errorStatus
+                  );
+                }
+              });
+              return nextState;
             });
-            return nextState;
           });
+          if (!committed) return;
         }
       } finally {
         if (requestId === requestIdRef.current) {

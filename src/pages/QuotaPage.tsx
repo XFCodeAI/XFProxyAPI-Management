@@ -5,6 +5,7 @@ import { Upload, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { TooltipButton } from '@/components/ui/TooltipControls';
 import { IconRefreshCw, IconSettings, IconSidebarOauth } from '@/components/ui/icons';
 import { QuotaAuthSettingsDialog } from '@/components/quota/QuotaAuthSettingsDialog';
@@ -72,7 +73,22 @@ type QuotaProviderSummary = QuotaProviderDefinition & {
 };
 
 const EMPTY_AUTH_FILE_ITEMS: AuthFileItem[] = [];
-const QUOTA_ACTIVE_PROVIDER_STORAGE_KEY = 'quotaPage.activeProvider';
+export const QUOTA_ACTIVE_PROVIDER_STORAGE_KEY = 'quotaPage.activeProvider';
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const resolveQuotaProviderSelection = (
+  providers: ReadonlyArray<{ id: string; credentialCount: number }>,
+  selectedProviderId: string | null
+) => {
+  const defaultProviderId =
+    providers.find((provider) => provider.credentialCount > 0)?.id ?? providers[0]?.id ?? '';
+  const activeProviderId = selectedProviderId
+    ? (providers.find((provider) => provider.id === selectedProviderId)?.id ??
+      providers[0]?.id ??
+      defaultProviderId)
+    : defaultProviderId;
+  return { defaultProviderId, activeProviderId };
+};
 
 const createProviderFilter = (providerId: string) => (file: AuthFileItem) =>
   resolveAuthProvider(file) === providerId;
@@ -257,10 +273,10 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     [files, quotaProviders]
   );
 
-  const defaultProviderId =
-    providerSummaries.find((provider) => provider.credentialCount > 0)?.id ??
-    providerSummaries[0].id;
-  const activeProviderId = selectedProviderId ?? defaultProviderId;
+  const { defaultProviderId, activeProviderId } = resolveQuotaProviderSelection(
+    providerSummaries,
+    selectedProviderId
+  );
   const activeProvider =
     providerSummaries.find((provider) => provider.id === activeProviderId) ?? providerSummaries[0];
   const activeProviderCredentials = useMemo(
@@ -577,7 +593,12 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           </div>
         }
       >
-        {credentialFiles.length === 0 ? (
+        {loading && credentialFiles.length === 0 ? (
+          <div className={styles.sectionState} role="status" aria-live="polite">
+            <LoadingSpinner size={20} />
+            <span>{t('common.loading')}</span>
+          </div>
+        ) : credentialFiles.length === 0 ? (
           <EmptyState
             title={t('auth_login.plugin_oauth_title', { name: providerLabel })}
             description={t('auth_login.plugin_oauth_hint', { name: providerLabel })}
@@ -640,10 +661,18 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
         </div>
       )}
 
-      {error && <div className={styles.errorBox}>{error}</div>}
+      {error && (
+        <div className={styles.errorBox} role="alert">
+          {error}
+        </div>
+      )}
 
       <div className={styles.providerToolbar}>
-        <div className={styles.providerTabs} aria-label={t('quota_management.providers_label')}>
+        <div
+          className={styles.providerTabs}
+          role="group"
+          aria-label={t('quota_management.providers_label')}
+        >
           {providerSummaries.map((provider) => {
             const active = provider.id === activeProvider.id;
             const itemClassName = `${styles.providerTab} ${active ? styles.providerTabActive : ''}`;
@@ -656,9 +685,11 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
                 className={itemClassName}
                 onClick={() => selectQuotaProvider(provider.id)}
                 aria-current={active ? 'page' : undefined}
+                aria-pressed={active}
                 aria-label={`${providerLabel}, ${t('quota_management.provider_credentials', {
                   count: provider.credentialCount,
                 })}`}
+                title={providerLabel}
               >
                 <span>{providerLabel}</span>
                 <span className={styles.providerCount}>{provider.credentialCount}</span>

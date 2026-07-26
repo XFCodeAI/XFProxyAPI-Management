@@ -51,14 +51,22 @@
   }
 
   @include mobile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     width: 100%;
-    justify-content: space-between;
+    justify-content: stretch;
+
+    .viewModeToggle {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
   }
 }
 
 .titleWrapper {
   display: flex;
   min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -72,11 +80,13 @@
   color: var(--destructive);
   font-size: 13px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .providerToolbar {
   display: flex;
   min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
 }
@@ -98,6 +108,7 @@
   background: var(--card);
   box-shadow: var(--shadow);
   scrollbar-width: thin;
+  box-sizing: border-box;
 }
 
 .authSettingsButton {
@@ -146,6 +157,7 @@
   flex: 0 0 auto;
   height: 32px;
   min-width: 88px;
+  max-width: 220px;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -163,6 +175,13 @@
     background-color 150ms ease,
     border-color 150ms ease,
     color 150ms ease;
+
+  > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
   &:hover:not(.providerTabActive) {
     border-color: var(--border);
@@ -199,6 +218,17 @@
 
 .providerPanel {
   min-width: 0;
+}
+
+.sectionState {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .credentialBatchBar {
@@ -271,7 +301,7 @@
 .kimiGrid,
 .xaiGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
   gap: 12px;
 
   @include mobile {
@@ -317,6 +347,13 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--secondary);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 
   @include mobile {
     flex: 1 1 auto;
@@ -353,7 +390,7 @@
   }
 
   @include mobile {
-    flex: 1 1 0;
+    flex: 1 0 auto;
   }
 }
 
@@ -448,7 +485,7 @@
 
 .pluginCredentialGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
   gap: 12px;
 
   @include mobile {
@@ -637,6 +674,7 @@
   font-size: 12px;
   line-height: 1.5;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .quotaMessageAction {
@@ -1083,6 +1121,9 @@
   background: var(--secondary);
   color: var(--muted-foreground);
   font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .warningOverlay {
@@ -1147,16 +1188,21 @@
   }
 
   .providerToolbar {
-    align-items: flex-start;
+    align-items: center;
   }
 
   .providerTabs {
+    order: -1;
+    flex: 1 0 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 3px;
     padding: 3px;
-    flex-wrap: wrap;
     overflow-x: visible;
   }
 
+  .uploadButton,
+  .legacyRepairButton,
   .authSettingsButton {
     width: 42px;
     height: 42px;
@@ -1165,9 +1211,10 @@
   }
 
   .providerTab {
-    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
     min-width: 0;
-    height: 30px;
+    height: 32px;
     padding: 0 10px;
     font-size: 12px;
   }
@@ -1226,18 +1273,16 @@
     display: none;
   }
 
+  .legacyRepairButton {
+    padding-inline: 0;
+
+    > span:last-child {
+      display: none;
+    }
+  }
+
   .fileCard {
     padding: 12px;
-  }
-
-  .statusBar {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .statusRate {
-    justify-content: center;
   }
 
   .quotaSection {

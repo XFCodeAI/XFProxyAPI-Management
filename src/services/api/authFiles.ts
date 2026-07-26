@@ -12,6 +12,7 @@ import {
   normalizeSessionValidationFailures,
   type AuthFileSessionValidationFailure,
 } from './sessionValidationFailure';
+import { normalizeOauthModelAliasEntries, serializeOauthModelAliases } from './oauthModelAlias';
 
 export type { AuthFileSessionValidationFailure } from './sessionValidationFailure';
 
@@ -27,7 +28,9 @@ export type AuthFileFieldsPatch = {
   priority?: number;
   fallback?: boolean;
   websockets?: boolean;
+  using_api?: boolean;
   note?: string;
+  expired?: string;
 };
 type AuthFileBatchFailure = { name: string; error: string };
 export type AuthFileDeleteItem = { name: string; status: string; error?: string };
@@ -542,24 +545,12 @@ const normalizeOauthModelAlias = (payload: unknown): Record<string, OAuthModelAl
 
     const normalized = result[key] ?? [];
     const seenAlias = new Set(normalized.map((entry) => entry.alias.toLowerCase()));
-    mappings
-      .map((item) => {
-        if (!item || typeof item !== 'object') return null;
-        const entry = item as Record<string, unknown>;
-        const name = String(entry.name ?? entry.id ?? entry.model ?? '').trim();
-        const alias = String(entry.alias ?? '').trim();
-        if (!name || !alias) return null;
-        const fork = entry.fork === true;
-        return fork ? { name, alias, fork } : { name, alias };
-      })
-      .filter(Boolean)
-      .forEach((entry) => {
-        const aliasEntry = entry as OAuthModelAliasEntry;
-        const aliasKey = aliasEntry.alias.toLowerCase();
-        if (seenAlias.has(aliasKey)) return;
-        seenAlias.add(aliasKey);
-        normalized.push(aliasEntry);
-      });
+    normalizeOauthModelAliasEntries(mappings).forEach((entry) => {
+      const aliasKey = entry.alias.toLowerCase();
+      if (seenAlias.has(aliasKey)) return;
+      seenAlias.add(aliasKey);
+      normalized.push(entry);
+    });
 
     if (normalized.length) {
       result[key] = normalized;
@@ -570,6 +561,10 @@ const normalizeOauthModelAlias = (payload: unknown): Record<string, OAuthModelAl
 };
 
 const OAUTH_MODEL_ALIAS_ENDPOINT = '/oauth-model-alias';
+const MANUAL_REFRESH_EXPIRY_OFFSET_MS = 60_000;
+
+export const buildManualRefreshExpiredAt = (nowMs = Date.now()): string =>
+  new Date(nowMs - MANUAL_REFRESH_EXPIRY_OFFSET_MS).toISOString();
 
 export const authFilesApi = {
   list: async () => dedupeAuthFilesResponse(await apiClient.get<AuthFilesResponse>('/auth-files')),
@@ -596,6 +591,12 @@ export const authFilesApi = {
 
   patchFields: (name: string, fields: AuthFileFieldsPatch) =>
     apiClient.patch('/auth-files/fields', { name, ...fields }),
+
+  requestManualRefresh: (name: string) =>
+    apiClient.patch('/auth-files/fields', {
+      name,
+      expired: buildManualRefreshExpiredAt(),
+    }),
 
   uploadFiles: async (
     files: File[],
@@ -717,7 +718,7 @@ export const authFilesApi = {
       normalizeOauthModelAlias({ [normalizedChannel]: aliases })[normalizedChannel] ?? [];
     await apiClient.patch(OAUTH_MODEL_ALIAS_ENDPOINT, {
       channel: normalizedChannel,
-      aliases: normalizedAliases,
+      aliases: serializeOauthModelAliases(normalizedAliases),
     });
   },
 

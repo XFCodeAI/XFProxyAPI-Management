@@ -1,12 +1,15 @@
 import {
   buildMonitoringRequestQuery,
+  credentialVisibleWithoutUsage,
   type MonitoringFilters,
 } from '@/features/requestMonitoring/viewModel';
+import type { ReconciledCredentialIdentity } from '@/features/authFiles/credentialIdentityCatalog';
 import type {
   AnalyticsGranularity,
   AnalyticsIdentity,
   AnalyticsMetrics,
   AnalyticsQueryInput,
+  AnalyticsRanking,
   AnalyticsView,
 } from '@/services/api/usageAnalytics';
 
@@ -123,3 +126,75 @@ export const analyticsAnomalyRange = (
 
 export const analyticsIdentityLabel = (identity: AnalyticsIdentity, fallback: string): string =>
   identity.displayName || identity.resolvedModel || identity.recordedId || fallback;
+
+const zeroAnalyticsMetrics = (currency: string): AnalyticsMetrics => ({
+  calls: 0,
+  successes: 0,
+  failures: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  reasoningTokens: 0,
+  cachedTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+  totalTokens: 0,
+  cacheHits: 0,
+  cacheHitRate: 0,
+  averageLatencyMs: 0,
+  p95LatencyMs: 0,
+  averageTtftMs: 0,
+  p95TtftMs: 0,
+  cost: {
+    amount: '0',
+    currency,
+    completeCalls: 0,
+    partialCalls: 0,
+    unpricedCalls: 0,
+    freeCalls: 0,
+    coverageRate: 1,
+    missingDimensions: {},
+  },
+});
+
+export const mergeAnalyticsCredentialRankings = (
+  rankings: AnalyticsRanking[],
+  catalog: ReconciledCredentialIdentity[],
+  filters: MonitoringFilters,
+  currency = 'USD'
+): AnalyticsRanking[] => {
+  const catalogByID = new Map(catalog.map((entry) => [entry.recordedId, entry]));
+  const seen = new Set<string>();
+  const merged = rankings.map((ranking) => {
+    const recordedId = ranking.identity.recordedId;
+    const identity = catalogByID.get(recordedId);
+    seen.add(recordedId);
+    if (!identity) return ranking;
+    return {
+      ...ranking,
+      identity: {
+        ...ranking.identity,
+        displayName: ranking.identity.displayName || identity.displayName,
+        provider: ranking.identity.provider || identity.provider,
+        current: identity.current,
+        currentId: identity.currentId,
+      },
+    };
+  });
+  catalog.forEach((identity) => {
+    if (seen.has(identity.recordedId) || !credentialVisibleWithoutUsage(identity, filters)) return;
+    merged.push({
+      identity: {
+        recordedId: identity.recordedId,
+        displayName: identity.displayName,
+        provider: identity.provider,
+        resolvedModel: '',
+        requestedModel: '',
+        current: true,
+        currentId: identity.currentId,
+      },
+      metrics: zeroAnalyticsMetrics(currency),
+      comparison: zeroAnalyticsMetrics(currency),
+    });
+  });
+  return merged;
+};

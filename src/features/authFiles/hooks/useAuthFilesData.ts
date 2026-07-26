@@ -13,7 +13,9 @@ import {
   hasAuthFileStatusMessage,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
+  supportsAuthFileManualRefresh,
 } from '@/features/authFiles/constants';
+import { runAuthFileManualRefresh } from '@/features/authFiles/authFileManualRefresh';
 import {
   emptyAuthFileProxyInspection,
   inspectAuthFileProxyUploads,
@@ -94,6 +96,7 @@ export type UseAuthFilesDataResult = {
   deleting: string | null;
   deletingAll: boolean;
   statusUpdating: Record<string, boolean>;
+  manualRefreshing: Record<string, boolean>;
   batchStatusUpdating: boolean;
   uploadProxyDialogOpen: boolean;
   uploadProxySelection: ProxySelection;
@@ -105,13 +108,14 @@ export type UseAuthFilesDataResult = {
   groupAssigning: boolean;
   groupAssignmentError: string;
   fileInputRef: RefObject<HTMLInputElement | null>;
-  loadFiles: (fresh?: boolean) => Promise<AuthFileItem[]>;
+  loadFiles: (fresh?: boolean, throwOnError?: boolean) => Promise<AuthFileItem[]>;
   beginFileImport: (files: File[], options?: BeginFileImportOptions) => boolean;
   handleUploadClick: () => void;
   handleFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleDelete: (name: string) => void;
   handleDeleteAll: (options: DeleteAllOptions) => void;
   handleDownload: (name: string) => Promise<void>;
+  handleManualRefresh: (item: AuthFileItem) => Promise<void>;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
   toggleSelect: (name: string) => void;
   selectAllVisible: (visibleFiles: AuthFileItem[]) => void;
@@ -256,6 +260,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
+  const [manualRefreshing, setManualRefreshing] = useState<Record<string, boolean>>({});
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [uploadProxyDialogOpen, setUploadProxyDialogOpen] = useState(false);
@@ -275,6 +280,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [groupAssignmentError, setGroupAssignmentError] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const manualRefreshPendingRef = useRef<Set<string>>(new Set());
   const batchStatusPendingRef = useRef(false);
   const uploadProxyInspectionSeqRef = useRef(0);
   const uploadProxySelectionTouchedRef = useRef(false);
@@ -375,7 +381,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   }, [files, selectedFiles.size]);
 
   const loadFiles = useCallback(
-    async (fresh = false) => {
+    async (fresh = false, throwOnError = false) => {
       setLoading(true);
       setError('');
       try {
@@ -386,6 +392,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : t('notification.refresh_failed');
         setError(errorMessage);
+        if (throwOnError) throw err;
         return [];
       } finally {
         setLoading(false);
@@ -1009,6 +1016,45 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     [setFiles, showNotification, t]
   );
 
+  const handleManualRefresh = useCallback(
+    async (item: AuthFileItem) => {
+      const name = item.name.trim();
+      if (
+        !name ||
+        item.disabled === true ||
+        isRuntimeOnlyAuthFile(item) ||
+        !supportsAuthFileManualRefresh(item.type ?? item.provider)
+      ) {
+        return;
+      }
+
+      try {
+        const completed = await runAuthFileManualRefresh({
+          name,
+          pendingNames: manualRefreshPendingRef.current,
+          request: authFilesApi.requestManualRefresh,
+          refreshInventory: () => loadFiles(true, true),
+          onPendingChange: (targetName, pending) => {
+            setManualRefreshing((prev) => {
+              if (pending) return { ...prev, [targetName]: true };
+              if (!prev[targetName]) return prev;
+              const next = { ...prev };
+              delete next[targetName];
+              return next;
+            });
+          },
+        });
+        if (completed) {
+          showNotification(t('auth_files.manual_refresh_requested', { name }), 'info');
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : t('notification.update_failed');
+        showNotification(t('auth_files.manual_refresh_failed', { name, message }), 'error');
+      }
+    },
+    [loadFiles, showNotification, t]
+  );
+
   const batchSetStatus = useCallback(
     async (names: string[], enabled: boolean) => {
       if (batchStatusPendingRef.current) return;
@@ -1237,6 +1283,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     deleting,
     deletingAll,
     statusUpdating,
+    manualRefreshing,
     batchStatusUpdating,
     uploadProxyDialogOpen,
     uploadProxySelection,
@@ -1255,6 +1302,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     handleDelete,
     handleDeleteAll,
     handleDownload,
+    handleManualRefresh,
     handleStatusToggle,
     toggleSelect,
     selectAllVisible,

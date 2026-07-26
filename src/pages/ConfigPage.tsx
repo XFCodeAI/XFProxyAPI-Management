@@ -29,6 +29,7 @@ import {
 } from '@/stores';
 import { configApi } from '@/services/api/config';
 import { configFileApi } from '@/services/api/configFile';
+import { invalidateProviderRecentRequests } from '@/services/providerRecentRequests';
 import type { AuthFileItem } from '@/types';
 import styles from './ConfigPage.module.scss';
 
@@ -185,11 +186,11 @@ export function ConfigPage() {
 
   const refreshVisualReferenceOptions = useCallback(
     async (yamlContent: string) => {
-      const authFilesResult = await refreshAuthFiles().catch(() => null);
+      await refreshAuthFiles().catch(() => undefined);
       setVisualValues({
         credentialGroupOptions: buildVisualCredentialGroupOptions(
           yamlContent,
-          authFilesResult?.files ?? []
+          useAuthInventoryStore.getState().files
         ),
       });
     },
@@ -200,9 +201,9 @@ export function ConfigPage() {
     setLoading(true);
     setError('');
     try {
-      const [data, authFilesResult] = await Promise.all([
+      const [data] = await Promise.all([
         configFileApi.fetchConfigYaml(),
-        refreshAuthFiles().catch(() => null),
+        refreshAuthFiles().catch(() => undefined),
       ]);
       setContent(data);
       setDirty(false);
@@ -214,7 +215,7 @@ export function ConfigPage() {
         setVisualValues({
           credentialGroupOptions: buildVisualCredentialGroupOptions(
             data,
-            authFilesResult?.files ?? []
+            useAuthInventoryStore.getState().files
           ),
         });
       }
@@ -256,6 +257,7 @@ export function ConfigPage() {
       const commercialModeChanged = previousCommercialMode !== nextCommercialMode;
 
       await configFileApi.saveConfigYaml(mergedYaml);
+      invalidateProviderRecentRequests();
       const latestContent = await configFileApi.fetchConfigYaml();
       setDirty(false);
       setDiffModalOpen(false);

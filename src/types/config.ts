@@ -1,9 +1,15 @@
 /**
- * 配置相关类型定义
- * 与基线 /config 返回结构保持一致（内部使用驼峰形式）
+ * Configuration-related type definitions.
+ * Matches the baseline /config response using camelCase internally.
  */
 
 import type { GeminiKeyConfig, ProviderKeyConfig, OpenAIProviderConfig } from './provider';
+
+declare module './provider' {
+  interface OpenAIProviderConfig {
+    sourceIndex?: number;
+  }
+}
 
 export interface QuotaExceededConfig {
   switchProject?: boolean;
@@ -26,6 +32,7 @@ export interface Config {
   apiKeys?: string[];
   geminiApiKeys?: GeminiKeyConfig[];
   codexApiKeys?: ProviderKeyConfig[];
+  xaiApiKeys?: ProviderKeyConfig[];
   claudeApiKeys?: ProviderKeyConfig[];
   vertexApiKeys?: ProviderKeyConfig[];
   openaiCompatibility?: OpenAIProviderConfig[];
@@ -48,6 +55,7 @@ export type RawConfigSection =
   | 'api-keys'
   | 'gemini-api-key'
   | 'codex-api-key'
+  | 'xai-api-key'
   | 'claude-api-key'
   | 'vertex-api-key'
   | 'openai-compatibility'

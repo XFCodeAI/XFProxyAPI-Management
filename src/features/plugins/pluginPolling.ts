@@ -26,6 +26,26 @@ export interface PluginStoreStateWaitResult {
   timedOut: boolean;
 }
 
+export const normalizePluginVersion = (version: string): string =>
+  version.trim().replace(/^v/i, '');
+
+export const pluginVersionMatches = (left: string, right: string): boolean =>
+  normalizePluginVersion(left) === normalizePluginVersion(right);
+
+export function isRequestedPluginStoreInstallReady(
+  plugin: PluginStoreEntry,
+  sourceId: string,
+  version: string
+): boolean {
+  if (!plugin.installed || !plugin.configured) return false;
+  if (version && !pluginVersionMatches(plugin.installedVersion, version)) return false;
+  if (!sourceId) return true;
+  return (
+    plugin.installedSourceId === sourceId &&
+    (!plugin.installSourceStatus || plugin.installSourceStatus === 'matched')
+  );
+}
+
 export async function waitForPluginState(
   id: string,
   predicate: (plugin: PluginListEntry, response: PluginListResponse) => boolean,

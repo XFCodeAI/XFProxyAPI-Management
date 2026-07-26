@@ -1,7 +1,7 @@
 @use '../../styles/variables' as *;
 @use '../../styles/mixins' as *;
 
-// ─── Page Container ─────────────────────────────────────
+// Page container
 
 .page {
   display: flex;
@@ -10,7 +10,7 @@
   width: 100%;
 }
 
-// ─── Header ─────────────────────────────────────────────
+// Header
 
 .pageHeader {
   display: flex;
@@ -89,7 +89,7 @@
   }
 }
 
-// ─── Status Bar ─────────────────────────────────────────
+// Status bar
 
 .statusBar {
   display: flex;
@@ -161,7 +161,7 @@
   }
 }
 
-// ─── Toolbar ────────────────────────────────────────────
+// Toolbar
 
 .toolbar {
   display: flex;
@@ -193,7 +193,7 @@
   padding-right: 36px;
 }
 
-// ─── Status Filter Chips ────────────────────────────────
+// Status filter chips
 
 .filterChips {
   display: flex;
@@ -246,7 +246,7 @@
   font-weight: 700;
 }
 
-// ─── Card Grid ──────────────────────────────────────────
+// Card grid
 
 .cardGrid {
   display: grid;
@@ -258,7 +258,7 @@
   }
 }
 
-// ─── Plugin Card ────────────────────────────────────────
+// Plugin card
 
 .card {
   display: flex;
@@ -530,7 +530,168 @@
   }
 }
 
-// ─── Skeleton ───────────────────────────────────────────
+.sourceErrors {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+
+  ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 20px;
+  }
+
+  li {
+    display: grid;
+    gap: 2px;
+  }
+
+  small {
+    overflow-wrap: anywhere;
+    color: var(--muted-foreground);
+  }
+}
+
+.installOptions {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.installMessage {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.installVersionField {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  > strong {
+    color: var(--muted-foreground);
+    font-size: 12px;
+  }
+}
+
+.installVersionModes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
+}
+
+.installVersionMode {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--primary);
+    background: var(--accent);
+  }
+
+  &:has(input:checked) {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  }
+
+  &:has(input:disabled) {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  input {
+    margin-top: 2px;
+    flex: 0 0 auto;
+  }
+
+  span {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  strong {
+    color: var(--foreground);
+    font-size: 13px;
+  }
+
+  small {
+    color: var(--muted-foreground);
+    font-size: 11px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+}
+
+.installVersionPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.installVersionWarning {
+  margin: 0;
+  color: var(--destructive);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.installVersionCheckbox,
+.installReleaseLink {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.installReleaseLink {
+  color: var(--primary);
+  font-weight: 650;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.installDialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+
+  @include mobile {
+    flex-direction: column-reverse;
+  }
+}
+
+// Skeleton
 
 .skeletonCard {
   display: flex;
@@ -587,7 +748,7 @@
   animation: skeletonPulse 1.35s ease-in-out infinite;
 }
 
-// ─── Animation ──────────────────────────────────────────
+// Animation
 
 @keyframes skeletonPulse {
   0% {
@@ -601,7 +762,7 @@
   }
 }
 
-// ─── Mobile Overrides ───────────────────────────────────
+// Mobile overrides
 
 @include mobile {
   .page {

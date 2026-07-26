@@ -51,6 +51,7 @@ import {
   hasCurrentMonitoringTarget,
   hasMonitoringEvidence,
   isCurrentMonitoringIdentity,
+  mergeMonitoringCredentialRows,
   mergeMonitoringRequests,
   monitoringCacheRate,
   monitoringIdentityLabel,
@@ -59,7 +60,9 @@ import {
   type MonitoringFilters,
   type MonitoringTimeRange,
 } from '@/features/requestMonitoring/viewModel';
-import { useAuthStore, useNotificationStore } from '@/stores';
+import { reconcileCredentialIdentityCatalog } from '@/features/authFiles/credentialIdentityCatalog';
+import { useCoalescedAsyncTask } from '@/hooks/useCoalescedAsyncTask';
+import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
 import { downloadBlob } from '@/utils/download';
 import { getErrorMessage } from '@/utils/helpers';
 import styles from './RequestMonitoringPage.module.scss';
@@ -109,6 +112,9 @@ export function RequestMonitoringPage() {
     parseMonitoringDrillQuery(`${location.pathname}${location.search}`)
   );
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
+  const authFiles = useAuthInventoryStore((state) => state.files);
+  const credentialInventoryId = useAuthInventoryStore((state) => state.inventoryId);
+  const credentialRevision = useAuthInventoryStore((state) => state.revision);
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
   const [data, setData] = useState<MonitoringResponse | null>(null);
@@ -209,18 +215,28 @@ export function RequestMonitoringPage() {
     [buildCurrentRange, effectiveFilters, t]
   );
 
+  const refreshMonitoring = useCoalescedAsyncTask(() => loadMonitoring(false));
+
   useEffect(() => {
-    void loadMonitoring(false);
-  }, [loadMonitoring]);
+    const timer = window.setTimeout(() => void refreshMonitoring(), 50);
+    return () => window.clearTimeout(timer);
+  }, [credentialInventoryId, credentialRevision, loadMonitoring, refreshMonitoring]);
+
+  useEffect(
+    () => () => {
+      requestSequence.current++;
+    },
+    []
+  );
 
   useEffect(() => {
     const milliseconds = Number(autoRefresh);
     if (!Number.isFinite(milliseconds) || milliseconds <= 0 || disabled) return;
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void loadMonitoring(false);
+      if (document.visibilityState === 'visible') void refreshMonitoring();
     }, milliseconds);
     return () => window.clearInterval(timer);
-  }, [autoRefresh, disabled, loadMonitoring]);
+  }, [autoRefresh, disabled, refreshMonitoring]);
 
   const updateFilter = (field: keyof MonitoringFilters, value: string) => {
     setFilters((current) => ({ ...current, [field]: value }));
@@ -284,7 +300,7 @@ export function RequestMonitoringPage() {
         }),
         result.failed > 0 ? 'warning' : 'success'
       );
-      await loadMonitoring(false);
+      await refreshMonitoring();
     } catch (error: unknown) {
       showNotification(
         `${t('request_monitoring.errors.import')}: ${getErrorMessage(error, t('common.unknown_error'))}`,
@@ -371,7 +387,7 @@ export function RequestMonitoringPage() {
             }),
             result.hasMore ? 'warning' : 'success'
           );
-          await loadMonitoring(false);
+          await refreshMonitoring();
         } catch (error: unknown) {
           showNotification(
             `${t('request_monitoring.errors.retention')}: ${getErrorMessage(error, t('common.unknown_error'))}`,
@@ -414,17 +430,28 @@ export function RequestMonitoringPage() {
     ],
     [data?.facets.requestedModels, i18n.language, t]
   );
+  const credentialCatalog = useMemo(
+    () => reconcileCredentialIdentityCatalog(data?.credentialCatalog ?? [], authFiles),
+    [authFiles, data?.credentialCatalog]
+  );
+  const credentialRows = useMemo(
+    () =>
+      mergeMonitoringCredentialRows(data?.credentials ?? [], credentialCatalog, effectiveFilters),
+    [credentialCatalog, data?.credentials, effectiveFilters]
+  );
   const credentialOptions = useMemo(
     () => [
       { value: 'all', label: t('request_monitoring.filters.all_credentials') },
-      ...(data?.credentials ?? [])
-        .filter((entry) => entry.recordedId)
-        .map((entry) => ({
-          value: entry.recordedId,
-          label: entry.displayName || entry.recordedId,
-        })),
+      ...credentialCatalog.map((entry) => ({
+        value: entry.recordedId,
+        label: `${entry.displayName || entry.recordedId} (${t(
+          entry.current
+            ? 'request_monitoring.identity.current'
+            : 'request_monitoring.identity.historical'
+        )})`,
+      })),
     ],
-    [data?.credentials, t]
+    [credentialCatalog, t]
   );
   const apiKeyOptions = useMemo(
     () => [
@@ -683,7 +710,7 @@ export function RequestMonitoringPage() {
           />
           <TooltipIconButton
             label={t('common.refresh')}
-            onClick={() => void loadMonitoring(false)}
+            onClick={() => void refreshMonitoring()}
             disabled={loading}
           >
             <RefreshCw size={16} />
@@ -924,7 +951,7 @@ export function RequestMonitoringPage() {
             <strong>{t('request_monitoring.states.error_title')}</strong>
             <span>{loadError}</span>
           </div>
-          <Button size="sm" variant="secondary" onClick={() => void loadMonitoring(false)}>
+          <Button size="sm" variant="secondary" onClick={() => void refreshMonitoring()}>
             <RefreshCw size={16} />
             {t('common.refresh')}
           </Button>
@@ -987,7 +1014,7 @@ export function RequestMonitoringPage() {
                   {t(`request_monitoring.tabs.${tab}`)}
                   <span>
                     {tab === 'credentials'
-                      ? data.credentials.length
+                      ? credentialRows.length
                       : tab === 'api_keys'
                         ? data.apiKeys.length
                         : data.summary.requests}
@@ -996,9 +1023,7 @@ export function RequestMonitoringPage() {
               ))}
             </div>
 
-            {activeTab === 'credentials'
-              ? renderAggregateRows(data.credentials, 'credential')
-              : null}
+            {activeTab === 'credentials' ? renderAggregateRows(credentialRows, 'credential') : null}
             {activeTab === 'api_keys' ? renderAggregateRows(data.apiKeys, 'api_key') : null}
             {activeTab === 'requests' ? (
               data.requests.length ? (

@@ -44,10 +44,12 @@ import {
   analyticsSuccessRate,
   analyticsViewForTab,
   buildAnalyticsRequestQuery,
+  mergeAnalyticsCredentialRankings,
   type AnalyticsChartMetric,
   type AnalyticsGroupView,
   type AnalyticsTab,
 } from '@/features/usageAnalytics/viewModel';
+import { reconcileCredentialIdentityCatalog } from '@/features/authFiles/credentialIdentityCatalog';
 import {
   isAnalyticsCapabilityUnavailable,
   usageAnalyticsApi,
@@ -55,7 +57,8 @@ import {
   type AnalyticsGranularity,
   type AnalyticsReport,
 } from '@/services/api';
-import { useAuthStore } from '@/stores';
+import { useCoalescedAsyncTask } from '@/hooks/useCoalescedAsyncTask';
+import { useAuthInventoryStore, useAuthStore } from '@/stores';
 import { getErrorMessage } from '@/utils/helpers';
 import styles from './UsageAnalyticsPage.module.scss';
 
@@ -239,6 +242,9 @@ export function UsageAnalyticsPage() {
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
+  const authFiles = useAuthInventoryStore((state) => state.files);
+  const credentialInventoryId = useAuthInventoryStore((state) => state.inventoryId);
+  const credentialRevision = useAuthInventoryStore((state) => state.revision);
   const [initialDrill] = useState(() => parseMonitoringDrillQuery(location.search));
   const [initialView] = useState(() => parseInitialView(location.search));
   const [activeTab, setActiveTab] = useState<AnalyticsTab>(initialView.tab);
@@ -318,9 +324,19 @@ export function UsageAnalyticsPage() {
     }
   }, [activeView, buildCurrentRange, effectiveFilters, granularity, t, timezone]);
 
+  const refreshAnalytics = useCoalescedAsyncTask(loadAnalytics);
+
   useEffect(() => {
-    void loadAnalytics();
-  }, [loadAnalytics]);
+    const timer = window.setTimeout(() => void refreshAnalytics(), 50);
+    return () => window.clearTimeout(timer);
+  }, [credentialInventoryId, credentialRevision, loadAnalytics, refreshAnalytics]);
+
+  useEffect(
+    () => () => {
+      requestSequence.current++;
+    },
+    []
+  );
 
   const updateFilter = (field: keyof MonitoringFilters, value: string) => {
     setFilters((current) => ({ ...current, [field]: value }));
@@ -335,6 +351,28 @@ export function UsageAnalyticsPage() {
   const comparison = overview?.comparison;
   const costCoverage = summary?.cost.coverageRate ?? 0;
   const missingPrices = summary ? Object.entries(summary.cost.missingDimensions) : [];
+  const credentialCatalog = useMemo(
+    () =>
+      reconcileCredentialIdentityCatalog(
+        report?.credentialCatalog ?? overview?.credentialCatalog ?? [],
+        authFiles
+      ),
+    [authFiles, overview?.credentialCatalog, report?.credentialCatalog]
+  );
+  const credentialOptions = useMemo(
+    () => [
+      { value: 'all', label: t('request_monitoring.filters.all_credentials') },
+      ...credentialCatalog.map((identity) => ({
+        value: identity.recordedId,
+        label: `${identity.displayName || identity.recordedId} (${t(
+          identity.current
+            ? 'usage_analytics.identity.current'
+            : 'usage_analytics.identity.historical'
+        )})`,
+      })),
+    ],
+    [credentialCatalog, t]
+  );
   const timezoneOptions = useMemo(() => {
     const values = Array.from(
       new Set([timezone, 'UTC', 'Asia/Shanghai', 'America/New_York', 'Europe/London'])
@@ -504,7 +542,16 @@ export function UsageAnalyticsPage() {
 
   const renderRankings = () => {
     if (!report) return null;
-    if (!report.rankings.length) return <EmptyState title={t('usage_analytics.empty.rankings')} />;
+    const rankings =
+      report.view === 'credentials'
+        ? mergeAnalyticsCredentialRankings(
+            report.rankings,
+            credentialCatalog,
+            effectiveFilters,
+            report.rankings[0]?.metrics.cost.currency ?? summary?.cost.currency ?? 'USD'
+          )
+        : report.rankings;
+    if (!rankings.length) return <EmptyState title={t('usage_analytics.empty.rankings')} />;
     return (
       <section className={styles.dataPanel}>
         <div className={styles.rankingHead}>
@@ -518,7 +565,7 @@ export function UsageAnalyticsPage() {
           <span />
         </div>
         <div className={styles.rankingList}>
-          {report.rankings.map((ranking) => {
+          {rankings.map((ranking) => {
             const label = analyticsIdentityLabel(ranking.identity, t('common.not_set'));
             const href = buildMonitoringDrillHref(
               { from: report.from, to: report.to },
@@ -637,7 +684,7 @@ export function UsageAnalyticsPage() {
           ) : null}
           <TooltipIconButton
             label={t('common.refresh')}
-            onClick={() => void loadAnalytics()}
+            onClick={() => void refreshAnalytics()}
             disabled={loading || connectionStatus !== 'connected'}
           >
             <RefreshCw size={16} />
@@ -753,10 +800,11 @@ export function UsageAnalyticsPage() {
               onChange={(event) => updateFilter('pluginId', event.target.value)}
               placeholder={t('nav.plugins')}
             />
-            <Input
-              value={filters.authId === 'all' ? '' : filters.authId}
-              onChange={(event) => updateFilter('authId', event.target.value || 'all')}
-              placeholder={t('request_monitoring.filters.credential')}
+            <Select
+              value={filters.authId}
+              options={credentialOptions}
+              onChange={(value) => updateFilter('authId', value)}
+              ariaLabel={t('request_monitoring.filters.credential')}
             />
             <Input
               value={filters.apiKeyId === 'all' ? '' : filters.apiKeyId}
@@ -881,7 +929,7 @@ export function UsageAnalyticsPage() {
             <strong>{t('usage_analytics.states.error_title')}</strong>
             <span>{loadError}</span>
           </div>
-          <Button size="sm" variant="secondary" onClick={() => void loadAnalytics()}>
+          <Button size="sm" variant="secondary" onClick={() => void refreshAnalytics()}>
             <RefreshCw size={16} />
             {t('common.refresh')}
           </Button>

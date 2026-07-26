@@ -35,6 +35,7 @@ import type {
   PayloadFilterRule,
   PayloadParamValidationErrorCode,
   PayloadRule,
+  PluginStoreAuthRule,
   VisualConfigFieldPath,
   VisualConfigValidationErrorCode,
   VisualConfigValidationErrors,
@@ -44,6 +45,7 @@ import {
   ApiKeysCardEditor,
   PayloadFilterRulesEditor,
   PayloadRulesEditor,
+  PluginStoreAuthEditor,
   StringListEditor,
 } from './VisualConfigEditorBlocks';
 import {
@@ -80,6 +82,9 @@ function getValidationMessage(
   errorCode?: VisualConfigValidationErrorCode | PayloadParamValidationErrorCode
 ) {
   if (!errorCode) return undefined;
+  if (errorCode === 'integer_range_1_3600') {
+    return t(`config_management.visual.validation.${errorCode}`, { defaultValue: '1-3600' });
+  }
   return t(`config_management.visual.validation.${errorCode}`);
 }
 
@@ -418,6 +423,10 @@ export function VisualConfigEditor({
     (pluginStoreSources: string[]) => onChange({ pluginStoreSources }),
     [onChange]
   );
+  const handlePluginStoreAuthChange = useCallback(
+    (pluginStoreAuth: PluginStoreAuthRule[]) => onChange({ pluginStoreAuth }),
+    [onChange]
+  );
   const handlePayloadDefaultRulesChange = useCallback(
     (payloadDefaultRules: PayloadRule[]) => onChange({ payloadDefaultRules }),
     [onChange]
@@ -451,6 +460,10 @@ export function VisualConfigEditor({
       {
         value: 'chat',
         label: t('config_management.visual.sections.network.disable_image_generation_chat'),
+      },
+      {
+        value: 'passthrough',
+        label: 'passthrough',
       },
     ],
     [t]
@@ -1414,6 +1427,8 @@ export function VisualConfigEditor({
                     <Input
                       label={t('config_management.visual.sections.system.redis_usage_retention')}
                       type="number"
+                      min={1}
+                      max={3600}
                       placeholder="60"
                       value={values.redisUsageQueueRetentionSeconds}
                       onChange={(e) =>
@@ -1636,6 +1651,26 @@ export function VisualConfigEditor({
                               'config_management.visual.sections.system.plugin_store_sources_hint'
                             )}
                           </div>
+                        </div>
+                      </SectionSubsection>
+                    </FieldAnchor>
+
+                    <FieldAnchor fieldId="pluginStoreAuth">
+                      <SectionSubsection
+                        title={t('config_management.visual.sections.system.plugin_store_auth')}
+                        description={t(
+                          'config_management.visual.sections.system.plugin_store_auth_desc'
+                        )}
+                      >
+                        <div className={styles.fieldShell}>
+                          <div className={styles.fieldHint}>
+                            {t('config_management.visual.sections.system.plugin_store_auth_hint')}
+                          </div>
+                          <PluginStoreAuthEditor
+                            value={values.pluginStoreAuth}
+                            disabled={disabled}
+                            onChange={handlePluginStoreAuthChange}
+                          />
                         </div>
                       </SectionSubsection>
                     </FieldAnchor>

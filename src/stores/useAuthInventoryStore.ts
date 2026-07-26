@@ -44,6 +44,15 @@ const normalizeRevision = (value: unknown): number => {
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
 };
 
+const inventorySnapshot = (
+  state: Pick<AuthInventoryState, 'files' | 'inventoryId' | 'revision'>
+): AuthFilesResponse => ({
+  files: state.files,
+  total: state.files.length,
+  inventory_id: state.inventoryId,
+  revision: state.revision,
+});
+
 const normalizeEvent = (value: unknown): InventoryEvent | null => {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
@@ -217,13 +226,13 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
     const request = authFilesApi
       .list()
       .then((response) => {
-        if (generation !== refreshGeneration) return response;
+        if (generation !== refreshGeneration) return inventorySnapshot(get());
         const revision = normalizeRevision(response.revision);
         const inventoryId = String(response.inventory_id ?? '').trim();
         const current = get();
         if (requiredInventoryId && inventoryId && inventoryId !== requiredInventoryId) {
           set({ loading: false });
-          return response;
+          return inventorySnapshot(get());
         }
         const inventoryChanged = Boolean(
           inventoryId && current.inventoryId && inventoryId !== current.inventoryId
@@ -249,7 +258,7 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
         } else if (inventoryId === targetInventoryId && revision >= targetRevision) {
           targetRevision = revision;
         }
-        return response;
+        return inventorySnapshot(get());
       })
       .catch((error: unknown) => {
         if (generation !== refreshGeneration) throw error;

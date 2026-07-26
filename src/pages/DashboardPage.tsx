@@ -32,6 +32,7 @@ import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useAuthInventoryStore, useAuthStore, useConfigStore, useModelsStore } from '@/stores';
 import { useApiKeysForModels } from '@/hooks/useApiKeysForModels';
 import { formatDateValue } from '@/utils/format';
+import { getDashboardModelsStatValue } from '@/utils/dashboard';
 import { getErrorMessage } from '@/utils/helpers';
 import styles from './DashboardPage.module.scss';
 
@@ -91,6 +92,7 @@ export function DashboardPage() {
   const fetchConfig = useConfigStore((state) => state.fetchConfig);
   const models = useModelsStore((state) => state.models);
   const modelsLoading = useModelsStore((state) => state.loading);
+  const modelsError = useModelsStore((state) => state.error);
   const fetchModelsFromStore = useModelsStore((state) => state.fetchModels);
   const authFiles = useAuthInventoryStore((state) => state.files);
   const authFilesLoading = useAuthInventoryStore((state) => state.loading);
@@ -204,7 +206,7 @@ export function DashboardPage() {
     },
     {
       label: t('dashboard.available_models'),
-      value: modelsLoading ? '-' : models.length,
+      value: getDashboardModelsStatValue(models.length, modelsLoading, modelsError),
       icon: <IconSatellite size={22} />,
       path: '/system',
       loading: modelsLoading,

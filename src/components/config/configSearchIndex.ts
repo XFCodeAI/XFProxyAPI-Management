@@ -161,6 +161,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     labelKey: L('sections.network.disable_image_generation'),
     hintKey: L('sections.network.disable_image_generation_hint'),
     yamlKeys: ['disable-image-generation'],
+    keywords: ['false', 'true', 'chat', 'passthrough'],
   },
   {
     fieldId: 'gptImage2BaseModel',
@@ -317,6 +318,14 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     yamlKeys: ['plugins', 'store-sources'],
   },
   {
+    fieldId: 'pluginStoreAuth',
+    sectionId: 'advanced',
+    labelKey: L('sections.system.plugin_store_auth'),
+    hintKey: L('sections.system.plugin_store_auth_hint'),
+    yamlKeys: ['plugins', 'store-auth'],
+    keywords: ['registry', 'artifact', 'github', 'token env'],
+  },
+  {
     fieldId: 'antigravitySignatureCacheEnabled',
     sectionId: 'advanced',
     labelKey: L('sections.system.antigravity_signature_cache'),
@@ -411,7 +420,7 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     labelKey: L('sections.headers.codex_identity_confuse'),
     qualifierKey: L('sections.headers.codex_title'),
     hintKey: L('sections.headers.codex_identity_confuse_desc'),
-    yamlKeys: ['codex-header-defaults', 'identity-confuse'],
+    yamlKeys: ['codex', 'identity-confuse'],
     keywords: ['codex'],
   },
   // ── payload (coarse: one entry per rule group) ──────────────────────────────

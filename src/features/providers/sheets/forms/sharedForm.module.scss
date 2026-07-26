@@ -397,6 +397,15 @@
   box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent);
 }
 
+.entryCardCollapsed {
+  gap: 0;
+
+  .entryCardHeader {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+}
+
 .entryCardHeader {
   display: flex;
   align-items: center;
@@ -431,6 +440,23 @@
     outline-offset: 3px;
     border-radius: var(--radius-sm);
   }
+}
+
+.entryTitle {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.entryAlias {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sponsorGroupTitle {
@@ -1029,6 +1055,94 @@
     input:first-child {
       grid-column: 1 / -1;
     }
+  }
+}
+
+.modelEntry {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modelEntryActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.modelEntryDetails {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--background) 84%, var(--card));
+}
+
+.entrySummary {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.entrySummaryKey {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-family: $font-mono;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entryBadge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 560;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.showMoreBtn {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  max-width: 100%;
+  padding: 6px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+
+  &:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 }
 

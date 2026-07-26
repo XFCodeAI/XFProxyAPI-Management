@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { IconPlus, IconSearch } from '@/components/ui/icons';
 import type { ProviderRecentUsageMap } from '@/components/providers/utils';
 import { PROVIDER_LOGOS } from '../brandLogos';
+import { PROVIDER_DESCRIPTORS } from '../descriptors';
 import type { ProviderGroup, ProviderResource } from '../types';
 import { ProviderResourceTable } from './ProviderResourceTable';
 import { ProviderResourceToolbar } from './ProviderResourceToolbar';
@@ -51,7 +52,9 @@ export function ProviderResourcePanel({
 }: ProviderResourcePanelProps) {
   const { t } = useTranslation();
   const logo = PROVIDER_LOGOS[group.id];
-  const providerTitle = t(`providersPage.providerNames.${group.id}`);
+  const providerTitle = t(`providersPage.providerNames.${group.id}`, {
+    defaultValue: PROVIDER_DESCRIPTORS[group.id].displayName,
+  });
   const emptyText = t('providersPage.table.empty');
   const logoClassName = [
     styles.logo,

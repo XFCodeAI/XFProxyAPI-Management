@@ -1,5 +1,5 @@
 /**
- * AI 提供商相关 API
+ * AI provider APIs.
  */
 
 import { apiClient } from './client';
@@ -39,6 +39,7 @@ const PROVIDER_COMMON_KEY_FIELDS = [
 
 const GEMINI_KEY_FIELDS = PROVIDER_COMMON_KEY_FIELDS;
 const CODEX_KEY_FIELDS = [...PROVIDER_COMMON_KEY_FIELDS, 'websockets'] as const;
+const XAI_KEY_FIELDS = CODEX_KEY_FIELDS;
 const CLAUDE_KEY_FIELDS = [
   ...PROVIDER_COMMON_KEY_FIELDS,
   'cloak',
@@ -191,6 +192,48 @@ const getRawSectionList = (rawConfig: unknown, section: string): unknown[] => {
   return Array.isArray(value) ? value : [];
 };
 
+type ProviderRecordMerger = (
+  raw: unknown,
+  payload: Record<string, unknown>
+) => Record<string, unknown>;
+
+export const appendLatestProviderRecord = (
+  latestItems: unknown[],
+  payload: Record<string, unknown>,
+  mergePayload: ProviderRecordMerger
+): unknown[] => [...latestItems, mergePayload(undefined, payload)];
+
+export const replaceLatestProviderRecord = (
+  latestItems: unknown[],
+  isTarget: (record: Record<string, unknown>, index: number) => boolean,
+  payload: Record<string, unknown>,
+  mergePayload: ProviderRecordMerger
+): unknown[] => {
+  const targetIndex = latestItems.findIndex(
+    (item, index) => isRecord(item) && isTarget(item, index)
+  );
+  if (targetIndex < 0) {
+    throw new Error('Provider configuration changed; refresh and try again.');
+  }
+  return latestItems.map((item, index) =>
+    index === targetIndex ? mergePayload(item, payload) : item
+  );
+};
+
+const mutateLatestProviderList = async (
+  section: string,
+  mutate: (latestItems: unknown[]) => unknown[]
+) => {
+  const rawConfig = await apiClient.get('/config');
+  await apiClient.put(`/${section}`, mutate(getRawSectionList(rawConfig, section)));
+};
+
+const matchesProviderKey = (record: Record<string, unknown>, apiKey: string, baseUrl?: string) =>
+  providerKeyIdentity(record) === `${apiKey.trim()}\u0000${(baseUrl ?? '').trim()}`;
+
+const matchesOpenAIProvider = (record: Record<string, unknown>, name: string) =>
+  openAIProviderIdentity(record) === name.trim();
+
 const mergeModelPayloads = (
   raw: unknown,
   models: unknown,
@@ -268,6 +311,28 @@ const extractArrayPayload = (data: unknown, key: string): unknown[] => {
   if (!isRecord(data)) return [];
   const list = data[key];
   return Array.isArray(list) ? list : [];
+};
+
+const getLatestEndpointList = async (section: string): Promise<unknown[]> => {
+  const data = await apiClient.get(`/${section}`);
+  return extractArrayPayload(data, section);
+};
+
+const stripResponseOnlyFields = (item: unknown): unknown => {
+  if (!isRecord(item)) return item;
+  const next = { ...item };
+  RESPONSE_ONLY_FIELDS.forEach((field) => delete next[field]);
+  return next;
+};
+
+const findLatestProviderKey = (items: unknown[], apiKey: string, baseUrl?: string) => {
+  const index = items.findIndex(
+    (item) => isRecord(item) && matchesProviderKey(item, apiKey, baseUrl)
+  );
+  if (index < 0) {
+    throw new Error('Provider configuration changed; refresh and try again.');
+  }
+  return { index, record: items[index] };
 };
 
 const buildProviderDeleteQuery = (apiKey: string, baseUrl?: string) => {
@@ -353,6 +418,22 @@ const serializeProviderKey = (config: ProviderKeyConfig) => {
   return payload;
 };
 
+const serializeXAIKey = (config: ProviderKeyConfig): Record<string, unknown> => ({
+  name: config.name?.trim() ?? '',
+  'api-key': config.apiKey.trim(),
+  groups: config.groups ?? [],
+  fallback: config.fallback === true,
+  priority: config.priority ?? 0,
+  prefix: config.prefix?.trim() ?? '',
+  'base-url': config.baseUrl?.trim() ?? '',
+  websockets: config.websockets === true,
+  'proxy-url': config.proxyUrl?.trim() ?? '',
+  models: serializeModelAliases(config.models) ?? [],
+  headers: serializeHeaders(config.headers) ?? {},
+  'excluded-models': config.excludedModels ?? [],
+  'disable-cooling': config.disableCooling === true,
+});
+
 const serializeVertexModelAliases = (models?: ModelAlias[]) =>
   Array.isArray(models)
     ? models
@@ -426,6 +507,23 @@ const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
 };
 
 export const providersApi = {
+  createGeminiKey: (config: GeminiKeyConfig) =>
+    mutateLatestProviderList('gemini-api-key', (latestItems) =>
+      appendLatestProviderRecord(latestItems, serializeGeminiKey(config), (raw, payload) =>
+        mergeProviderKeyPayload(raw, payload, GEMINI_KEY_FIELDS)
+      )
+    ),
+
+  updateGeminiKey: (apiKey: string, baseUrl: string | undefined, config: GeminiKeyConfig) =>
+    mutateLatestProviderList('gemini-api-key', (latestItems) =>
+      replaceLatestProviderRecord(
+        latestItems,
+        (record) => matchesProviderKey(record, apiKey, baseUrl),
+        serializeGeminiKey(config),
+        (raw, payload) => mergeProviderKeyPayload(raw, payload, GEMINI_KEY_FIELDS)
+      )
+    ),
+
   async getGeminiKeys(): Promise<GeminiKeyConfig[]> {
     const data = await apiClient.get('/gemini-api-key');
     const list = extractArrayPayload(data, 'gemini-api-key');
@@ -446,6 +544,23 @@ export const providersApi = {
 
   deleteGeminiKey: (apiKey: string, baseUrl?: string) =>
     apiClient.delete(`/gemini-api-key${buildProviderDeleteQuery(apiKey, baseUrl)}`),
+
+  createCodexConfig: (config: ProviderKeyConfig) =>
+    mutateLatestProviderList('codex-api-key', (latestItems) =>
+      appendLatestProviderRecord(latestItems, serializeProviderKey(config), (raw, payload) =>
+        mergeProviderKeyPayload(raw, payload, CODEX_KEY_FIELDS)
+      )
+    ),
+
+  updateCodexConfig: (apiKey: string, baseUrl: string | undefined, config: ProviderKeyConfig) =>
+    mutateLatestProviderList('codex-api-key', (latestItems) =>
+      replaceLatestProviderRecord(
+        latestItems,
+        (record) => matchesProviderKey(record, apiKey, baseUrl),
+        serializeProviderKey(config),
+        (raw, payload) => mergeProviderKeyPayload(raw, payload, CODEX_KEY_FIELDS)
+      )
+    ),
 
   async getCodexConfigs(): Promise<ProviderKeyConfig[]> {
     const data = await apiClient.get('/codex-api-key');
@@ -470,6 +585,59 @@ export const providersApi = {
   deleteCodexConfig: (apiKey: string, baseUrl?: string) =>
     apiClient.delete(`/codex-api-key${buildProviderDeleteQuery(apiKey, baseUrl)}`),
 
+  async getXAIConfigs(): Promise<ProviderKeyConfig[]> {
+    const list = await getLatestEndpointList('xai-api-key');
+    return list
+      .map((item) => normalizeProviderKeyConfig(item))
+      .filter(Boolean) as ProviderKeyConfig[];
+  },
+
+  async createXAIConfig(config: ProviderKeyConfig) {
+    const latestItems = await getLatestEndpointList('xai-api-key');
+    const writableItems = latestItems.map(stripResponseOnlyFields);
+    const nextItems = appendLatestProviderRecord(
+      writableItems,
+      serializeXAIKey(config),
+      (raw, payload) => mergeProviderKeyPayload(raw, payload, XAI_KEY_FIELDS)
+    );
+    await apiClient.put('/xai-api-key', nextItems);
+  },
+
+  async updateXAIConfig(apiKey: string, baseUrl: string | undefined, config: ProviderKeyConfig) {
+    const latestItems = await getLatestEndpointList('xai-api-key');
+    const target = findLatestProviderKey(latestItems, apiKey, baseUrl);
+    const value = mergeProviderKeyPayload(target.record, serializeXAIKey(config), XAI_KEY_FIELDS);
+    await apiClient.patch('/xai-api-key', { index: target.index, value });
+  },
+
+  async deleteXAIConfig(apiKey: string, baseUrl?: string) {
+    const latestItems = await getLatestEndpointList('xai-api-key');
+    const target = findLatestProviderKey(latestItems, apiKey, baseUrl);
+    if (!isRecord(target.record)) {
+      throw new Error('Provider configuration changed; refresh and try again.');
+    }
+    const latestApiKey = getStringField(target.record, ['api-key']);
+    const latestBaseUrl = getStringField(target.record, ['base-url']);
+    await apiClient.delete(`/xai-api-key${buildProviderDeleteQuery(latestApiKey, latestBaseUrl)}`);
+  },
+
+  createClaudeConfig: (config: ProviderKeyConfig) =>
+    mutateLatestProviderList('claude-api-key', (latestItems) =>
+      appendLatestProviderRecord(latestItems, serializeProviderKey(config), (raw, payload) =>
+        mergeProviderKeyPayload(raw, payload, CLAUDE_KEY_FIELDS)
+      )
+    ),
+
+  updateClaudeConfig: (apiKey: string, baseUrl: string | undefined, config: ProviderKeyConfig) =>
+    mutateLatestProviderList('claude-api-key', (latestItems) =>
+      replaceLatestProviderRecord(
+        latestItems,
+        (record) => matchesProviderKey(record, apiKey, baseUrl),
+        serializeProviderKey(config),
+        (raw, payload) => mergeProviderKeyPayload(raw, payload, CLAUDE_KEY_FIELDS)
+      )
+    ),
+
   async getClaudeConfigs(): Promise<ProviderKeyConfig[]> {
     const data = await apiClient.get('/claude-api-key');
     const list = extractArrayPayload(data, 'claude-api-key');
@@ -492,6 +660,23 @@ export const providersApi = {
 
   deleteClaudeConfig: (apiKey: string, baseUrl?: string) =>
     apiClient.delete(`/claude-api-key${buildProviderDeleteQuery(apiKey, baseUrl)}`),
+
+  createVertexConfig: (config: ProviderKeyConfig) =>
+    mutateLatestProviderList('vertex-api-key', (latestItems) =>
+      appendLatestProviderRecord(latestItems, serializeVertexKey(config), (raw, payload) =>
+        mergeProviderKeyPayload(raw, payload, VERTEX_KEY_FIELDS)
+      )
+    ),
+
+  updateVertexConfig: (apiKey: string, baseUrl: string | undefined, config: ProviderKeyConfig) =>
+    mutateLatestProviderList('vertex-api-key', (latestItems) =>
+      replaceLatestProviderRecord(
+        latestItems,
+        (record) => matchesProviderKey(record, apiKey, baseUrl),
+        serializeVertexKey(config),
+        (raw, payload) => mergeProviderKeyPayload(raw, payload, VERTEX_KEY_FIELDS)
+      )
+    ),
 
   async getVertexConfigs(): Promise<ProviderKeyConfig[]> {
     const data = await apiClient.get('/vertex-api-key');
@@ -516,11 +701,30 @@ export const providersApi = {
   deleteVertexConfig: (apiKey: string, baseUrl?: string) =>
     apiClient.delete(`/vertex-api-key${buildProviderDeleteQuery(apiKey, baseUrl)}`),
 
+  createOpenAIProvider: (provider: OpenAIProviderConfig) =>
+    mutateLatestProviderList('openai-compatibility', (latestItems) =>
+      appendLatestProviderRecord(
+        latestItems,
+        serializeOpenAIProvider(provider),
+        mergeOpenAIProviderPayload
+      )
+    ),
+
+  updateOpenAIProvider: (name: string, index: number, provider: OpenAIProviderConfig) =>
+    mutateLatestProviderList('openai-compatibility', (latestItems) =>
+      replaceLatestProviderRecord(
+        latestItems,
+        (record, currentIndex) => currentIndex === index && matchesOpenAIProvider(record, name),
+        serializeOpenAIProvider(provider),
+        mergeOpenAIProviderPayload
+      )
+    ),
+
   async getOpenAIProviders(): Promise<OpenAIProviderConfig[]> {
     const data = await apiClient.get('/openai-compatibility');
     const list = extractArrayPayload(data, 'openai-compatibility');
     return list
-      .map((item) => normalizeOpenAIProvider(item))
+      .map((item, index) => normalizeOpenAIProvider(item, index))
       .filter(Boolean) as OpenAIProviderConfig[];
   },
 
@@ -541,4 +745,7 @@ export const providersApi = {
 
   deleteOpenAIProvider: (index: number) =>
     apiClient.delete(`/openai-compatibility?index=${encodeURIComponent(String(index))}`),
+
+  deleteOpenAIProvidersByName: (name: string) =>
+    apiClient.delete(`/openai-compatibility?name=${encodeURIComponent(name.trim())}`),
 };

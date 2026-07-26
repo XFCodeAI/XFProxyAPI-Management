@@ -211,6 +211,93 @@
   transform: none;
 }
 
+.storeAuthEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.storeAuthEmpty {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.storeAuthRule {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.storeAuthRuleHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--foreground);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.storeAuthGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  @include mobile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.storeAuthField,
+.storeAuthApplyTo {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+
+  > span {
+    color: var(--foreground);
+    font-size: 12px;
+    font-weight: 700;
+  }
+}
+
+.storeAuthApplyTo small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.storeAuthCheckboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.storeAuthCheckbox {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .overview {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -293,7 +380,7 @@
   box-shadow: var(--shadow);
 }
 
-// ── Global field search (P1) ────────────────────────────────────────────────
+// Global field search
 .searchBox {
   position: relative;
   min-width: 0;
@@ -346,7 +433,7 @@
   }
 }
 
-// Keyboard/pointer "active" option — the aria-activedescendant target.
+// Keyboard and pointer active option used by aria-activedescendant.
 .searchResultItemActive {
   background: var(--accent);
 }

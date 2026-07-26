@@ -10,6 +10,7 @@ export const APIKEY_FUN_DIRECT_BASE_URL = 'https://slb.apikey.fun';
 export const APIKEY_FUN_OPENAI_BASE_URL = `${APIKEY_FUN_STANDARD_BASE_URL}/v1`;
 export const APIKEY_FUN_CODEX_BASE_URL = APIKEY_FUN_OPENAI_BASE_URL;
 export const APIKEY_FUN_ANTHROPIC_BASE_URL = APIKEY_FUN_STANDARD_BASE_URL;
+export const APIKEY_FUN_GEMINI_BASE_URL = APIKEY_FUN_STANDARD_BASE_URL;
 export const APIKEY_FUN_USAGE_PATH = '/v1/usage';
 
 export const APIKEY_FUN_BASE_URL_OPTIONS = [
@@ -19,6 +20,7 @@ export const APIKEY_FUN_BASE_URL_OPTIONS = [
     openaiBaseUrl: APIKEY_FUN_OPENAI_BASE_URL,
     codexBaseUrl: APIKEY_FUN_CODEX_BASE_URL,
     anthropicBaseUrl: APIKEY_FUN_ANTHROPIC_BASE_URL,
+    geminiBaseUrl: APIKEY_FUN_GEMINI_BASE_URL,
   },
   {
     id: 'direct',
@@ -26,6 +28,7 @@ export const APIKEY_FUN_BASE_URL_OPTIONS = [
     openaiBaseUrl: `${APIKEY_FUN_DIRECT_BASE_URL}/v1`,
     codexBaseUrl: `${APIKEY_FUN_DIRECT_BASE_URL}/v1`,
     anthropicBaseUrl: APIKEY_FUN_DIRECT_BASE_URL,
+    geminiBaseUrl: APIKEY_FUN_DIRECT_BASE_URL,
   },
 ] as const;
 
@@ -61,6 +64,7 @@ export const getApiKeyFunProtocolUrls = (value: string | undefined | null) => {
     anthropic: matched.anthropicBaseUrl,
     openai: matched.openaiBaseUrl,
     codex: matched.codexBaseUrl,
+    gemini: matched.geminiBaseUrl,
   };
 };
 
@@ -158,10 +162,7 @@ export const isApiKeyFunOpenAIProvider = (
   config: OpenAIProviderConfig | undefined | null
 ): boolean => {
   if (!config) return false;
-  return (
-    normalizeText(config.name) === normalizeText(APIKEY_FUN_PROVIDER_NAME) ||
-    matchesApiKeyFunOpenAIBaseUrl(config.baseUrl)
-  );
+  return matchesApiKeyFunOpenAIBaseUrl(config.baseUrl);
 };
 
 export const isApiKeyFunClaudeProvider = (
@@ -178,7 +179,7 @@ export const isApiKeyFunCodexProvider = (config: ProviderKeyConfig | undefined |
 
 export const buildApiKeyFunRaw = (config: Config | null | undefined): SponsorProviderRaw => ({
   openai: (config?.openaiCompatibility ?? [])
-    .map((item, index) => ({ config: item, index }))
+    .map((item, index) => ({ config: item, index: item.sourceIndex ?? index }))
     .filter((item) => isApiKeyFunOpenAIProvider(item.config)),
   claude: (config?.claudeApiKeys ?? [])
     .map((item, index) => ({ config: item, index }))
@@ -186,4 +187,5 @@ export const buildApiKeyFunRaw = (config: Config | null | undefined): SponsorPro
   codex: (config?.codexApiKeys ?? [])
     .map((item, index) => ({ config: item, index }))
     .filter((item) => isApiKeyFunCodexProvider(item.config)),
+  gemini: [],
 });
