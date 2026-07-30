@@ -253,6 +253,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
   const files = useAuthInventoryStore((state) => state.files);
   const setFiles = useAuthInventoryStore((state) => state.setFiles);
+  const commitMutationVersion = useAuthInventoryStore((state) => state.commitMutationVersion);
   const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -775,6 +776,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           try {
             const result = await authFilesApi.deleteFile(name);
             applyDeletedFiles(result.files);
+            commitMutationVersion(result.inventoryId, result.revision);
             if (unresolvedDeleteCount(result) === 0) {
               showNotification(t('auth_files.delete_success'), 'success');
             } else {
@@ -799,7 +801,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         },
       });
     },
-    [applyDeletedFiles, showConfirmation, showNotification, t]
+    [applyDeletedFiles, commitMutationVersion, showConfirmation, showNotification, t]
   );
 
   const handleDeleteAll = useCallback(
@@ -841,6 +843,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
             if (!isFiltered && !isProblemOnly && !isDisabledOnly && !isEnabledOnly) {
               const result = await authFilesApi.deleteAll();
               applyDeletedFiles(result.files);
+              commitMutationVersion(result.inventoryId, result.revision);
               if (unresolvedDeleteCount(result) === 0) {
                 showNotification(t('auth_files.delete_all_success'), 'success');
               } else {
@@ -891,6 +894,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
               const failed = unresolvedDeleteCount(result);
 
               applyDeletedFiles(result.files);
+              commitMutationVersion(result.inventoryId, result.revision);
 
               if (failed === 0 && (isDisabledOnly || isEnabledOnly)) {
                 showNotification(
@@ -957,7 +961,15 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         },
       });
     },
-    [applyDeletedFiles, deselectAll, files, showConfirmation, showNotification, t]
+    [
+      applyDeletedFiles,
+      commitMutationVersion,
+      deselectAll,
+      files,
+      showConfirmation,
+      showNotification,
+      t,
+    ]
   );
 
   const handleDownload = useCallback(
@@ -992,6 +1004,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         setFiles((prev) =>
           prev.map((f) => (f.name === name ? { ...f, disabled: res.disabled } : f))
         );
+        commitMutationVersion(res.inventory_id ?? '', res.revision ?? 0, res.files ?? []);
         showNotification(
           enabled
             ? t('auth_files.status_enabled_success', { name })
@@ -1013,7 +1026,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         });
       }
     },
-    [setFiles, showNotification, t]
+    [commitMutationVersion, setFiles, showNotification, t]
   );
 
   const handleManualRefresh = useCallback(
@@ -1098,17 +1111,33 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         let failCount = 0;
         const failedNames = new Set<string>();
         const confirmedDisabled = new Map<string, boolean>();
+        const committedVersions: Array<{
+          inventoryId: string;
+          revision: number;
+          files: AuthFileItem[];
+        }> = [];
 
         results.forEach((result, index) => {
           const name = targetNameList[index];
           if (result.status === 'fulfilled') {
             successCount++;
             confirmedDisabled.set(name, result.value.disabled);
+            committedVersions.push({
+              inventoryId: result.value.inventory_id ?? '',
+              revision: result.value.revision ?? 0,
+              files: result.value.files ?? [],
+            });
           } else {
             failCount++;
             failedNames.add(name);
           }
         });
+
+        committedVersions
+          .sort((left, right) => left.revision - right.revision)
+          .forEach((version) =>
+            commitMutationVersion(version.inventoryId, version.revision, version.files)
+          );
 
         setFiles((prev) =>
           prev.map((file) => {
@@ -1147,7 +1176,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         });
       }
     },
-    [deselectAll, files, setFiles, showNotification, statusUpdating, t]
+    [commitMutationVersion, deselectAll, files, setFiles, showNotification, statusUpdating, t]
   );
 
   const batchDownload = useCallback(
@@ -1201,6 +1230,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           try {
             const result = await authFilesApi.deleteFiles(uniqueNames);
             applyDeletedFiles(result.files);
+            commitMutationVersion(result.inventoryId, result.revision);
 
             const unresolved = unresolvedDeleteCount(result);
             if (unresolved === 0) {
@@ -1225,7 +1255,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         },
       });
     },
-    [applyDeletedFiles, showConfirmation, showNotification, t]
+    [applyDeletedFiles, commitMutationVersion, showConfirmation, showNotification, t]
   );
 
   const cancelUploadProxySelection = useCallback(() => {

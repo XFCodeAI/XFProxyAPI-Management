@@ -11,6 +11,7 @@ type InventoryEvent = {
   revision: number;
   action: InventoryAction;
   ids: string[];
+  files: AuthFileItem[];
 };
 
 type FilesUpdater = AuthFileItem[] | ((current: AuthFileItem[]) => AuthFileItem[]);
@@ -24,6 +25,7 @@ type AuthInventoryState = {
   streamConnected: boolean;
   refresh: (fresh?: boolean) => Promise<AuthFilesResponse>;
   setFiles: (updater: FilesUpdater) => void;
+  commitMutationVersion: (inventoryId: string, revision: number, files?: AuthFileItem[]) => void;
   start: () => void;
   stop: (clear?: boolean) => void;
 };
@@ -63,7 +65,10 @@ const normalizeEvent = (value: unknown): InventoryEvent | null => {
   const ids = Array.isArray(record.ids)
     ? record.ids.map((id) => String(id ?? '').trim()).filter(Boolean)
     : [];
-  return { inventoryId, revision, action, ids };
+  const files = Array.isArray(record.files)
+    ? record.files.filter((file): file is AuthFileItem => Boolean(file && typeof file === 'object'))
+    : [];
+  return { inventoryId, revision, action, ids, files };
 };
 
 const parseEventBlock = (block: string): InventoryEvent | null => {
@@ -108,32 +113,104 @@ const scheduleInventoryRefresh = () => {
   }, 50);
 };
 
-const applyInventoryEvent = (event: InventoryEvent) => {
+const authFileIdentityKeys = (file: AuthFileItem): string[] =>
+  [file.id, file.name, file.authIndex, file.auth_index]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean);
+
+const authFileMatchesIDs = (file: AuthFileItem, ids: Set<string>): boolean =>
+  authFileIdentityKeys(file).some((key) => ids.has(key));
+
+const upsertInventoryFiles = (
+  current: AuthFileItem[],
+  incoming: AuthFileItem[]
+): AuthFileItem[] => {
+  if (incoming.length === 0) return current;
+  const next = [...current];
+  incoming.forEach((file) => {
+    const keys = new Set(authFileIdentityKeys(file));
+    if (keys.size === 0) return;
+    const index = next.findIndex((candidate) =>
+      authFileIdentityKeys(candidate).some((key) => keys.has(key))
+    );
+    if (index >= 0) {
+      next[index] = file;
+    } else {
+      next.push(file);
+    }
+  });
+  return next;
+};
+
+const requireInventoryRefresh = (inventoryId: string, revision: number) => {
+  targetInventoryId = inventoryId || targetInventoryId;
+  targetRevision = Math.max(targetRevision, revision);
+  if (inventoryId) requiredInventoryId = inventoryId;
+  scheduleInventoryRefresh();
+};
+
+const commitInventoryRevision = (
+  inventoryId: string,
+  revision: number,
+  files: AuthFileItem[] = []
+) => {
+  if (!inventoryId || revision <= 0) return;
+  const state = useAuthInventoryStore.getState();
+  if (state.inventoryId && inventoryId !== state.inventoryId) {
+    requireInventoryRefresh(inventoryId, revision);
+    return;
+  }
+  if (revision <= state.revision) return;
+  if (revision !== state.revision + 1) {
+    requireInventoryRefresh(inventoryId, revision);
+    return;
+  }
+  targetInventoryId = inventoryId;
+  targetRevision = revision;
+  useAuthInventoryStore.setState((current) => ({
+    files: upsertInventoryFiles(current.files, files),
+    inventoryId,
+    revision,
+  }));
+};
+
+export const applyInventoryEvent = (event: InventoryEvent) => {
   const state = useAuthInventoryStore.getState();
   if (event.inventoryId && state.inventoryId && event.inventoryId !== state.inventoryId) {
-    targetInventoryId = event.inventoryId;
-    targetRevision = event.revision;
-    requiredInventoryId = event.inventoryId;
-    useAuthInventoryStore.setState({ inventoryId: event.inventoryId, revision: 0 });
-    scheduleInventoryRefresh();
+    requireInventoryRefresh(event.inventoryId, event.revision);
     return;
   }
   if (event.revision <= state.revision) return;
-  targetInventoryId = event.inventoryId || state.inventoryId;
-  targetRevision = Math.max(targetRevision, event.revision);
-  if (event.action === 'deleted') {
-    const deleted = new Set(event.ids);
-    useAuthInventoryStore.setState((current) => ({
-      files: current.files.filter((file) => {
-        const id = String(file.id ?? '').trim();
-        return !deleted.has(id) && !deleted.has(file.name);
-      }),
-      revision: event.revision,
-    }));
-    scheduleInventoryRefresh();
+  const inventoryId = event.inventoryId || state.inventoryId;
+  if (event.action === 'reconciled' || event.revision !== state.revision + 1) {
+    requireInventoryRefresh(inventoryId, event.revision);
     return;
   }
-  scheduleInventoryRefresh();
+  const eventIDs = new Set(event.ids);
+  if (event.action === 'deleted') {
+    useAuthInventoryStore.setState((current) => ({
+      files: current.files.filter((file) => !authFileMatchesIDs(file, eventIDs)),
+      inventoryId,
+      revision: event.revision,
+    }));
+    targetInventoryId = inventoryId;
+    targetRevision = event.revision;
+    return;
+  }
+  const covered = event.ids.every((id) =>
+    event.files.some((file) => authFileIdentityKeys(file).includes(id))
+  );
+  if (!covered) {
+    requireInventoryRefresh(inventoryId, event.revision);
+    return;
+  }
+  useAuthInventoryStore.setState((current) => ({
+    files: upsertInventoryFiles(current.files, event.files),
+    inventoryId,
+    revision: event.revision,
+  }));
+  targetInventoryId = inventoryId;
+  targetRevision = event.revision;
 };
 
 const consumeInventoryStream = async (response: Response, signal: AbortSignal) => {
@@ -291,6 +368,10 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
     set((state) => ({
       files: typeof updater === 'function' ? updater(state.files) : updater,
     }));
+  },
+
+  commitMutationVersion: (inventoryId, revision, files = []) => {
+    commitInventoryRevision(String(inventoryId ?? '').trim(), normalizeRevision(revision), files);
   },
 
   start: () => {

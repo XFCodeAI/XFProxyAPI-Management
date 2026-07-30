@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 
+const browserWindow = new EventTarget();
+browserWindow.setTimeout = setTimeout;
+browserWindow.clearTimeout = clearTimeout;
+globalThis.window = browserWindow;
+
+const waitForInventoryRefresh = () => new Promise((resolve) => setTimeout(resolve, 120));
+
 const server = await createServer({
   server: { middlewareMode: true },
   appType: 'custom',
@@ -191,6 +198,122 @@ try {
   assert.equal(inventoryStore.getState().revision, 5);
   assert.equal(acceptedSnapshot.files[0].id, 'after-sse');
   assert.equal(acceptedSnapshot.revision, 5);
+
+  const survivor = {
+    id: 'auth-b',
+    name: 'auth-b.json',
+    provider: 'codex',
+    status: 'error',
+    statusMessage: 'quota exhausted',
+    unavailable: true,
+  };
+  let inventoryLoads = 0;
+  authFilesApiModule.authFilesApi.list = async () => {
+    inventoryLoads += 1;
+    return {
+      files: [survivor],
+      inventory_id: 'inventory-targeted',
+      revision: 15,
+    };
+  };
+  inventoryStore.setState({
+    files: [{ id: 'auth-a', name: 'auth-a.json', provider: 'codex', disabled: false }, survivor],
+    inventoryId: 'inventory-targeted',
+    revision: 10,
+    loading: false,
+    error: '',
+  });
+  inventoryStoreModule.applyInventoryEvent({
+    inventoryId: 'inventory-targeted',
+    revision: 11,
+    action: 'updated',
+    ids: ['auth-a'],
+    files: [{ id: 'auth-a', name: 'auth-a.json', provider: 'codex', disabled: true }],
+  });
+  assert.equal(inventoryStore.getState().files[0].disabled, true);
+  assert.deepEqual(inventoryStore.getState().files[1], survivor);
+  inventoryStoreModule.applyInventoryEvent({
+    inventoryId: 'inventory-targeted',
+    revision: 12,
+    action: 'deleted',
+    ids: ['auth-a'],
+    files: [],
+  });
+  assert.deepEqual(inventoryStore.getState().files, [survivor]);
+  inventoryStoreModule.applyInventoryEvent({
+    inventoryId: 'inventory-targeted',
+    revision: 11,
+    action: 'updated',
+    ids: ['auth-b'],
+    files: [{ ...survivor, statusMessage: '' }],
+  });
+  await waitForInventoryRefresh();
+  assert.equal(inventoryLoads, 0);
+  assert.deepEqual(inventoryStore.getState().files, [survivor]);
+
+  inventoryStore
+    .getState()
+    .setFiles((current) =>
+      current.map((file) => (file.id === 'auth-b' ? { ...file, disabled: true } : file))
+    );
+  inventoryStore
+    .getState()
+    .commitMutationVersion('inventory-targeted', 13, [{ ...survivor, disabled: true }]);
+  await waitForInventoryRefresh();
+  assert.equal(inventoryLoads, 0);
+  assert.equal(inventoryStore.getState().revision, 13);
+  assert.equal(inventoryStore.getState().files[0].statusMessage, 'quota exhausted');
+
+  inventoryStoreModule.applyInventoryEvent({
+    inventoryId: 'inventory-targeted',
+    revision: 15,
+    action: 'updated',
+    ids: ['auth-b'],
+    files: [{ ...survivor, statusMessage: 'newer error' }],
+  });
+  await waitForInventoryRefresh();
+  assert.equal(inventoryLoads, 1);
+  assert.equal(inventoryStore.getState().revision, 15);
+  assert.deepEqual(inventoryStore.getState().files, [survivor]);
+
+  authFilesApiModule.authFilesApi.list = async () => {
+    inventoryLoads += 1;
+    return {
+      files: [{ id: 'replacement', name: 'replacement.json', provider: 'claude' }],
+      inventory_id: 'inventory-replacement',
+      revision: 1,
+    };
+  };
+  inventoryStoreModule.applyInventoryEvent({
+    inventoryId: 'inventory-replacement',
+    revision: 1,
+    action: 'reconciled',
+    ids: [],
+    files: [],
+  });
+  await waitForInventoryRefresh();
+  assert.equal(inventoryLoads, 2);
+  assert.equal(inventoryStore.getState().inventoryId, 'inventory-replacement');
+  assert.equal(inventoryStore.getState().files[0].id, 'replacement');
+
+  authFilesApiModule.authFilesApi.list = async () => {
+    inventoryLoads += 1;
+    return {
+      files: [{ id: 'replacement', name: 'replacement.json', provider: 'claude', disabled: true }],
+      inventory_id: 'inventory-replacement',
+      revision: 2,
+    };
+  };
+  inventoryStoreModule.applyInventoryEvent({
+    inventoryId: 'inventory-replacement',
+    revision: 2,
+    action: 'reconciled',
+    ids: [],
+    files: [],
+  });
+  await waitForInventoryRefresh();
+  assert.equal(inventoryLoads, 3);
+  assert.equal(inventoryStore.getState().files[0].disabled, true);
   authFilesApiModule.authFilesApi.list = originalList;
 } finally {
   await server.close();

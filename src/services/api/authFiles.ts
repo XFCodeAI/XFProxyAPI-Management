@@ -17,7 +17,13 @@ import { normalizeOauthModelAliasEntries, serializeOauthModelAliases } from './o
 export type { AuthFileSessionValidationFailure } from './sessionValidationFailure';
 
 type StatusError = { status?: number };
-type AuthFileStatusResponse = { status: string; disabled: boolean };
+type AuthFileStatusResponse = {
+  status: string;
+  disabled: boolean;
+  files?: AuthFileEntry[];
+  revision?: number;
+  inventory_id?: string;
+};
 type AuthFileEntry = AuthFilesResponse['files'][number];
 export type AuthFileFieldsPatch = {
   alias?: string;
@@ -54,6 +60,8 @@ type AuthFileBatchDeleteResponse = {
   pending?: unknown;
   conflicts?: unknown;
   failed?: unknown;
+  revision?: number;
+  inventory_id?: string;
 };
 type AuthFileBatchUploadResult = {
   status: string;
@@ -79,6 +87,8 @@ export type AuthFileBatchDeleteResult = {
   pending: AuthFileDeleteItem[];
   conflicts: AuthFileDeleteItem[];
   failed: AuthFileBatchFailure[];
+  revision: number;
+  inventoryId: string;
 };
 
 export type AuthFileReconciliationCounts = {
@@ -270,6 +280,11 @@ const normalizeBatchDeleteResponse = (
     pending,
     conflicts,
     failed,
+    revision:
+      typeof payload?.revision === 'number' && Number.isSafeInteger(payload.revision)
+        ? payload.revision
+        : 0,
+    inventoryId: typeof payload?.inventory_id === 'string' ? payload.inventory_id.trim() : '',
   };
 };
 
@@ -648,7 +663,16 @@ export const authFilesApi = {
   deleteFiles: async (names: string[]): Promise<AuthFileBatchDeleteResult> => {
     const requestedNames = normalizeRequestedAuthFileNames(names);
     if (requestedNames.length === 0) {
-      return { status: 'ok', deleted: 0, files: [], pending: [], conflicts: [], failed: [] };
+      return {
+        status: 'ok',
+        deleted: 0,
+        files: [],
+        pending: [],
+        conflicts: [],
+        failed: [],
+        revision: 0,
+        inventoryId: '',
+      };
     }
 
     const payload = await apiClient.delete<AuthFileBatchDeleteResponse>('/auth-files', {
