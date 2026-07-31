@@ -66,6 +66,8 @@ const OPENAI_PROVIDER_FIELDS = [
   'disabled',
   'prefix',
   'base-url',
+  'protocol-mode',
+  'retry-owner',
   'api-key-entries',
   'headers',
   'models',
@@ -267,7 +269,7 @@ const mergeProviderKeyPayload = (
   return next;
 };
 
-const mergeOpenAIProviderPayload = (raw: unknown, payload: Record<string, unknown>) => {
+export const mergeOpenAIProviderPayload = (raw: unknown, payload: Record<string, unknown>) => {
   const next = mergeKnownFields(raw, payload, OPENAI_PROVIDER_FIELDS);
   const rawApiKeyEntries = isRecord(raw) ? raw['api-key-entries'] : undefined;
   const apiKeyEntries = payload['api-key-entries'];
@@ -485,7 +487,7 @@ const serializeGeminiKey = (config: GeminiKeyConfig) => {
   return payload;
 };
 
-const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
+export const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
   const payload: Record<string, unknown> = {
     name: provider.name,
     'base-url': provider.baseUrl,
@@ -494,6 +496,12 @@ const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
       : [],
   };
   if (provider.prefix?.trim()) payload.prefix = provider.prefix.trim();
+  if (provider.protocolMode === 'preserve-openai') {
+    payload['protocol-mode'] = 'preserve-openai';
+  }
+  if (provider.retryOwner === 'upstream') {
+    payload['retry-owner'] = 'upstream';
+  }
   if (provider.disabled !== undefined) payload.disabled = provider.disabled;
   const headers = serializeHeaders(provider.headers);
   if (headers) payload.headers = headers;

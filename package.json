@@ -1,7 +1,7 @@
 {
   "name": "xfproxyapi-management",
   "private": true,
-  "version": "0.1.35",
+  "version": "0.1.36",
   "type": "module",
   "packageManager": "pnpm@10.17.1",
   "scripts": {
@@ -28,6 +28,7 @@
     "test:api-error": "node --experimental-strip-types tests/apiError.test.mjs",
     "test:oauth-editor-state": "node --experimental-strip-types tests/oauthEditorState.test.mjs",
     "test:provider-concurrency": "node tests/providerConcurrency.test.mjs",
+    "test:openai-protocol-mode": "node tests/openAIProtocolMode.test.mjs",
     "test:provider-recent-requests": "node tests/providerRecentRequestsIsolation.test.mjs",
     "test:visual-config-correctness": "node tests/visualConfigCorrectness.test.mjs",
     "build": "tsc --noEmit && vite build",

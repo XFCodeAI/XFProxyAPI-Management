@@ -292,11 +292,16 @@ const normalizeOpenAIProvider = (
   const models = normalizeModelAliases(provider.models);
   const priority = provider.priority;
   const testModel = provider['test-model'];
+  const protocolMode =
+    provider['protocol-mode'] === 'preserve-openai' ? 'preserve-openai' : 'chat-completions';
+  const retryOwner = provider['retry-owner'] === 'upstream' ? 'upstream' : 'xfpa';
 
   const result: OpenAIProviderConfig = {
     name: String(name),
     baseUrl: String(baseUrl),
     apiKeyEntries,
+    protocolMode,
+    retryOwner,
   };
 
   const disabled = normalizeBoolean(provider.disabled);

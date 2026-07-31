@@ -1,4 +1,10 @@
-import type { GeminiKeyConfig, OpenAIProviderConfig, ProviderKeyConfig } from '@/types';
+import type {
+  GeminiKeyConfig,
+  OpenAIProviderConfig,
+  OpenAIProviderProtocolMode,
+  OpenAIProviderRetryOwner,
+  ProviderKeyConfig,
+} from '@/types';
 
 export type ProviderBrand =
   | 'gemini'
@@ -134,6 +140,8 @@ export interface ProviderEntryFormInput {
   name: string;
   groups?: string[];
   baseUrl: string;
+  protocolMode?: OpenAIProviderProtocolMode;
+  retryOwner?: OpenAIProviderRetryOwner;
   proxyUrl: string;
   prefix: string;
   disabled: boolean;

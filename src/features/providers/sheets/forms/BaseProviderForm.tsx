@@ -61,7 +61,15 @@ const emptyApiKeyEntry = (): ApiKeyEntryInput => ({
   proxyUrl: '',
 });
 
-type PrimaryField = 'name' | 'apiKey' | 'baseUrl' | 'proxyUrl' | 'routing' | 'testModel';
+type PrimaryField =
+  | 'name'
+  | 'apiKey'
+  | 'baseUrl'
+  | 'protocolMode'
+  | 'retryOwner'
+  | 'proxyUrl'
+  | 'routing'
+  | 'testModel';
 type ToggleField = 'websockets' | 'fallback' | 'disabled' | 'disableCooling';
 type AdvancedSection = 'apiKeyEntries' | 'headers' | 'models' | 'excludedModels' | 'cloak';
 type ModelEntryMode = 'standard' | 'openai';
@@ -111,7 +119,7 @@ const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
     modelEntryMode: 'standard',
   },
   openaiCompatibility: {
-    primaryFields: ['name', 'baseUrl', 'routing', 'testModel'],
+    primaryFields: ['name', 'baseUrl', 'protocolMode', 'retryOwner', 'routing', 'testModel'],
     toggleFields: ['fallback', 'disabled', 'disableCooling'],
     advancedSections: ['apiKeyEntries', 'headers', 'models'],
     modelEntryMode: 'openai',
@@ -171,6 +179,8 @@ function buildInitialForm(
       groups: [],
       baseUrl:
         brand === 'claudeApi' ? CLAUDE_API_BASE_URL : brand === 'xai' ? XAI_API_BASE_URL : '',
+      protocolMode: brand === 'openaiCompatibility' ? 'chat-completions' : undefined,
+      retryOwner: brand === 'openaiCompatibility' ? 'xfpa' : undefined,
       proxyUrl: '',
       prefix: '',
       disabled: false,
@@ -204,6 +214,8 @@ function buildInitialForm(
       apiKey: '',
       name: cfg.name ?? '',
       baseUrl: cfg.baseUrl ?? '',
+      protocolMode: cfg.protocolMode ?? 'chat-completions',
+      retryOwner: cfg.retryOwner ?? 'xfpa',
       proxyUrl: '',
       prefix: cfg.prefix ?? '',
       disabled: cfg.disabled === true,
@@ -642,6 +654,63 @@ export function BaseProviderForm({
               onChange={(e) => updateField('baseUrl', e.target.value)}
               placeholder="https://api.example.com"
               disabled={mutating}
+            />
+          </div>
+        ) : null}
+
+        {hasPrimaryField('protocolMode') ? (
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${fid}-protocolMode`}>
+              {t('providersPage.form.protocolMode')}
+            </label>
+            <Select
+              id={`${fid}-protocolMode`}
+              value={form.protocolMode ?? 'chat-completions'}
+              options={[
+                {
+                  value: 'chat-completions',
+                  label: t('providersPage.form.protocolModeChatCompletions'),
+                },
+                {
+                  value: 'preserve-openai',
+                  label: t('providersPage.form.protocolModePreserveOpenAI'),
+                },
+              ]}
+              onChange={(value) =>
+                updateField(
+                  'protocolMode',
+                  value === 'preserve-openai' ? 'preserve-openai' : 'chat-completions'
+                )
+              }
+              disabled={mutating}
+              ariaLabel={t('providersPage.form.protocolMode')}
+            />
+          </div>
+        ) : null}
+
+        {hasPrimaryField('retryOwner') ? (
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${fid}-retryOwner`}>
+              {t('providersPage.form.retryOwner')}
+            </label>
+            <Select
+              id={`${fid}-retryOwner`}
+              value={form.retryOwner ?? 'xfpa'}
+              options={[
+                {
+                  value: 'xfpa',
+                  label: t('providersPage.form.retryOwnerXFPA'),
+                },
+                {
+                  value: 'upstream',
+                  label: t('providersPage.form.retryOwnerUpstream'),
+                },
+              ]}
+              onChange={(value) =>
+                updateField('retryOwner', value === 'upstream' ? 'upstream' : 'xfpa')
+              }
+              disabled={mutating}
+              ariaLabel={t('providersPage.form.retryOwner')}
             />
           </div>
         ) : null}

@@ -1,6 +1,6 @@
 /**
- * AI 提供商相关类型
- * 基于原项目 src/modules/ai-providers.js
+ * AI provider types.
+ * Based on the original src/modules/ai-providers.js module.
  */
 
 export interface ModelAlias {
@@ -26,6 +26,9 @@ export interface CloakConfig {
   sensitiveWords?: string[];
   cacheUserId?: boolean;
 }
+
+export type OpenAIProviderProtocolMode = 'chat-completions' | 'preserve-openai';
+export type OpenAIProviderRetryOwner = 'xfpa' | 'upstream';
 
 export interface GeminiKeyConfig {
   name?: string;
@@ -66,6 +69,8 @@ export interface OpenAIProviderConfig {
   name: string;
   prefix?: string;
   baseUrl: string;
+  protocolMode?: OpenAIProviderProtocolMode;
+  retryOwner?: OpenAIProviderRetryOwner;
   apiKeyEntries: ApiKeyEntry[];
   disabled?: boolean;
   headers?: Record<string, string>;

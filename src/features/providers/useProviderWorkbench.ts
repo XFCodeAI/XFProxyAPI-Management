@@ -249,6 +249,8 @@ const buildOpenAIConfig = (
     ...(existing ?? {}),
     name: input.name.trim(),
     baseUrl: input.baseUrl.trim(),
+    protocolMode: input.protocolMode ?? 'chat-completions',
+    retryOwner: input.retryOwner ?? 'xfpa',
     prefix: input.prefix.trim() || undefined,
     apiKeyEntries,
     disabled: input.disabled,
