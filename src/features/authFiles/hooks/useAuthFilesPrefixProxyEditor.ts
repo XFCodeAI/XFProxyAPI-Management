@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api';
 import type { AuthFileItem } from '@/types';
-import { useNotificationStore } from '@/stores';
+import { useAuthInventoryStore, useNotificationStore } from '@/stores';
 import { normalizeProviderKey, parsePriorityValue } from '@/features/authFiles/constants';
 import {
   applyAuthFileProviderFieldsPatch,
@@ -26,6 +26,7 @@ export type PrefixProxyEditorField =
   | 'proxyUrl'
   | 'priority'
   | 'fallback'
+  | 'disableCooling'
   | 'websockets'
   | 'usingApi'
   | 'note'
@@ -49,6 +50,7 @@ export type PrefixProxyEditorState = {
   proxyUrl: string;
   priority: string;
   fallback: boolean;
+  disableCooling: boolean;
   websockets: boolean;
   websocketsTouched: boolean;
   usingApi: boolean;
@@ -62,7 +64,6 @@ export type PrefixProxyEditorState = {
 
 export type UseAuthFilesPrefixProxyEditorOptions = {
   disableControls: boolean;
-  loadFiles: () => Promise<unknown>;
 };
 
 export type UseAuthFilesPrefixProxyEditorResult = {
@@ -115,6 +116,24 @@ const parseHeadersText = (
 
 const normalizeTextField = (value: unknown): string =>
   typeof value === 'string' ? value.trim() : '';
+
+const normalizeBooleanValue = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value !== 0;
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1') return true;
+  if (normalized === 'false' || normalized === '0') return false;
+  return undefined;
+};
+
+export const readAuthFileDisableCooling = (value: Record<string, unknown>): boolean => {
+  for (const key of ['disable_cooling', 'disable-cooling'] as const) {
+    const normalized = normalizeBooleanValue(value[key]);
+    if (normalized !== undefined) return normalized;
+  }
+  return false;
+};
 
 const INVALID_CONTENT_PREVIEW_LIMIT = 1000;
 
@@ -220,7 +239,7 @@ const applyHeadersPatch = (
   }
 };
 
-const buildAuthFileFieldsPatch = (
+export const buildAuthFileFieldsPatch = (
   editor: PrefixProxyEditorState,
   resolveHeadersError: (key: AuthFileHeadersErrorKey) => string
 ): AuthFileFieldsPatch => {
@@ -261,6 +280,11 @@ const buildAuthFileFieldsPatch = (
     patch.fallback = editor.fallback;
   }
 
+  const originalDisableCooling = readAuthFileDisableCooling(original);
+  if (editor.disableCooling !== originalDisableCooling) {
+    patch.disable_cooling = editor.disableCooling;
+  }
+
   if (editor.noteTouched) {
     const originalNote = normalizeTextField(original.note);
     const nextNote = editor.note.trim();
@@ -298,7 +322,7 @@ const buildAuthFileFieldsPatch = (
   return patch;
 };
 
-const buildPrefixProxyUpdatedText = (
+export const buildPrefixProxyUpdatedText = (
   editor: PrefixProxyEditorState | null,
   resolveHeadersError: (key: AuthFileHeadersErrorKey) => string
 ): string => {
@@ -333,6 +357,15 @@ const buildPrefixProxyUpdatedText = (
     next.fallback = patch.fallback;
   }
 
+  if (patch.disable_cooling !== undefined) {
+    delete next['disable-cooling'];
+    if (patch.disable_cooling) {
+      next.disable_cooling = true;
+    } else {
+      delete next.disable_cooling;
+    }
+  }
+
   if (patch.note !== undefined) {
     if (patch.note) {
       next.note = patch.note;
@@ -351,9 +384,10 @@ const buildPrefixProxyUpdatedText = (
 export function useAuthFilesPrefixProxyEditor(
   options: UseAuthFilesPrefixProxyEditorOptions
 ): UseAuthFilesPrefixProxyEditorResult {
-  const { disableControls, loadFiles } = options;
+  const { disableControls } = options;
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
+  const commitMutationVersion = useAuthInventoryStore((state) => state.commitMutationVersion);
 
   const [prefixProxyEditor, setPrefixProxyEditor] = useState<PrefixProxyEditorState | null>(null);
 
@@ -402,6 +436,7 @@ export function useAuthFilesPrefixProxyEditor(
       proxyUrl: '',
       priority: '',
       fallback: false,
+      disableCooling: false,
       websockets: false,
       websocketsTouched: false,
       usingApi: false,
@@ -452,6 +487,7 @@ export function useAuthFilesPrefixProxyEditor(
       const proxyUrl = typeof json.proxy_url === 'string' ? json.proxy_url : '';
       const priority = parsePriorityValue(json.priority);
       const fallback = json.fallback === true;
+      const disableCooling = readAuthFileDisableCooling(json);
       const websockets = supportsAuthFileWebsockets(providerKey)
         ? readAuthFileWebsockets(json)
         : false;
@@ -481,6 +517,7 @@ export function useAuthFilesPrefixProxyEditor(
           proxyUrl,
           priority: priority !== undefined ? String(priority) : '',
           fallback,
+          disableCooling,
           websockets,
           websocketsTouched: false,
           usingApi,
@@ -513,6 +550,9 @@ export function useAuthFilesPrefixProxyEditor(
       if (field === 'proxyUrl') return { ...prev, proxyUrl: String(value) };
       if (field === 'priority') return { ...prev, priority: String(value) };
       if (field === 'fallback') return { ...prev, fallback: Boolean(value) };
+      if (field === 'disableCooling') {
+        return { ...prev, disableCooling: Boolean(value) };
+      }
       if (field === 'websockets') {
         return { ...prev, websockets: Boolean(value), websocketsTouched: true };
       }
@@ -555,9 +595,23 @@ export function useAuthFilesPrefixProxyEditor(
     });
 
     try {
-      await authFilesApi.patchFields(name, payload);
+      const response = await authFilesApi.patchFields(name, payload);
+      const authoritativeFile = response.files?.find((file) => file.name === name);
+      if (!authoritativeFile) {
+        throw new Error(t('auth_files.field_save_confirmation_failed'));
+      }
+      if (
+        payload.disable_cooling !== undefined &&
+        readAuthFileDisableCooling(authoritativeFile) !== payload.disable_cooling
+      ) {
+        throw new Error(t('auth_files.disable_cooling_confirmation_failed'));
+      }
+      commitMutationVersion(
+        response.inventory_id ?? '',
+        response.revision ?? 0,
+        response.files ?? []
+      );
       showNotification(t('auth_files.prefix_proxy_saved_success', { name }), 'success');
-      await loadFiles();
       setPrefixProxyEditor(null);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '';

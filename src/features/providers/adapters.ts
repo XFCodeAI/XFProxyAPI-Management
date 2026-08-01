@@ -1,4 +1,9 @@
-import type { GeminiKeyConfig, OpenAIProviderConfig, ProviderKeyConfig } from '@/types';
+import type {
+  GeminiKeyConfig,
+  OpenAIProviderConfig,
+  ProviderKeyConfig,
+  ProviderRuntimeStatus,
+} from '@/types';
 import { hasDisableAllModelsRule, stripDisableAllModelsRule } from '@/components/providers/utils';
 import { maskApiKey } from '@/utils/format';
 import {
@@ -71,6 +76,46 @@ const collectModelNames = (models?: Array<{ name?: string }>): string[] => {
 const normalizePriority = (priority?: number): number =>
   typeof priority === 'number' && Number.isFinite(priority) ? priority : 0;
 
+const SCHEDULING_REASON_PRIORITY: ProviderRuntimeStatus['scheduling'][] = [
+  'cooling',
+  'unavailable',
+  'not_registered',
+  'no_effective_model',
+  'disabled_by_wildcard',
+  'disabled',
+];
+
+export const aggregateProviderRuntimeStatuses = (
+  statuses: Array<ProviderRuntimeStatus | undefined>
+): ProviderRuntimeStatus | null => {
+  const available = statuses.filter(Boolean) as ProviderRuntimeStatus[];
+  if (available.length === 0) return null;
+
+  const connectivity = available.some((status) => status.connectivity === 'reachable')
+    ? 'reachable'
+    : available.some((status) => status.connectivity === 'unreachable')
+      ? 'unreachable'
+      : 'unknown';
+  if (available.some((status) => status.ready)) {
+    return { connectivity, scheduling: 'ready', ready: true };
+  }
+
+  const scheduling =
+    SCHEDULING_REASON_PRIORITY.find((reason) =>
+      available.some((status) => status.scheduling === reason)
+    ) ?? 'unavailable';
+  const nextRetryAfter = available
+    .map((status) => status.nextRetryAfter)
+    .filter((value): value is string => Boolean(value))
+    .sort()[0];
+  return {
+    connectivity,
+    scheduling,
+    ready: false,
+    ...(scheduling === 'cooling' && nextRetryAfter ? { nextRetryAfter } : {}),
+  };
+};
+
 const buildId = (brand: ProviderBrand, index: number, fragment: string) =>
   `${brand}:${index}:${fragment || 'item'}`;
 
@@ -125,6 +170,7 @@ function providerKeyToResource(
     excludedModelCount: stripDisableAllModelsRule(config.excludedModels).length,
     apiKeyEntryCount: 0,
     disabled,
+    runtimeStatus: config.runtimeStatus ?? null,
     flags,
     selector,
     raw: config,
@@ -187,6 +233,7 @@ export function openaiToResource(config: OpenAIProviderConfig, index: number): P
     excludedModelCount: 0,
     apiKeyEntryCount: config.apiKeyEntries?.length ?? 0,
     disabled: config.disabled === true,
+    runtimeStatus: config.runtimeStatus ?? null,
     flags: {},
     selector: { brand: 'openaiCompatibility', name, index: sourceIndex },
     raw: config,
@@ -298,6 +345,12 @@ function sponsorRawToResource(
   const renderedBaseUrls = Array.from(
     new Set([protocolUrls.openai, protocolUrls.anthropic, protocolUrls.gemini].filter(Boolean))
   );
+  const runtimeStatus = aggregateProviderRuntimeStatuses([
+    ...raw.openai.map((item) => item.config.runtimeStatus),
+    ...raw.codex.map((item) => item.config.runtimeStatus),
+    ...raw.claude.map((item) => item.config.runtimeStatus),
+    ...raw.gemini.map((item) => item.config.runtimeStatus),
+  ]);
 
   return {
     id: buildId(brand, 0, 'sponsor'),
@@ -342,6 +395,7 @@ function sponsorRawToResource(
       ),
     apiKeyEntryCount: openaiKeyCount + codexKeyCount + raw.claude.length + geminiKeyCount,
     disabled,
+    runtimeStatus,
     flags: {
       protocols: [...options.protocolLabels],
     },

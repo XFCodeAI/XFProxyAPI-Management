@@ -511,9 +511,9 @@
     "excluded_models_label": "Исключённые модели (excluded_models)",
     "excluded_models_placeholder": "Через запятую или с новой строки, например: model-a, gpt-5-*, *-preview",
     "excluded_models_hint": "Сохраняется как массив; значения trim/нижний регистр/без дублей/с сортировкой.",
-    "disable_cooling_label": "Отключение охлаждения (disable_cooling)",
-    "disable_cooling_placeholder": "например: true / false / 1 / 0",
-    "disable_cooling_hint": "Поддерживает boolean, числа 0/не 0 и строки true/false/1/0; непарсируемые значения игнорируются.",
+    "disable_cooling_label": "Игнорировать cooldown",
+    "disable_cooling_placeholder": "",
+    "disable_cooling_hint": "Если включено, после ошибки эти учётные данные снова участвуют в каждом новом запросе, но только один раз в рамках одного запроса.",
     "note_label": "Заметка (note)",
     "note_placeholder": "Введите заметку, например: аккаунт Ивана",
     "note_hint": "Необязательно. Используется для описания назначения или владельца учётных данных; оставьте пустым, чтобы не записывать.",
@@ -521,6 +521,8 @@
     "prefix_proxy_invalid_json": "Этот файл авторизации не является JSON-объектом, поэтому поля нельзя редактировать.",
     "prefix_proxy_html_challenge": "Скачанное содержимое является HTML-страницей проверки, а не JSON-объектом авторизации. Повторно авторизуйтесь или замените файл перед редактированием полей.",
     "prefix_proxy_saved_success": "Файл авторизации \"{{name}}\" успешно обновлён",
+    "field_save_confirmation_failed": "Сервер не вернул обновлённые учётные данные. Повторите попытку.",
+    "disable_cooling_confirmation_failed": "Сервер не подтвердил настройку игнорирования cooldown. Повторите попытку.",
     "card_tools_title": "Инструменты",
     "quota_refresh_single": "Обновить квоту",
     "quota_refresh_hint": "Обновить квоту только для этих учётных данных",
@@ -2425,6 +2427,22 @@
       "none": "Нет",
       "notConfigured": "Не настроено",
       "defaultSuffix": "(по умолчанию)"
+    },
+    "runtime": {
+      "connectivity": {
+        "reachable": "Соединение: доступно",
+        "unreachable": "Соединение: ошибка",
+        "unknown": "Соединение: не проверено"
+      },
+      "scheduling": {
+        "ready": "Планирование: готово",
+        "disabled": "Планирование: отключено",
+        "disabled_by_wildcard": "Планирование: отключено шаблоном",
+        "no_effective_model": "Планирование: нет доступных моделей",
+        "cooling": "Планирование: cooldown",
+        "unavailable": "Планирование: недоступно",
+        "not_registered": "Планирование: не зарегистрировано"
+      }
     },
     "detail": {
       "title": "Подробности",

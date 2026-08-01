@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { providersApi } from '@/services/api';
 import { invalidateProviderRecentRequests } from '@/services/providerRecentRequests';
 import { getErrorMessage } from '@/utils/helpers';
-import { useAuthStore, useConfigStore } from '@/stores';
+import { useAuthInventoryStore, useAuthStore, useConfigStore } from '@/stores';
 import {
   stripDisableAllModelsRule,
   withDisableAllModelsRule,
@@ -190,6 +190,7 @@ const buildProviderKeyConfig = (
     headers: Object.keys(headers).length ? headers : undefined,
     excludedModels: excluded,
     authIndex: existing?.authIndex,
+    runtimeStatus: existing?.runtimeStatus,
   };
   if (brand !== 'vertex') {
     next.disableCooling = input.disableCooling === true;
@@ -392,6 +393,7 @@ const toggleSponsorConfig = async (raw: SponsorProviderRaw, disabled: boolean) =
 
 export function useProviderWorkbench(): UseProviderWorkbenchResult {
   const connectionStatus = useAuthStore((s) => s.connectionStatus);
+  const authInventoryRevision = useAuthInventoryStore((s) => s.revision);
   const config = useConfigStore((s) => s.config);
   const fetchConfig = useConfigStore((s) => s.fetchConfig);
   const updateConfigValue = useConfigStore((s) => s.updateConfigValue);
@@ -404,24 +406,48 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
   const [fetchedAt, setFetchedAt] = useState<string>(() => new Date().toISOString());
 
   const hasFetchedRef = useRef(false);
+  const observedAuthRevisionRef = useRef(authInventoryRevision);
+  const refetchGenerationRef = useRef(0);
 
   const connected = connectionStatus === 'connected';
 
   const refetch = useCallback(async () => {
+    const generation = ++refetchGenerationRef.current;
     setIsFetching(true);
     setErrorMessage(null);
     try {
-      const [configResult, xaiResult, vertexResult, openaiResult] = await Promise.allSettled([
+      const [
+        configResult,
+        geminiResult,
+        codexResult,
+        xaiResult,
+        claudeResult,
+        vertexResult,
+        openaiResult,
+      ] = await Promise.allSettled([
         fetchConfig(undefined, true),
+        providersApi.getGeminiKeys(),
+        providersApi.getCodexConfigs(),
         providersApi.getXAIConfigs(),
+        providersApi.getClaudeConfigs(),
         providersApi.getVertexConfigs(),
         providersApi.getOpenAIProviders(),
       ]);
       if (configResult.status !== 'fulfilled') {
         throw configResult.reason;
       }
+      if (generation !== refetchGenerationRef.current) return;
+      if (geminiResult.status === 'fulfilled') {
+        updateConfigValue('gemini-api-key', geminiResult.value || []);
+      }
+      if (codexResult.status === 'fulfilled') {
+        updateConfigValue('codex-api-key', codexResult.value || []);
+      }
       if (xaiResult.status === 'fulfilled') {
         updateConfigValue('xai-api-key', xaiResult.value || []);
+      }
+      if (claudeResult.status === 'fulfilled') {
+        updateConfigValue('claude-api-key', claudeResult.value || []);
       }
       if (vertexResult.status === 'fulfilled') {
         updateConfigValue('vertex-api-key', vertexResult.value || []);
@@ -431,10 +457,13 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
       }
       setFetchedAt(new Date().toISOString());
     } catch (err) {
+      if (generation !== refetchGenerationRef.current) return;
       setErrorMessage(getErrorMessage(err) || 'Failed to load providers');
     } finally {
-      setIsPending(false);
-      setIsFetching(false);
+      if (generation === refetchGenerationRef.current) {
+        setIsPending(false);
+        setIsFetching(false);
+      }
     }
   }, [fetchConfig, updateConfigValue]);
 
@@ -448,6 +477,13 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     hasFetchedRef.current = true;
     refetch().catch(() => {});
   }, [connected, refetch]);
+
+  useEffect(() => {
+    if (authInventoryRevision <= observedAuthRevisionRef.current) return;
+    observedAuthRevisionRef.current = authInventoryRevision;
+    if (!connected || !hasFetchedRef.current) return;
+    void refetch();
+  }, [authInventoryRevision, connected, refetch]);
 
   const snapshot = useMemo<ProviderSnapshot | null>(() => {
     if (!config) return null;

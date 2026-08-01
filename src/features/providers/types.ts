@@ -4,6 +4,7 @@ import type {
   OpenAIProviderProtocolMode,
   OpenAIProviderRetryOwner,
   ProviderKeyConfig,
+  ProviderRuntimeStatus,
 } from '@/types';
 
 export type ProviderBrand =
@@ -72,6 +73,7 @@ export interface ProviderResource {
   excludedModelCount: number;
   apiKeyEntryCount: number;
   disabled: boolean;
+  runtimeStatus: ProviderRuntimeStatus | null;
   flags: ProviderResourceFlags;
   selector: ProviderResourceSelector;
   raw: unknown;

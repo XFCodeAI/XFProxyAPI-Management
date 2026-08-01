@@ -211,7 +211,6 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
     handlePrefixProxySave,
   } = useAuthFilesPrefixProxyEditor({
     disableControls: connectionStatus !== 'connected',
-    loadFiles,
   });
 
   const disableControls = connectionStatus !== 'connected';

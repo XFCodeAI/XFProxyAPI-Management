@@ -30,6 +30,9 @@ export interface AuthFileItem {
   authIndex?: string | number | null;
   runtimeOnly?: boolean | string;
   fallback?: boolean;
+  disableCooling?: boolean;
+  disable_cooling?: boolean;
+  'disable-cooling'?: boolean | string | number;
   disabled?: boolean;
   unavailable?: boolean;
   assignable?: boolean;

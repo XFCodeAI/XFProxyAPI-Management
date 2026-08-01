@@ -5,6 +5,7 @@ import type {
   ModelAlias,
   OpenAIProviderConfig,
   ProviderKeyConfig,
+  ProviderRuntimeStatus,
 } from '@/types';
 import type { Config } from '@/types/config';
 import { buildHeaderObject } from '@/utils/headers';
@@ -15,6 +16,38 @@ const normalizeBoolean = (value: unknown): boolean | undefined =>
 
 const normalizeRecord = (value: unknown): Record<string, unknown> | undefined =>
   isRecord(value) ? value : undefined;
+
+const PROVIDER_CONNECTIVITY_VALUES = new Set(['unknown', 'reachable', 'unreachable']);
+const PROVIDER_SCHEDULING_VALUES = new Set([
+  'ready',
+  'disabled',
+  'disabled_by_wildcard',
+  'no_effective_model',
+  'cooling',
+  'unavailable',
+  'not_registered',
+]);
+
+export const normalizeProviderRuntimeStatus = (
+  value: unknown
+): ProviderRuntimeStatus | undefined => {
+  if (!isRecord(value)) return undefined;
+  const connectivity = String(value.connectivity ?? '').trim();
+  const scheduling = String(value.scheduling ?? '').trim();
+  if (
+    !PROVIDER_CONNECTIVITY_VALUES.has(connectivity) ||
+    !PROVIDER_SCHEDULING_VALUES.has(scheduling)
+  ) {
+    return undefined;
+  }
+  const nextRetryAfter = String(value['next-retry-after'] ?? '').trim();
+  return {
+    connectivity: connectivity as ProviderRuntimeStatus['connectivity'],
+    scheduling: scheduling as ProviderRuntimeStatus['scheduling'],
+    ready: value.ready === true,
+    ...(nextRetryAfter ? { nextRetryAfter } : {}),
+  };
+};
 
 const normalizeCredentialGroups = (value: unknown): string[] | undefined => {
   if (!Array.isArray(value)) return undefined;
@@ -154,6 +187,8 @@ const normalizeApiKeyEntry = (entry: unknown): ApiKeyEntry | null => {
   };
   if (name) result.name = name;
   if (authIndex) result.authIndex = authIndex;
+  const runtimeStatus = normalizeProviderRuntimeStatus(record?.['runtime-status']);
+  if (runtimeStatus) result.runtimeStatus = runtimeStatus;
   const groups = normalizeCredentialGroups(record?.groups);
   if (groups) result.groups = groups;
   return result;
@@ -198,6 +233,8 @@ const normalizeProviderKeyConfig = (item: unknown): ProviderKeyConfig | null => 
   if (excludedModels.length) config.excludedModels = excludedModels;
   const authIndex = normalizeAuthIndex(record?.['auth-index']);
   if (authIndex) config.authIndex = authIndex;
+  const runtimeStatus = normalizeProviderRuntimeStatus(record?.['runtime-status']);
+  if (runtimeStatus) config.runtimeStatus = runtimeStatus;
 
   const cloakRaw = record?.cloak;
   if (isRecord(cloakRaw)) {
@@ -270,6 +307,8 @@ const normalizeGeminiKeyConfig = (item: unknown): GeminiKeyConfig | null => {
   if (excludedModels.length) config.excludedModels = excludedModels;
   const authIndex = normalizeAuthIndex(record?.['auth-index']);
   if (authIndex) config.authIndex = authIndex;
+  const runtimeStatus = normalizeProviderRuntimeStatus(record?.['runtime-status']);
+  if (runtimeStatus) config.runtimeStatus = runtimeStatus;
   return config;
 };
 
@@ -318,6 +357,8 @@ const normalizeOpenAIProvider = (
   if (testModel) result.testModel = String(testModel);
   const authIndex = normalizeAuthIndex(provider['auth-index']);
   if (authIndex) result.authIndex = authIndex;
+  const runtimeStatus = normalizeProviderRuntimeStatus(provider['runtime-status']);
+  if (runtimeStatus) result.runtimeStatus = runtimeStatus;
   if (sourceIndex !== undefined) result.sourceIndex = sourceIndex;
   return result;
 };

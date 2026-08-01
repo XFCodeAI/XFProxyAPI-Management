@@ -258,11 +258,14 @@ try {
     );
   inventoryStore
     .getState()
-    .commitMutationVersion('inventory-targeted', 13, [{ ...survivor, disabled: true }]);
+    .commitMutationVersion('inventory-targeted', 13, [
+      { ...survivor, disabled: true, disable_cooling: true },
+    ]);
   await waitForInventoryRefresh();
   assert.equal(inventoryLoads, 0);
   assert.equal(inventoryStore.getState().revision, 13);
   assert.equal(inventoryStore.getState().files[0].statusMessage, 'quota exhausted');
+  assert.equal(inventoryStore.getState().files[0].disable_cooling, true);
 
   inventoryStoreModule.applyInventoryEvent({
     inventoryId: 'inventory-targeted',

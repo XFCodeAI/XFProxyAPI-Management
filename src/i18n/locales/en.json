@@ -512,9 +512,9 @@
     "excluded_models_label": "Excluded models (excluded_models)",
     "excluded_models_placeholder": "Comma or newline separated, e.g. model-a, gpt-5-*, *-preview",
     "excluded_models_hint": "Saved as an array and normalized by trim/lowercase/dedup/sort.",
-    "disable_cooling_label": "Disable cooling (disable_cooling)",
-    "disable_cooling_placeholder": "e.g. true / false / 1 / 0",
-    "disable_cooling_hint": "Supports booleans, numeric 0/non-0, and strings like true/false/1/0; unparseable values are ignored.",
+    "disable_cooling_label": "Ignore cooldown",
+    "disable_cooling_placeholder": "",
+    "disable_cooling_hint": "When enabled, this credential can be scheduled again on every new request after a failure. It is still attempted only once per request.",
     "note_label": "Note",
     "note_placeholder": "Enter a note, e.g.: John's account",
     "note_hint": "Optional. Used to describe the purpose or owner of this credential; leave empty to omit.",
@@ -528,6 +528,8 @@
     "prefix_proxy_invalid_json": "This auth file is not a JSON object, so fields cannot be edited.",
     "prefix_proxy_html_challenge": "Downloaded content is an HTML challenge page, not an auth JSON object. Re-authenticate or replace this auth file before editing fields.",
     "prefix_proxy_saved_success": "Updated auth file \"{{name}}\" successfully",
+    "field_save_confirmation_failed": "The server did not return the updated credential. Try again.",
+    "disable_cooling_confirmation_failed": "The server did not confirm the ignore-cooldown setting. Try again.",
     "quota_refresh_single": "Refresh quota",
     "quota_refresh_hint": "Refresh quota only for this credential",
     "quota_refresh_success": "Quota refreshed for \"{{name}}\"",
@@ -2435,6 +2437,22 @@
       "none": "None",
       "notConfigured": "Not configured",
       "defaultSuffix": "(default)"
+    },
+    "runtime": {
+      "connectivity": {
+        "reachable": "Connection: reachable",
+        "unreachable": "Connection: failed",
+        "unknown": "Connection: unverified"
+      },
+      "scheduling": {
+        "ready": "Scheduling: ready",
+        "disabled": "Scheduling: disabled",
+        "disabled_by_wildcard": "Scheduling: wildcard disabled",
+        "no_effective_model": "Scheduling: no effective model",
+        "cooling": "Scheduling: cooling",
+        "unavailable": "Scheduling: unavailable",
+        "not_registered": "Scheduling: not registered"
+      }
     },
     "detail": {
       "title": "Details",

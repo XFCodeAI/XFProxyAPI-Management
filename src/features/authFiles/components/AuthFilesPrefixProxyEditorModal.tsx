@@ -143,6 +143,7 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                       onChange={(e) => onChange('proxyUrl', e.target.value)}
                     />
                     <Input
+                      wrapperClassName={styles.prefixProxyFullField}
                       label={t('auth_files.priority_label')}
                       value={editor.priority}
                       placeholder={t('auth_files.priority_placeholder')}
@@ -150,13 +151,7 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                       disabled={disableControls || editor.saving || !editor.json}
                       onChange={(e) => onChange('priority', e.target.value)}
                     />
-                    <div
-                      className={cn(
-                        fieldRootClass,
-                        styles.prefixProxyToggleField,
-                        styles.prefixProxyFullField
-                      )}
-                    >
+                    <div className={cn(fieldRootClass, styles.prefixProxyToggleField)}>
                       <label className={fieldLabelClass}>{t('auth_files.fallback_label')}</label>
                       <ToggleSwitch
                         checked={editor.fallback}
@@ -165,6 +160,18 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                         ariaLabel={t('auth_files.fallback_label')}
                       />
                       <div className={fieldHintClass}>{t('auth_files.fallback_hint')}</div>
+                    </div>
+                    <div className={cn(fieldRootClass, styles.prefixProxyToggleField)}>
+                      <label className={fieldLabelClass}>
+                        {t('auth_files.disable_cooling_label')}
+                      </label>
+                      <ToggleSwitch
+                        checked={editor.disableCooling}
+                        onChange={(value) => onChange('disableCooling', value)}
+                        disabled={disableControls || editor.saving || !editor.json}
+                        ariaLabel={t('auth_files.disable_cooling_label')}
+                      />
+                      <div className={fieldHintClass}>{t('auth_files.disable_cooling_hint')}</div>
                     </div>
                     {(editor.providerKey === 'codex' || editor.providerKey === 'xai') && (
                       <div

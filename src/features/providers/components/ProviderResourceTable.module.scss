@@ -156,6 +156,13 @@
   white-space: nowrap;
 }
 
+.statusBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 100%;
+}
+
 .statusCell {
   display: flex;
   flex-direction: column;
@@ -208,6 +215,18 @@
   border-color: var(--border);
   background: var(--secondary);
   color: var(--secondary-foreground);
+}
+
+.statusWarning {
+  border-color: color-mix(in srgb, var(--warning, #d97706) 34%, var(--border));
+  background: color-mix(in srgb, var(--warning, #d97706) 10%, var(--card));
+  color: var(--warning, #d97706);
+}
+
+.statusError {
+  border-color: color-mix(in srgb, var(--destructive) 30%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 10%, var(--card));
+  color: var(--destructive);
 }
 
 .statusBarWrap {

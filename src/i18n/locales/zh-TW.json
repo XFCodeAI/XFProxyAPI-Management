@@ -512,9 +512,9 @@
     "excluded_models_label": "排除模型（excluded_models）",
     "excluded_models_placeholder": "用逗號或換行分隔，例如: model-a, gpt-5-*, *-preview",
     "excluded_models_hint": "儲存為陣列；會自動 trim、小寫、去重並排序。",
-    "disable_cooling_label": "停用冷卻（disable_cooling）",
-    "disable_cooling_placeholder": "例如: true / false / 1 / 0",
-    "disable_cooling_hint": "支援布林值、0/非0 數字或字串 true/false/1/0；無法解析時忽略。",
+    "disable_cooling_label": "忽略冷卻",
+    "disable_cooling_placeholder": "",
+    "disable_cooling_hint": "開啟後，即使該憑證請求失敗，它仍會在每個新請求中再次參與調度；單一請求內不會重複嘗試。",
     "note_label": "備註（note）",
     "note_placeholder": "輸入備註資訊，例如：張三的帳號",
     "note_hint": "選填，用於標記憑證用途或歸屬；留空則不寫入。",
@@ -528,6 +528,8 @@
     "prefix_proxy_invalid_json": "該驗證檔案不是 JSON 物件，無法編輯欄位。",
     "prefix_proxy_html_challenge": "下載到的是 HTML 驗證頁面，不是驗證 JSON 物件。請重新驗證或替換該驗證檔案後再編輯欄位。",
     "prefix_proxy_saved_success": "已更新驗證檔案「{{name}}」",
+    "field_save_confirmation_failed": "服務端未返回更新後的憑證，請重試。",
+    "disable_cooling_confirmation_failed": "服務端未確認忽略冷卻設定，請重試。",
     "quota_refresh_single": "重新整理配額",
     "quota_refresh_hint": "僅重新整理該驗證檔案的配額",
     "quota_refresh_success": "已重新整理「{{name}}」的配額",
@@ -2462,6 +2464,22 @@
       "none": "無",
       "notConfigured": "未設定",
       "defaultSuffix": "(預設)"
+    },
+    "runtime": {
+      "connectivity": {
+        "reachable": "連線：可達",
+        "unreachable": "連線：異常",
+        "unknown": "連線：未驗證"
+      },
+      "scheduling": {
+        "ready": "調度：就緒",
+        "disabled": "調度：已停用",
+        "disabled_by_wildcard": "調度：萬用字元停用",
+        "no_effective_model": "調度：無有效模型",
+        "cooling": "調度：冷卻中",
+        "unavailable": "調度：不可用",
+        "not_registered": "調度：未註冊"
+      }
     },
     "detail": {
       "title": "詳情",

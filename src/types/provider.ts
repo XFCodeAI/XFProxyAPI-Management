@@ -12,12 +12,30 @@ export interface ModelAlias {
   thinking?: Record<string, unknown>;
 }
 
+export type ProviderConnectivityStatus = 'unknown' | 'reachable' | 'unreachable';
+export type ProviderSchedulingStatus =
+  | 'ready'
+  | 'disabled'
+  | 'disabled_by_wildcard'
+  | 'no_effective_model'
+  | 'cooling'
+  | 'unavailable'
+  | 'not_registered';
+
+export interface ProviderRuntimeStatus {
+  connectivity: ProviderConnectivityStatus;
+  scheduling: ProviderSchedulingStatus;
+  ready: boolean;
+  nextRetryAfter?: string;
+}
+
 export interface ApiKeyEntry {
   name?: string;
   apiKey: string;
   proxyUrl?: string;
   authIndex?: string;
   groups?: string[];
+  runtimeStatus?: ProviderRuntimeStatus;
 }
 
 export interface CloakConfig {
@@ -44,6 +62,7 @@ export interface GeminiKeyConfig {
   excludedModels?: string[];
   disableCooling?: boolean;
   authIndex?: string;
+  runtimeStatus?: ProviderRuntimeStatus;
 }
 
 export interface ProviderKeyConfig {
@@ -63,6 +82,7 @@ export interface ProviderKeyConfig {
   cloak?: CloakConfig;
   experimentalCchSigning?: boolean;
   authIndex?: string;
+  runtimeStatus?: ProviderRuntimeStatus;
 }
 
 export interface OpenAIProviderConfig {
@@ -80,5 +100,6 @@ export interface OpenAIProviderConfig {
   testModel?: string;
   disableCooling?: boolean;
   authIndex?: string;
+  runtimeStatus?: ProviderRuntimeStatus;
   [key: string]: unknown;
 }

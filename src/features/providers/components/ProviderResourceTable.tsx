@@ -42,7 +42,7 @@ interface ProviderResourceTableProps {
   onToggleDisabled?: (resource: ProviderResource, disabled: boolean) => void;
 }
 
-const columnWidths = ['180px', '220px', '72px', '138px', '174px', '176px'];
+const columnWidths = ['160px', '174px', '210px', '70px', '130px', '176px'];
 
 const resolveStatusBarData = (
   resource: ProviderResource,
@@ -128,19 +128,41 @@ export function ProviderResourceTable({
   };
 
   const renderStatus = (r: ProviderResource) => {
-    if (r.disabled) {
-      return (
-        <span className={`${styles.statusBadge} ${styles.statusDisabled}`}>
-          <IconAlertTriangle size={14} />
-          {t('providersPage.status.disabled')}
-        </span>
-      );
-    }
+    const connectivity = r.runtimeStatus?.connectivity ?? 'unknown';
+    const scheduling = r.runtimeStatus?.scheduling ?? (r.disabled ? 'disabled' : 'not_registered');
+    const schedulingReady = r.runtimeStatus?.ready === true;
+    const connectivityClass =
+      connectivity === 'reachable'
+        ? styles.statusActive
+        : connectivity === 'unreachable'
+          ? styles.statusError
+          : styles.statusDisabled;
+    const schedulingClass = schedulingReady
+      ? styles.statusActive
+      : scheduling === 'cooling' || scheduling === 'no_effective_model'
+        ? styles.statusWarning
+        : scheduling === 'unavailable'
+          ? styles.statusError
+          : styles.statusDisabled;
+
     return (
-      <span className={`${styles.statusBadge} ${styles.statusActive}`}>
-        <IconCheckCircle2 size={14} />
-        {t('providersPage.status.active')}
-      </span>
+      <div className={styles.statusBadges}>
+        <span className={`${styles.statusBadge} ${connectivityClass}`}>
+          {connectivity === 'reachable' ? (
+            <IconCheckCircle2 size={14} />
+          ) : (
+            <IconAlertTriangle size={14} />
+          )}
+          {t(`providersPage.runtime.connectivity.${connectivity}`)}
+        </span>
+        <span
+          className={`${styles.statusBadge} ${schedulingClass}`}
+          title={r.runtimeStatus?.nextRetryAfter}
+        >
+          {schedulingReady ? <IconCheckCircle2 size={14} /> : <IconAlertTriangle size={14} />}
+          {t(`providersPage.runtime.scheduling.${scheduling}`)}
+        </span>
+      </div>
     );
   };
 
@@ -250,10 +272,10 @@ export function ProviderResourceTable({
       <TableHeader>
         <TableRow>
           <TableHead>{t('providersPage.table.key')}</TableHead>
+          <TableHead>{t('providersPage.table.status')}</TableHead>
           <TableHead>{t('providersPage.table.baseUrl')}</TableHead>
           <TableHead>{t('providersPage.table.prefix')}</TableHead>
           <TableHead>{t('providersPage.table.models')}</TableHead>
-          <TableHead>{t('providersPage.table.status')}</TableHead>
           <TableHead alignRight className={styles.actionsHead}>
             {t('providersPage.table.actions')}
           </TableHead>
@@ -264,15 +286,6 @@ export function ProviderResourceTable({
           return (
             <TableRow key={resource.id} selected={resource.id === selectedId}>
               <TableCell>{renderPrimary(resource)}</TableCell>
-              <TableCell>{renderBaseUrl(resource)}</TableCell>
-              <TableCell>
-                {resource.prefix ? (
-                  <span className={styles.chip}>{resource.prefix}</span>
-                ) : (
-                  <span className={styles.baseUrl}>{t('providersPage.status.none')}</span>
-                )}
-              </TableCell>
-              <TableCell>{renderModelsSummary(resource)}</TableCell>
               <TableCell>
                 <div className={styles.statusCell}>
                   {renderStatus(resource)}
@@ -301,6 +314,15 @@ export function ProviderResourceTable({
                   ) : null}
                 </div>
               </TableCell>
+              <TableCell>{renderBaseUrl(resource)}</TableCell>
+              <TableCell>
+                {resource.prefix ? (
+                  <span className={styles.chip}>{resource.prefix}</span>
+                ) : (
+                  <span className={styles.baseUrl}>{t('providersPage.status.none')}</span>
+                )}
+              </TableCell>
+              <TableCell>{renderModelsSummary(resource)}</TableCell>
               <TableCell
                 alignRight
                 className={[

@@ -20,7 +20,7 @@ import type {
 const serializeHeaders = (headers?: Record<string, string>) =>
   headers && Object.keys(headers).length ? headers : undefined;
 
-const RESPONSE_ONLY_FIELDS = ['auth-index'] as const;
+const RESPONSE_ONLY_FIELDS = ['auth-index', 'runtime-status'] as const;
 
 const PROVIDER_COMMON_KEY_FIELDS = [
   'name',
@@ -380,7 +380,7 @@ const serializeApiKeyEntry = (entry: ApiKeyEntry) => {
   return payload;
 };
 
-const serializeProviderKey = (config: ProviderKeyConfig) => {
+export const serializeProviderKey = (config: ProviderKeyConfig) => {
   const payload: Record<string, unknown> = { 'api-key': config.apiKey };
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
@@ -420,7 +420,7 @@ const serializeProviderKey = (config: ProviderKeyConfig) => {
   return payload;
 };
 
-const serializeXAIKey = (config: ProviderKeyConfig): Record<string, unknown> => ({
+export const serializeXAIKey = (config: ProviderKeyConfig): Record<string, unknown> => ({
   name: config.name?.trim() ?? '',
   'api-key': config.apiKey.trim(),
   groups: config.groups ?? [],
@@ -467,7 +467,7 @@ const serializeVertexKey = (config: ProviderKeyConfig) => {
   return payload;
 };
 
-const serializeGeminiKey = (config: GeminiKeyConfig) => {
+export const serializeGeminiKey = (config: GeminiKeyConfig) => {
   const payload: Record<string, unknown> = { 'api-key': config.apiKey };
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;

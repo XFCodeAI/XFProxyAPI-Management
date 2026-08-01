@@ -512,9 +512,9 @@
     "excluded_models_label": "排除模型（excluded_models）",
     "excluded_models_placeholder": "用逗号或换行分隔，例如: model-a, gpt-5-*, *-preview",
     "excluded_models_hint": "保存为数组；会自动 trim、小写、去重并排序。",
-    "disable_cooling_label": "禁用冷却（disable_cooling）",
-    "disable_cooling_placeholder": "例如: true / false / 1 / 0",
-    "disable_cooling_hint": "支持布尔值、0/非0 数字或字符串 true/false/1/0；无法解析时忽略。",
+    "disable_cooling_label": "忽略冷却",
+    "disable_cooling_placeholder": "",
+    "disable_cooling_hint": "开启后，即使该凭证请求失败，它仍会在每个新请求中再次参与调度；单个请求内不会重复尝试。",
     "note_label": "备注（note）",
     "note_placeholder": "输入备注信息，例如：张三的账号",
     "note_hint": "可选，用于标记凭证用途或归属；留空则不写入。",
@@ -528,6 +528,8 @@
     "prefix_proxy_invalid_json": "该认证文件不是 JSON 对象，无法编辑字段。",
     "prefix_proxy_html_challenge": "下载到的是 HTML 验证页面，不是认证 JSON 对象。请重新认证或替换该认证文件后再编辑字段。",
     "prefix_proxy_saved_success": "已更新认证文件 \"{{name}}\"",
+    "field_save_confirmation_failed": "服务端未返回更新后的凭证，请重试。",
+    "disable_cooling_confirmation_failed": "服务端未确认忽略冷却设置，请重试。",
     "quota_refresh_single": "刷新额度",
     "quota_refresh_hint": "仅刷新该认证文件的额度",
     "quota_refresh_success": "已刷新 \"{{name}}\" 的额度",
@@ -2467,6 +2469,22 @@
       "none": "无",
       "notConfigured": "未配置",
       "defaultSuffix": "(默认)"
+    },
+    "runtime": {
+      "connectivity": {
+        "reachable": "连接：可达",
+        "unreachable": "连接：异常",
+        "unknown": "连接：未验证"
+      },
+      "scheduling": {
+        "ready": "调度：就绪",
+        "disabled": "调度：已停用",
+        "disabled_by_wildcard": "调度：通配符停用",
+        "no_effective_model": "调度：无有效模型",
+        "cooling": "调度：冷却中",
+        "unavailable": "调度：不可用",
+        "not_registered": "调度：未注册"
+      }
     },
     "detail": {
       "title": "详情",

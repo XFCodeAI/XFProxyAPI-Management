@@ -17,13 +17,14 @@ import { normalizeOauthModelAliasEntries, serializeOauthModelAliases } from './o
 export type { AuthFileSessionValidationFailure } from './sessionValidationFailure';
 
 type StatusError = { status?: number };
-type AuthFileStatusResponse = {
+export type AuthFileMutationResponse = {
   status: string;
-  disabled: boolean;
+  disabled?: boolean;
   files?: AuthFileEntry[];
   revision?: number;
   inventory_id?: string;
 };
+type AuthFileStatusResponse = AuthFileMutationResponse & { disabled: boolean };
 type AuthFileEntry = AuthFilesResponse['files'][number];
 export type AuthFileFieldsPatch = {
   alias?: string;
@@ -33,6 +34,7 @@ export type AuthFileFieldsPatch = {
   headers?: Record<string, string>;
   priority?: number;
   fallback?: boolean;
+  disable_cooling?: boolean;
   websockets?: boolean;
   using_api?: boolean;
   note?: string;
@@ -605,7 +607,7 @@ export const authFilesApi = {
     apiClient.patch<AuthFileStatusResponse>('/auth-files/status', { name, disabled }),
 
   patchFields: (name: string, fields: AuthFileFieldsPatch) =>
-    apiClient.patch('/auth-files/fields', { name, ...fields }),
+    apiClient.patch<AuthFileMutationResponse>('/auth-files/fields', { name, ...fields }),
 
   requestManualRefresh: (name: string) =>
     apiClient.patch('/auth-files/fields', {

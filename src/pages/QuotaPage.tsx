@@ -257,7 +257,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     closePrefixProxyEditor,
     handlePrefixProxyChange,
     handlePrefixProxySave,
-  } = useAuthFilesPrefixProxyEditor({ disableControls, loadFiles });
+  } = useAuthFilesPrefixProxyEditor({ disableControls });
 
   const quotaProviders = useMemo<QuotaProviderDefinition[]>(
     () => [...QUOTA_PROVIDERS, ...pluginProviders],
