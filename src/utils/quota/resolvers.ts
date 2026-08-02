@@ -22,32 +22,6 @@ const resolveCodexAuthInfo = (value: unknown): Record<string, unknown> | null =>
   return nested ?? payload;
 };
 
-export function extractCodexChatgptAccountId(value: unknown): string | null {
-  const payload = parseIdTokenPayload(value);
-  if (!payload) return null;
-  return normalizeStringValue(payload.chatgpt_account_id ?? payload.chatgptAccountId);
-}
-
-export function resolveCodexChatgptAccountId(file: AuthFileItem): string | null {
-  const metadata =
-    file && typeof file.metadata === 'object' && file.metadata !== null
-      ? (file.metadata as Record<string, unknown>)
-      : null;
-  const attributes =
-    file && typeof file.attributes === 'object' && file.attributes !== null
-      ? (file.attributes as Record<string, unknown>)
-      : null;
-
-  const candidates = [file.id_token, metadata?.id_token, attributes?.id_token];
-
-  for (const candidate of candidates) {
-    const id = extractCodexChatgptAccountId(candidate);
-    if (id) return id;
-  }
-
-  return null;
-}
-
 export function resolveCodexPlanType(file: AuthFileItem): string | null {
   const metadata =
     file && typeof file.metadata === 'object' && file.metadata !== null

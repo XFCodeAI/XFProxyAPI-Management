@@ -116,19 +116,6 @@ export const CLAUDE_USAGE_WINDOW_KEYS = [
   { key: 'iguana_necktie', id: 'iguana-necktie', labelKey: 'claude_quota.iguana_necktie' },
 ] as const;
 
-// Codex API configuration
-export const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
-export const CODEX_RATE_LIMIT_RESET_CREDITS_URL =
-  'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits';
-export const CODEX_RATE_LIMIT_RESET_CREDITS_CONSUME_URL =
-  'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume';
-
-export const CODEX_REQUEST_HEADERS = {
-  Authorization: 'Bearer $TOKEN$',
-  'Content-Type': 'application/json',
-  'User-Agent': 'codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal',
-};
-
 // Kimi API configuration
 export const KIMI_USAGE_URL = 'https://api.kimi.com/coding/v1/usages';
 

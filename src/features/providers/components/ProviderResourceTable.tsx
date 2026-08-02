@@ -223,15 +223,22 @@ export function ProviderResourceTable({
         </div>
       );
     }
+    const primaryName = r.name ?? r.apiKeyPreview ?? '—';
+    const secondaryDetails = [
+      r.name && r.apiKeyPreview ? r.apiKeyPreview : null,
+      r.authIndex ? `auth: ${r.authIndex}` : null,
+    ].filter((value): value is string => Boolean(value));
     return (
       <div className={styles.primaryCell}>
         <div className={styles.primaryTitleRow}>
-          <span className={styles.primaryName}>{r.apiKeyPreview ?? '—'}</span>
+          <span className={styles.primaryName}>{primaryName}</span>
           {r.fallback ? (
             <span className={styles.fallbackBadge}>{t('providersPage.table.fallbackTag')}</span>
           ) : null}
         </div>
-        {r.authIndex ? <span className={styles.primarySub}>auth: {r.authIndex}</span> : null}
+        {secondaryDetails.length > 0 ? (
+          <span className={styles.primarySub}>{secondaryDetails.join(' · ')}</span>
+        ) : null}
         {visibleGroups.length > 0 ? (
           <div className={styles.groupList}>
             {visibleGroups.map((group) => (

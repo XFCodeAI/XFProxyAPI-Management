@@ -187,14 +187,42 @@ export interface CodexQuotaWindow {
   label: string;
   labelKey?: string;
   labelParams?: Record<string, string | number>;
+  source: 'primary' | 'secondary';
   usedPercent: number | null;
+  limitWindowSeconds: number | null;
   resetLabel: string;
+}
+
+export interface CodexQuotaLimit {
+  id: string;
+  label: string;
+  labelKey?: string;
+  labelParams?: Record<string, string | number>;
+  meteredFeature?: string | null;
+  allowed: boolean | null;
+  limitReached: boolean | null;
+  windows: CodexQuotaWindow[];
+}
+
+export interface CodexQuotaAccountEvidence {
+  selectedAccountFingerprint: string;
+  upstreamAccountFingerprint: string | null;
+  tokenClaimAccountFingerprint: string | null;
+  credentialPlanType: string | null;
+  upstreamPlanType: string | null;
+  fedRAMP: boolean;
+  fedRAMPKnown: boolean;
+  accountMatchesUpstream: boolean | null;
+  tokenClaimsPresent: boolean;
+  tokenClaimMismatch: boolean;
 }
 
 export interface CodexQuotaState {
   status: 'idle' | 'loading' | 'success' | 'error';
-  windows: CodexQuotaWindow[];
-  planType?: string | null;
+  limits: CodexQuotaLimit[];
+  account?: CodexQuotaAccountEvidence | null;
+  observedAt?: string | null;
+  observationStale?: boolean;
   subscriptionActiveUntil?: string | number | null;
   rateLimitResetCreditsAvailableCount?: number | null;
   rateLimitResetCredits?: CodexRateLimitResetCredit[];

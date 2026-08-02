@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 
 const server = await createServer({
@@ -7,85 +9,256 @@ const server = await createServer({
   logLevel: 'silent',
 });
 
-const result = (statusCode, body = null) => ({
-  statusCode,
-  header: {},
-  bodyText: body === null ? '' : JSON.stringify(body),
-  body,
+const t = (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key);
+const styles = new Proxy({}, { get: (_target, key) => String(key) });
+const helpers = {
+  styles,
+  QuotaProgressBar: ({ percent }) =>
+    React.createElement('span', { 'data-progress-percent': percent ?? 'unknown' }),
+};
+
+const accountEvidence = (overrides = {}) => ({
+  selectedAccountFingerprint: 'selected123456',
+  upstreamAccountFingerprint: 'upstream12345',
+  tokenClaimAccountFingerprint: 'claim12345678',
+  credentialPlanType: 'team',
+  upstreamPlanType: 'team',
+  fedRAMP: false,
+  fedRAMPKnown: true,
+  accountMatchesUpstream: true,
+  tokenClaimsPresent: true,
+  tokenClaimMismatch: false,
+  ...overrides,
 });
+
+const emptyResetCredits = {
+  availableCount: null,
+  credits: [],
+  error: '',
+  upstreamStatus: null,
+};
 
 try {
   const { CODEX_CONFIG } = await server.ssrLoadModule('/src/components/quota/quotaConfigs.ts');
-  const { apiCallApi } = await server.ssrLoadModule('/src/services/api/index.ts');
-  const { CODEX_RATE_LIMIT_RESET_CREDITS_URL, CODEX_USAGE_URL } = await server.ssrLoadModule(
-    '/src/utils/quota/index.ts'
-  );
-  const originalRequest = apiCallApi.request;
+  const { codexQuotaApi } = await server.ssrLoadModule('/src/services/api/index.ts');
+  const originalGet = codexQuotaApi.get;
   const requests = [];
 
   try {
-    apiCallApi.request = async (payload) => {
-      requests.push(payload);
-      if (payload.url === CODEX_RATE_LIMIT_RESET_CREDITS_URL) {
-        return result(404, { error: 'Not available' });
-      }
-      assert.equal(payload.url, CODEX_USAGE_URL);
-      return result(200, {
-        additional_rate_limits: [
-          {
-            limit_name: 'Spark',
-            rate_limit: {
-              primary_window: {
-                limit_window_seconds: 604800,
-                used_percent: 80,
-                reset_at: 1_800_000_000,
-              },
-              secondary_window: {
-                limit_window_seconds: 18000,
-                used_percent: 10,
-                reset_at: 1_800_000_000,
-              },
-            },
-          },
-          {
-            limit_name: 'Team',
-            rate_limit: {
-              primary_window: {
-                limit_window_seconds: 2592000,
-                used_percent: 60,
-                reset_at: 1_800_000_000,
-              },
-              secondary_window: {
-                limit_window_seconds: 18000,
-                used_percent: 20,
-                reset_at: 1_800_000_000,
+    codexQuotaApi.get = async (authIndex) => {
+      requests.push(authIndex);
+      return {
+        authIndex,
+        account: accountEvidence(),
+        observedAt: new Date().toISOString(),
+        subscriptionActiveUntil: null,
+        usage: {
+          additional_rate_limits: [
+            {
+              limit_name: 'Spark',
+              rate_limit: {
+                allowed: true,
+                limit_reached: false,
+                primary_window: {
+                  limit_window_seconds: 604800,
+                  used_percent: 80,
+                  reset_at: 1_800_000_000,
+                },
+                secondary_window: {
+                  limit_window_seconds: 18000,
+                  used_percent: 10,
+                  reset_at: 1_800_000_000,
+                },
               },
             },
-          },
-        ],
-      });
+            {
+              limit_name: 'Team',
+              rate_limit: {
+                allowed: true,
+                limit_reached: false,
+                primary_window: {
+                  limit_window_seconds: 2592000,
+                  used_percent: 60,
+                  reset_at: 1_800_000_000,
+                },
+                secondary_window: {
+                  limit_window_seconds: 18000,
+                  used_percent: 20,
+                  reset_at: 1_800_000_000,
+                },
+              },
+            },
+          ],
+        },
+        resetCredits: emptyResetCredits,
+      };
     };
 
-    const quota = await CODEX_CONFIG.fetchQuota(
+    const classified = await CODEX_CONFIG.fetchQuota(
       { name: 'codex.json', type: 'codex', auth_index: 'codex:1' },
-      (key) => key
+      t
     );
 
     assert.deepEqual(
-      quota.windows.map(({ id, usedPercent }) => ({ id, usedPercent })),
+      classified.limits.flatMap((limit) =>
+        limit.windows.map(({ id, source, usedPercent }) => ({ id, source, usedPercent }))
+      ),
       [
-        { id: 'spark-five-hour-0', usedPercent: 10 },
-        { id: 'spark-weekly-0', usedPercent: 80 },
-        { id: 'team-five-hour-1', usedPercent: 20 },
-        { id: 'team-monthly-1', usedPercent: 60 },
+        { id: 'spark-five-hour-0', source: 'secondary', usedPercent: 10 },
+        { id: 'spark-weekly-0', source: 'primary', usedPercent: 80 },
+        { id: 'team-five-hour-1', source: 'secondary', usedPercent: 20 },
+        { id: 'team-monthly-1', source: 'primary', usedPercent: 60 },
+      ]
+    );
+    assert.equal(classified.observationStale, false);
+    const classifiedHtml = renderToStaticMarkup(
+      CODEX_CONFIG.renderQuotaItems(CODEX_CONFIG.buildSuccessState(classified), t, helpers)
+    );
+    assert.match(classifiedHtml, /codex_quota\.workspace_match_yes/);
+    assert.equal(classifiedHtml.includes('codex_quota.observed_at_stale'), false);
+    assert.equal(
+      requests.every((authIndex) => authIndex === 'codex:1'),
+      true
+    );
+
+    codexQuotaApi.get = async (authIndex) => ({
+      authIndex,
+      account: accountEvidence({
+        credentialPlanType: 'plus',
+        upstreamPlanType: 'team',
+        accountMatchesUpstream: false,
+        tokenClaimMismatch: true,
+      }),
+      observedAt: '2000-01-01T00:00:00Z',
+      subscriptionActiveUntil: null,
+      usage: {
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          primary_window: {
+            limit_window_seconds: 18000,
+            used_percent: 25,
+            reset_at: 1_800_000_000,
+          },
+          secondary_window: {
+            limit_window_seconds: 604800,
+            used_percent: 40,
+            reset_at: 1_800_000_000,
+          },
+        },
+        code_review_rate_limit: {
+          allowed: false,
+          limit_reached: true,
+          primary_window: {
+            limit_window_seconds: 18000,
+            reset_at: 1_800_000_000,
+          },
+          secondary_window: null,
+        },
+        additional_rate_limits: [
+          {
+            limit_name: 'codex_feature',
+            metered_feature: 'codex_feature',
+            rate_limit: {
+              allowed: false,
+              limit_reached: true,
+              primary_window: null,
+              secondary_window: null,
+            },
+          },
+          {
+            limit_name: 'unknown_feature',
+            metered_feature: 'unknown_feature',
+            rate_limit: null,
+          },
+        ],
+      },
+      resetCredits: {
+        availableCount: 1,
+        credits: [
+          {
+            id: 'sanitized-credit',
+            status: 'available',
+            grantedAt: '2029-01-01T00:00:00Z',
+            expiresAt: '2030-01-01T00:00:00Z',
+          },
+        ],
+        error: '',
+        upstreamStatus: null,
+      },
+    });
+
+    const facts = await CODEX_CONFIG.fetchQuota(
+      { name: 'codex.json', type: 'codex', auth_index: 'codex:2' },
+      t
+    );
+    assert.equal(facts.observationStale, true);
+    assert.equal(facts.account.accountMatchesUpstream, false);
+    assert.equal(facts.account.credentialPlanType, 'plus');
+    assert.equal(facts.account.upstreamPlanType, 'team');
+    assert.equal(facts.rateLimitResetCreditsAvailableCount, 1);
+    assert.deepEqual(
+      facts.limits.map(({ id, allowed, limitReached, windows }) => ({
+        id,
+        allowed,
+        limitReached,
+        windowCount: windows.length,
+      })),
+      [
+        { id: 'main', allowed: true, limitReached: false, windowCount: 2 },
+        { id: 'code-review', allowed: false, limitReached: true, windowCount: 1 },
+        {
+          id: 'additional-codex-feature-0',
+          allowed: false,
+          limitReached: true,
+          windowCount: 0,
+        },
+        {
+          id: 'additional-unknown-feature-1',
+          allowed: null,
+          limitReached: null,
+          windowCount: 0,
+        },
       ]
     );
     assert.equal(
-      requests.every(({ authIndex }) => authIndex === 'codex:1'),
-      true
+      facts.limits.find((limit) => limit.id === 'code-review').windows[0].usedPercent,
+      null
     );
+
+    const successState = CODEX_CONFIG.buildSuccessState(facts);
+    const html = renderToStaticMarkup(CODEX_CONFIG.renderQuotaItems(successState, t, helpers));
+    for (const expected of [
+      'codex_quota.upstream_plan_label',
+      'codex_quota.credential_plan_label',
+      'codex_quota.workspace_match_no',
+      'codex_quota.token_claim_mismatch',
+      'codex_quota.observed_at_stale',
+      'codex_quota.allowed_label',
+      'codex_quota.limit_reached_label',
+      'codex_quota.no_windows_for_limit',
+      'codex_quota.used_percent',
+      'codex_quota.used_percent_unknown',
+      'codex_quota.remaining_percent',
+      'codex_quota.window_source',
+      'codex_quota.window_duration',
+      'codex_quota.reset_credits_expiry_label',
+    ]) {
+      assert.match(html, new RegExp(expected.replaceAll('.', '\\.')));
+    }
+    for (const forbidden of ['$60', '$100', 'team balance', 'team allowance']) {
+      assert.equal(html.toLowerCase().includes(forbidden), false);
+    }
+
+    const loadingState = CODEX_CONFIG.buildLoadingState();
+    assert.equal(loadingState.status, 'loading');
+    assert.deepEqual(loadingState.limits, []);
+    const errorState = CODEX_CONFIG.buildErrorState('upstream failed', 502);
+    assert.equal(errorState.status, 'error');
+    assert.equal(errorState.error, 'upstream failed');
+    assert.equal(errorState.errorStatus, 502);
   } finally {
-    apiCallApi.request = originalRequest;
+    codexQuotaApi.get = originalGet;
   }
 } finally {
   await server.close();

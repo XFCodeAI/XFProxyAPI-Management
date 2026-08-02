@@ -151,6 +151,19 @@
   }
 }
 
+.identityAuditButton {
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-md);
+
+  > span:last-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+}
+
 .providerTab {
   appearance: none;
   display: inline-flex;
@@ -772,6 +785,130 @@
   text-transform: capitalize;
 }
 
+.codexEvidence {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  padding-block: 4px;
+
+  @include mobile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.codexEvidenceItem {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.codexEvidenceLabel {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+
+.codexEvidenceValue {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.codexEvidenceValueOk {
+  color: var(--success, #15803d);
+}
+
+.codexEvidenceValueWarning {
+  color: var(--destructive);
+}
+
+.codexEvidenceValueMuted {
+  color: var(--muted-foreground);
+}
+
+.codexLimit {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.codexLimit + .codexLimit {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.codexLimitHeader {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+
+  @include mobile {
+    flex-direction: column;
+  }
+}
+
+.codexLimitTitleGroup {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.codexLimitTitle {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.codexMeteredFeature {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.codexLimitFacts {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 10px;
+
+  @include mobile {
+    justify-content: flex-start;
+  }
+}
+
+.codexLimitFact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.codexLimitFactLabel {
+  color: var(--muted-foreground);
+}
+
+.codexLimitFactValue {
+  font-weight: 600;
+}
+
+.codexLimitEmpty {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .premiumPlanValue {
   display: inline-flex;
   align-items: center;
@@ -1203,6 +1340,7 @@
 
   .uploadButton,
   .legacyRepairButton,
+  .identityAuditButton,
   .authSettingsButton {
     width: 42px;
     height: 42px;

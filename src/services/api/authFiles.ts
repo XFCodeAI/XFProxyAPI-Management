@@ -150,6 +150,23 @@ export type AuthFileReconciliationResult = {
   completedAt: string;
 };
 
+export type CodexIdentityAuditIssue = {
+  name: string;
+  canonicalName: string;
+  issue: string;
+  workspaceFingerprint: string;
+  requiresReauthorization: boolean;
+  requiresReimport: boolean;
+  workspaceInferenceAvailable: boolean;
+};
+
+export type CodexIdentityAuditResult = {
+  status: string;
+  scanned: number;
+  issueCount: number;
+  issues: CodexIdentityAuditIssue[];
+};
+
 export const AUTH_FILE_INVALID_JSON_OBJECT_ERROR = 'AUTH_FILE_INVALID_JSON_OBJECT';
 
 const getStatusCode = (err: unknown): number | undefined => {
@@ -308,6 +325,40 @@ const normalizeReconciliationCounts = (value: unknown): AuthFileReconciliationCo
     runtimeRecords: normalizeCount(record.runtime_records),
     cleanupEntries: normalizeCount(record.cleanup_entries),
     cleanupConflicts: normalizeCount(record.cleanup_conflicts),
+  };
+};
+
+const normalizeCodexIdentityAuditIssue = (value: unknown): CodexIdentityAuditIssue | null => {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const name = String(record.name ?? '').trim();
+  const issue = String(record.issue ?? '').trim();
+  if (!name || !issue) return null;
+  return {
+    name,
+    canonicalName: String(record.canonical_name ?? '').trim(),
+    issue,
+    workspaceFingerprint: String(record.workspace_fingerprint ?? '').trim(),
+    requiresReauthorization: record.requires_reauthorization === true,
+    requiresReimport: record.requires_reimport === true,
+    workspaceInferenceAvailable: record.workspace_inference_available === true,
+  };
+};
+
+export const normalizeCodexIdentityAuditResult = (
+  payload: unknown
+): CodexIdentityAuditResult => {
+  const record = asRecord(payload);
+  const issues = Array.isArray(record.issues)
+    ? record.issues
+        .map(normalizeCodexIdentityAuditIssue)
+        .filter((issue): issue is CodexIdentityAuditIssue => issue !== null)
+    : [];
+  return {
+    status: String(record.status ?? '').trim(),
+    scanned: normalizeCount(record.scanned),
+    issueCount: normalizeCount(record.issue_count ?? issues.length),
+    issues,
   };
 };
 
@@ -585,6 +636,11 @@ export const buildManualRefreshExpiredAt = (nowMs = Date.now()): string =>
 
 export const authFilesApi = {
   list: async () => dedupeAuthFilesResponse(await apiClient.get<AuthFilesResponse>('/auth-files')),
+
+  getCodexIdentityAudit: async (): Promise<CodexIdentityAuditResult> =>
+    normalizeCodexIdentityAuditResult(
+      await apiClient.get('/auth-files/codex-identity-audit')
+    ),
 
   reconcileBindings: async () =>
     normalizeAuthFileReconciliationResult(await apiClient.post('/auth-files/reconcile')),

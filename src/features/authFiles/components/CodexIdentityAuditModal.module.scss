@@ -1,0 +1,149 @@
+.content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.summary {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+
+  span:last-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--foreground);
+  }
+
+  span[data-state='warning'] {
+    color: var(--warning, #d18b00);
+  }
+
+  span[data-state='ok'] {
+    color: var(--success, #16803a);
+  }
+}
+
+.issueList {
+  display: flex;
+  max-height: min(28rem, 58vh);
+  min-width: 0;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  overscroll-behavior: contain;
+}
+
+.issueRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.72fr);
+  gap: 1rem;
+  align-items: start;
+  border-bottom: 1px solid var(--border);
+  padding: 0.8rem 0.9rem;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.issueMain,
+.issueMeta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.issueMain {
+  strong,
+  span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  strong {
+    color: var(--foreground);
+    font-size: 0.875rem;
+    line-height: 1.35;
+    font-weight: 600;
+  }
+
+  span {
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+}
+
+.issueLabel {
+  color: var(--warning, #d18b00) !important;
+}
+
+.issueMeta {
+  align-items: flex-end;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: right;
+
+  span {
+    overflow-wrap: anywhere;
+  }
+}
+
+.emptyState,
+.loadingState {
+  display: flex;
+  min-height: 9rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--success, #16803a);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.loadingState {
+  color: var(--muted-foreground);
+}
+
+.errorBox {
+  border: 1px solid color-mix(in srgb, var(--destructive) 58%, var(--border));
+  border-radius: 0.5rem;
+  padding: 0.75rem 0.875rem;
+  background: color-mix(in srgb, var(--destructive) 8%, var(--background));
+  color: var(--destructive);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .issueRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+
+  .issueMeta {
+    align-items: flex-start;
+    text-align: left;
+  }
+}

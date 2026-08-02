@@ -2,12 +2,7 @@
  * Normalization and parsing functions for quota data.
  */
 
-import type {
-  ClaudeUsagePayload,
-  CodexUsagePayload,
-  KimiUsagePayload,
-  XaiBillingPayload,
-} from '@/types';
+import type { ClaudeUsagePayload, KimiUsagePayload, XaiBillingPayload } from '@/types';
 import { normalizeAuthIndex } from '@/utils/authIndex';
 
 export { normalizeAuthIndex };
@@ -148,23 +143,6 @@ export function parseClaudeUsagePayload(payload: unknown): ClaudeUsagePayload | 
   }
   if (typeof payload === 'object') {
     return payload as ClaudeUsagePayload;
-  }
-  return null;
-}
-
-export function parseCodexUsagePayload(payload: unknown): CodexUsagePayload | null {
-  if (payload === undefined || payload === null) return null;
-  if (typeof payload === 'string') {
-    const trimmed = payload.trim();
-    if (!trimmed) return null;
-    try {
-      return JSON.parse(trimmed) as CodexUsagePayload;
-    } catch {
-      return null;
-    }
-  }
-  if (typeof payload === 'object') {
-    return payload as CodexUsagePayload;
   }
   return null;
 }

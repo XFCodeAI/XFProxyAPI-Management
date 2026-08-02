@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Upload, Wrench } from 'lucide-react';
+import { ShieldAlert, Upload, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -26,6 +26,7 @@ import { AuthImportModal } from '@/features/authFiles/components/AuthImportModal
 import { AuthSessionImportResultModal } from '@/features/authFiles/components/AuthSessionImportResultModal';
 import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components/AuthFilesPrefixProxyEditorModal';
 import { AuthFilesLegacyRepairModal } from '@/features/authFiles/components/AuthFilesLegacyRepairModal';
+import { CodexIdentityAuditModal } from '@/features/authFiles/components/CodexIdentityAuditModal';
 import { useAuthFilesData } from '@/features/authFiles/hooks/useAuthFilesData';
 import { useAuthFilesModels } from '@/features/authFiles/hooks/useAuthFilesModels';
 import { useAuthFilesPrefixProxyEditor } from '@/features/authFiles/hooks/useAuthFilesPrefixProxyEditor';
@@ -232,6 +233,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [authSettingsOpen, setAuthSettingsOpen] = useState(false);
   const [legacyRepairOpen, setLegacyRepairOpen] = useState(false);
+  const [identityAuditOpen, setIdentityAuditOpen] = useState(false);
   const [visibleQuotaCredentials, setVisibleQuotaCredentials] = useState<{
     providerId: string;
     files: AuthFileItem[];
@@ -719,6 +721,19 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           <Wrench size={16} aria-hidden="true" />
           <span>{t('common.repair', { defaultValue: '修复' })}</span>
         </TooltipButton>
+        {activeProvider.kind === 'builtin' && activeProvider.id === 'codex' ? (
+          <TooltipButton
+            variant="secondary"
+            size="sm"
+            className={styles.identityAuditButton}
+            onClick={() => setIdentityAuditOpen(true)}
+            disabled={disableControls}
+            label={t('auth_files.codex_identity_audit_open')}
+          >
+            <ShieldAlert size={16} aria-hidden="true" />
+            <span>{t('auth_files.codex_identity_audit_short')}</span>
+          </TooltipButton>
+        ) : null}
         <TooltipButton
           variant="secondary"
           size="sm"
@@ -875,6 +890,10 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
         open={legacyRepairOpen}
         onClose={() => setLegacyRepairOpen(false)}
         onCompleted={refreshAfterLegacyRepair}
+      />
+      <CodexIdentityAuditModal
+        open={identityAuditOpen}
+        onClose={() => setIdentityAuditOpen(false)}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import { getProviderTotalStats, type ProviderRecentUsageMap } from '@/components
 import type { OpenAIProviderConfig } from '@/types';
 import { maskApiKey } from '@/utils/format';
 import type { ProviderResource } from '../types';
+import { SupplierBillingProbeSection } from './SupplierBillingProbeSection';
 import styles from './forms/sharedForm.module.scss';
 
 interface ResourceDetailViewProps {
@@ -77,6 +78,9 @@ export function ResourceDetailView({ resource, usageByProvider }: ResourceDetail
                 <div key={`${entry.apiKey}-${entryIndex}`} className={styles.apiKeyEntryCard}>
                   <span className={styles.apiKeyEntryIndex}>{entryIndex + 1}</span>
                   <span className={styles.apiKeyEntryKey}>{maskApiKey(entry.apiKey)}</span>
+                  {entry.name?.trim() ? (
+                    <span className={styles.apiKeyEntryAlias}>{entry.name.trim()}</span>
+                  ) : null}
                   {entry.proxyUrl ? (
                     <span className={styles.apiKeyEntryProxy}>{entry.proxyUrl}</span>
                   ) : null}
@@ -101,6 +105,10 @@ export function ResourceDetailView({ resource, usageByProvider }: ResourceDetail
               );
             })}
           </div>
+          <SupplierBillingProbeSection
+            providerName={openaiConfig.name}
+            apiKeyEntries={apiKeyEntries}
+          />
         </div>
       ) : null}
 

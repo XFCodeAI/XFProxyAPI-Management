@@ -1337,6 +1337,17 @@
   word-break: break-all;
 }
 
+.apiKeyEntryAlias {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .apiKeyEntryProxy {
   color: var(--muted-foreground);
   font-size: 11px;
@@ -1400,6 +1411,147 @@
   color: var(--destructive);
 }
 
+.billingProbeSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.billingProbeHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.billingProbeHint {
+  margin: 2px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.billingProbeList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.billingProbeItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) 30px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--background) 82%, var(--card));
+}
+
+.billingProbeIdentity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.billingProbeIndex {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.billingProbeKeyText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.billingProbeAlias {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billingProbeKeyText .apiKeyEntryKey {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billingProbeResult {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.billingProbeStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.billingProbeIcon {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+
+.billingProbeEffectiveRate {
+  color: var(--foreground);
+  font-family: $font-mono;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.billingProbeMeta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billingProbeRefresh {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--muted-foreground);
+
+  &:hover:not(:disabled) {
+    color: var(--foreground);
+  }
+}
+
 @include mobile {
   .form {
     gap: 14px;
@@ -1453,6 +1605,14 @@
 
   .sponsorGroupSummary {
     display: none;
+  }
+
+  .billingProbeItem {
+    grid-template-columns: minmax(0, 1fr) 30px;
+  }
+
+  .billingProbeResult {
+    grid-column: 1 / -1;
   }
 
   .entryCardHeaderRight {

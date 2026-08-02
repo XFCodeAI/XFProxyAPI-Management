@@ -88,7 +88,11 @@ export function ProviderStatusBar({ statusData, styles: stylesProp }: ProviderSt
   };
 
   return (
-    <div className={s.statusBar}>
+    <div
+      className={s.statusBar}
+      aria-label={t('status_bar.recent_request_success_rate_hint')}
+      title={t('status_bar.recent_request_success_rate_hint')}
+    >
       <div className={s.statusBlocks} ref={blocksRef}>
         {statusData.blockDetails.map((detail, idx) => {
           const isIdle = detail.rate === -1;
@@ -117,7 +121,10 @@ export function ProviderStatusBar({ statusData, styles: stylesProp }: ProviderSt
           );
         })}
       </div>
-      <span className={`${s.statusRate} ${rateClass}`}>
+      <span
+        className={`${s.statusRate} ${rateClass}`}
+        title={t('status_bar.recent_request_success_rate_hint')}
+      >
         {hasData ? formatSuccessRate(statusData.successRate) : '--'}
       </span>
     </div>

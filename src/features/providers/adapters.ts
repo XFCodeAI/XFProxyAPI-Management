@@ -196,7 +196,7 @@ export function claudeToResource(config: ProviderKeyConfig, index: number): Prov
 export function claudeApiToResource(config: ProviderKeyConfig, index: number): ProviderResource {
   return {
     ...providerKeyToResource('claudeApi', config, index),
-    name: CLAUDE_API_DISPLAY_NAME,
+    name: config.name?.trim() || CLAUDE_API_DISPLAY_NAME,
   };
 }
 
