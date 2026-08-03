@@ -10,8 +10,10 @@ import {
   captureQuotaCacheGeneration,
   commitIfQuotaCacheCurrent,
   getQuotaCredentialCacheKey,
+  runtimeObservationResourceKey,
   useNotificationStore,
   useQuotaStore,
+  useRuntimeObservationStore,
 } from '@/stores';
 import type { AuthFileItem } from '@/types';
 import { getStatusFromError } from '@/utils/quota';
@@ -184,6 +186,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
+  const runtimeResources = useRuntimeObservationStore((state) => state.resourcesByKey);
   const setQuota = useQuotaStore((state) => state[config.storeSetter]) as QuotaSetter<
     Record<string, TState>
   >;
@@ -597,6 +600,10 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
           <div ref={gridRef} className={config.gridClassName}>
             {visibleItems.map((item) => {
               const credentialCacheKey = getQuotaCredentialCacheKey(item);
+              const credentialID = String(item.id ?? '').trim();
+              const runtimeResource = credentialID
+                ? runtimeResources[runtimeObservationResourceKey('credential', credentialID)]
+                : undefined;
               const itemQuota = quota[credentialCacheKey];
               const isResettingQuota = resettingQuotaKey === credentialCacheKey;
               const canUseQuotaAction =
@@ -624,6 +631,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
                 <QuotaCard
                   key={item.name}
                   item={item}
+                  runtimeResource={runtimeResource}
                   quota={itemQuota}
                   i18nPrefix={config.i18nPrefix}
                   cardIdleMessageKey={config.cardIdleMessageKey}

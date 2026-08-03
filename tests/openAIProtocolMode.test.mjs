@@ -28,6 +28,10 @@ try {
     'preserve-openai'
   );
   assert.equal(
+    normalizeOpenAIProvider({ ...baseRecord, 'protocol-mode': 'auto' })?.protocolMode,
+    'auto'
+  );
+  assert.equal(
     normalizeOpenAIProvider({ ...baseRecord, 'retry-owner': 'upstream' })?.retryOwner,
     'upstream'
   );
@@ -39,6 +43,14 @@ try {
     protocolMode: 'preserve-openai',
   });
   assert.equal(preserved['protocol-mode'], 'preserve-openai');
+
+  const automatic = serializeOpenAIProvider({
+    name: 'gateway',
+    baseUrl: 'https://gateway.example/v1',
+    apiKeyEntries: [{ apiKey: 'supplier-key' }],
+    protocolMode: 'auto',
+  });
+  assert.equal(automatic['protocol-mode'], 'auto');
 
   const upstreamOwned = serializeOpenAIProvider({
     name: 'gateway',

@@ -12,7 +12,9 @@ import {
   IconTrash2,
 } from '@/components/ui/icons';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
+import { RuntimeCapacityBadge } from '@/components/runtime/RuntimeCapacityBadge';
 import type { AuthFileItem } from '@/types';
+import type { RuntimeObservationResource } from '@/types/runtimeObservation';
 import { resolveAuthProvider } from '@/utils/quota';
 import {
   normalizeRecentRequestAuthIndex,
@@ -21,6 +23,7 @@ import {
   statusBarDataFromRecentRequests,
 } from '@/utils/recentRequests';
 import { formatFileSize } from '@/utils/format';
+import { resolveAuthFileConcurrencySetting } from '@/utils/maxConcurrency';
 import {
   QUOTA_PROVIDER_TYPES,
   formatModified,
@@ -52,6 +55,7 @@ export type AuthFileCardProps = {
   manualRefreshing: Record<string, boolean>;
   quotaFilterType: QuotaProviderType | null;
   statusBarCache: Map<string, AuthFileStatusBarData>;
+  runtimeResource?: RuntimeObservationResource;
   onShowModels: (file: AuthFileItem) => void;
   onDownload: (name: string) => void;
   onManualRefresh: (file: AuthFileItem) => void;
@@ -95,6 +99,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     manualRefreshing,
     quotaFilterType,
     statusBarCache,
+    runtimeResource,
     onShowModels,
     onDownload,
     onManualRefresh,
@@ -104,10 +109,12 @@ export function AuthFileCard(props: AuthFileCardProps) {
     onToggleSelect,
   } = props;
 
-  const recentBuckets = normalizeRecentRequestBuckets(file.recent_requests ?? file.recentRequests);
+  const recentBuckets = runtimeResource
+    ? runtimeResource.recentRequests
+    : normalizeRecentRequestBuckets(file.recent_requests ?? file.recentRequests);
   const fileStats = {
-    success: normalizeUsageTotal(file.success),
-    failure: normalizeUsageTotal(file.failed),
+    success: runtimeResource?.success ?? normalizeUsageTotal(file.success),
+    failure: runtimeResource?.failed ?? normalizeUsageTotal(file.failed),
   };
   const isRuntimeOnly = isRuntimeOnlyAuthFile(file);
   const providerKey = normalizeProviderKey(String(file.type ?? file.provider ?? 'unknown'));
@@ -118,6 +125,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const typeColor = getTypeColor(providerKey, resolvedTheme);
   const typeLabel = getTypeLabel(t, providerKey);
   const providerIcon = getAuthFileIcon(providerKey, resolvedTheme);
+  const concurrency = resolveAuthFileConcurrencySetting(file);
 
   const quotaType =
     quotaFilterType && resolveQuotaType(file) === quotaFilterType ? quotaFilterType : null;
@@ -139,9 +147,10 @@ export function AuthFileCard(props: AuthFileCardProps) {
 
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;
   const authIndexKey = normalizeRecentRequestAuthIndex(rawAuthIndex);
-  const statusData =
-    (authIndexKey && statusBarCache.get(authIndexKey)) ||
-    statusBarDataFromRecentRequests(recentBuckets);
+  const statusData = runtimeResource
+    ? statusBarDataFromRecentRequests(recentBuckets)
+    : (authIndexKey && statusBarCache.get(authIndexKey)) ||
+      statusBarDataFromRecentRequests(recentBuckets);
   const rawStatusMessage = getAuthFileStatusMessage(file);
   const hasStatusWarning =
     Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase());
@@ -174,6 +183,8 @@ export function AuthFileCard(props: AuthFileCardProps) {
   return (
     <div
       className={`${styles.fileCard} ${compact ? styles.fileCardCompact : ''} ${providerCardClass} ${selected ? styles.fileCardSelected : ''} ${file.disabled ? styles.fileCardDisabled : ''}`}
+      data-auth-id={String(file.id ?? '').trim() || undefined}
+      data-runtime-id={runtimeResource?.id}
     >
       <div className={styles.fileCardLayout}>
         <div className={styles.fileCardMain}>
@@ -282,6 +293,11 @@ export function AuthFileCard(props: AuthFileCardProps) {
 
           <div className={`${styles.cardInsights} ${compact ? styles.cardInsightsCompact : ''}`}>
             <div className={`${styles.cardStats} ${compact ? styles.cardStatsCompact : ''}`}>
+              <RuntimeCapacityBadge
+                resource={runtimeResource}
+                mode={concurrency.mode}
+                maxConcurrency={concurrency.maxConcurrency}
+              />
               <div className={`${styles.statPill} ${styles.statSuccess}`}>
                 <span className={styles.statLabel}>{t('stats.success')}</span>
                 <span className={styles.statValue}>{fileStats.success}</span>

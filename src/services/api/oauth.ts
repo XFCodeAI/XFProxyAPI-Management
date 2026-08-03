@@ -7,7 +7,7 @@ import {
   isManagementOAuthProviderKey,
   normalizeManagementOAuthProviderKey,
 } from '@/utils/providerKeys';
-import type { ProxySelection } from '@/types';
+import type { ConcurrencyMode, ProxySelection } from '@/types';
 import { proxySelectionParams } from './proxyPools';
 
 export type BuiltInOAuthProvider = 'codex' | 'anthropic' | 'antigravity' | 'kimi' | 'xai';
@@ -26,6 +26,12 @@ export interface OAuthCallbackResponse {
 export interface OAuthCancelResponse {
   status: 'ok';
   canceled: boolean;
+}
+
+export interface OAuthStartOptions {
+  proxySelection?: ProxySelection;
+  concurrencyMode?: ConcurrencyMode;
+  maxConcurrency?: number;
 }
 
 export type OAuthCredentialDisposition = 'created' | 'updated' | 'rekeyed';
@@ -55,9 +61,17 @@ const normalizeProviderForManagementPath = (provider: string): string => {
 };
 
 export const oauthApi = {
-  startAuth: (provider: string, proxySelection?: ProxySelection) => {
+  startAuth: (provider: string, options: OAuthStartOptions = {}) => {
     const providerKey = normalizeProviderForManagementPath(provider);
-    const params: Record<string, string | boolean> = { ...proxySelectionParams(proxySelection) };
+    const params: Record<string, string | boolean> = {
+      ...proxySelectionParams(options.proxySelection),
+    };
+    if (options.concurrencyMode) {
+      params.concurrency_mode = options.concurrencyMode;
+    }
+    if (options.concurrencyMode === 'independent' && options.maxConcurrency !== undefined) {
+      params.max_concurrency = String(options.maxConcurrency);
+    }
     if (WEBUI_SUPPORTED.has(providerKey)) {
       params.is_webui = true;
     }

@@ -1,27 +1,17 @@
 import type {
-  GeminiKeyConfig,
+  ClaudeAuthMode,
   OpenAIProviderConfig,
   OpenAIProviderProtocolMode,
   OpenAIProviderRetryOwner,
   ProviderKeyConfig,
   ProviderRuntimeStatus,
+  ConcurrencyMode,
 } from '@/types';
 
 export type ProviderBrand =
-  | 'gemini'
-  | 'codex'
-  | 'xai'
-  | 'claude'
-  | 'claudeApi'
-  | 'vertex'
-  | 'openaiCompatibility'
-  | 'apikeyFun'
-  | 'code0'
-  | 'fennoAI'
-  | 'qiniuCloud'
-  | 'kimi';
+  'gemini' | 'codex' | 'xai' | 'claude' | 'vertex' | 'openaiCompatibility' | 'kimi';
 
-export type SponsorProviderBrand = 'apikeyFun' | 'code0' | 'fennoAI' | 'qiniuCloud' | 'kimi';
+export type SponsorProviderBrand = 'kimi';
 
 export const PROVIDER_SORT_BY_VALUES = ['name', 'priority', 'recent-success'] as const;
 export type ProviderSortBy = (typeof PROVIDER_SORT_BY_VALUES)[number];
@@ -34,15 +24,12 @@ export type ProviderResourceSelector =
   | { brand: 'codex'; apiKey: string; baseUrl?: string; index: number }
   | { brand: 'xai'; apiKey: string; baseUrl?: string; index: number }
   | { brand: 'claude'; apiKey: string; baseUrl?: string; index: number }
-  | { brand: 'claudeApi'; apiKey: string; baseUrl?: string; index: number }
   | { brand: 'vertex'; apiKey: string; baseUrl?: string; index: number }
   | { brand: 'openaiCompatibility'; name: string; index: number }
   | {
       brand: SponsorProviderBrand;
       openaiIndices: number[];
       claudeIndices: number[];
-      codexIndices: number[];
-      geminiIndices: number[];
     };
 
 export interface ProviderResourceFlags {
@@ -50,6 +37,12 @@ export interface ProviderResourceFlags {
   websockets?: boolean;
   isPlaceholder?: boolean;
   protocols?: string[];
+}
+
+export interface ProviderResourceBillingTarget {
+  providerBrand: string;
+  providerIndex: number;
+  apiKeyIndexes: number[];
 }
 
 export interface ProviderResource {
@@ -68,6 +61,8 @@ export interface ProviderResource {
   modelCount: number;
   models: string[];
   priority: number;
+  concurrencyMode: ConcurrencyMode | null;
+  maxConcurrency: number;
   fallback: boolean;
   headerCount: number;
   excludedModelCount: number;
@@ -77,6 +72,9 @@ export interface ProviderResource {
   flags: ProviderResourceFlags;
   selector: ProviderResourceSelector;
   raw: unknown;
+  usageRaw?: unknown;
+  billingRaw?: unknown;
+  billingTargets?: ProviderResourceBillingTarget[];
 }
 
 export interface ProviderGroup {
@@ -92,8 +90,6 @@ export interface ProviderSnapshot {
 export interface SponsorProviderRaw {
   openai: Array<{ config: OpenAIProviderConfig; index: number }>;
   claude: Array<{ config: ProviderKeyConfig; index: number }>;
-  codex: Array<{ config: ProviderKeyConfig; index: number }>;
-  gemini: Array<{ config: GeminiKeyConfig; index: number }>;
 }
 
 export interface ModelEntryInput {
@@ -105,7 +101,7 @@ export interface ModelEntryInput {
   thinkingJson?: string;
 }
 
-export type SponsorProtocol = 'openai' | 'codex' | 'claude' | 'gemini';
+export type SponsorProtocol = 'openai' | 'claude';
 
 export interface SponsorKeyEntryInput {
   protocol: SponsorProtocol;
@@ -118,6 +114,10 @@ export interface SponsorKeyEntryInput {
   disableCooling?: boolean;
   fallback?: boolean;
   priority?: number;
+  concurrencyMode?: ConcurrencyMode;
+  maxConcurrency?: number;
+  apiKeyConcurrencyMode?: ConcurrencyMode;
+  apiKeyMaxConcurrency?: number;
   models: ModelEntryInput[];
 }
 
@@ -128,6 +128,8 @@ export interface ApiKeyEntryInput {
   proxyUrl: string;
   authIndex?: string;
   groups?: string[];
+  concurrencyMode?: ConcurrencyMode;
+  maxConcurrency?: number;
 }
 
 export interface CloakInput {
@@ -142,6 +144,7 @@ export interface ProviderEntryFormInput {
   name: string;
   groups?: string[];
   baseUrl: string;
+  authMode?: ClaudeAuthMode | '';
   protocolMode?: OpenAIProviderProtocolMode;
   retryOwner?: OpenAIProviderRetryOwner;
   proxyUrl: string;
@@ -150,6 +153,8 @@ export interface ProviderEntryFormInput {
   disableCooling?: boolean;
   fallback: boolean;
   priority?: number;
+  concurrencyMode?: ConcurrencyMode;
+  maxConcurrency?: number;
 
   models: ModelEntryInput[];
   headers: Array<{ key: string; value: string }>;

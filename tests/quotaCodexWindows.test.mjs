@@ -38,6 +38,24 @@ const emptyResetCredits = {
   upstreamStatus: null,
 };
 
+const hiddenCredentialCardFacts = [
+  'codex_quota.upstream_plan_label',
+  'codex_quota.credential_plan_label',
+  'codex_quota.reset_credits_label',
+  'codex_quota.selected_workspace_label',
+  'codex_quota.upstream_workspace_label',
+  'codex_quota.workspace_match_label',
+  'codex_quota.workspace_match_yes',
+  'codex_quota.workspace_match_no',
+  'codex_quota.token_claim_workspace_label',
+  'codex_quota.token_claim_context_label',
+  'codex_quota.token_claim_match',
+  'codex_quota.token_claim_mismatch',
+  'codex_quota.fedramp_label',
+  'codex_quota.observed_at_label',
+  'codex_quota.observed_at_stale',
+];
+
 try {
   const { CODEX_CONFIG } = await server.ssrLoadModule('/src/components/quota/quotaConfigs.ts');
   const { codexQuotaApi } = await server.ssrLoadModule('/src/services/api/index.ts');
@@ -114,8 +132,12 @@ try {
     const classifiedHtml = renderToStaticMarkup(
       CODEX_CONFIG.renderQuotaItems(CODEX_CONFIG.buildSuccessState(classified), t, helpers)
     );
-    assert.match(classifiedHtml, /codex_quota\.workspace_match_yes/);
-    assert.equal(classifiedHtml.includes('codex_quota.observed_at_stale'), false);
+    for (const hiddenFact of hiddenCredentialCardFacts) {
+      assert.equal(classifiedHtml.includes(hiddenFact), false);
+    }
+    for (const fingerprint of ['selected123456', 'upstream12345', 'claim12345678']) {
+      assert.equal(classifiedHtml.includes(fingerprint), false);
+    }
     assert.equal(
       requests.every((authIndex) => authIndex === 'codex:1'),
       true
@@ -130,7 +152,7 @@ try {
         tokenClaimMismatch: true,
       }),
       observedAt: '2000-01-01T00:00:00Z',
-      subscriptionActiveUntil: null,
+      subscriptionActiveUntil: '2030-01-01T00:00:00Z',
       usage: {
         rate_limit: {
           allowed: true,
@@ -229,11 +251,7 @@ try {
     const successState = CODEX_CONFIG.buildSuccessState(facts);
     const html = renderToStaticMarkup(CODEX_CONFIG.renderQuotaItems(successState, t, helpers));
     for (const expected of [
-      'codex_quota.upstream_plan_label',
-      'codex_quota.credential_plan_label',
-      'codex_quota.workspace_match_no',
-      'codex_quota.token_claim_mismatch',
-      'codex_quota.observed_at_stale',
+      'codex_quota.expires_label',
       'codex_quota.allowed_label',
       'codex_quota.limit_reached_label',
       'codex_quota.no_windows_for_limit',
@@ -245,6 +263,12 @@ try {
       'codex_quota.reset_credits_expiry_label',
     ]) {
       assert.match(html, new RegExp(expected.replaceAll('.', '\\.')));
+    }
+    for (const hiddenFact of hiddenCredentialCardFacts) {
+      assert.equal(html.includes(hiddenFact), false);
+    }
+    for (const fingerprint of ['selected123456', 'upstream12345', 'claim12345678']) {
+      assert.equal(html.includes(fingerprint), false);
     }
     for (const forbidden of ['$60', '$100', 'team balance', 'team allowance']) {
       assert.equal(html.toLowerCase().includes(forbidden), false);

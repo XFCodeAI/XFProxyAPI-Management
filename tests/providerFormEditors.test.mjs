@@ -28,6 +28,9 @@ try {
   const { BaseProviderForm } = await server.ssrLoadModule(
     '/src/features/providers/sheets/forms/BaseProviderForm.tsx'
   );
+  const { SponsorProviderForm } = await server.ssrLoadModule(
+    '/src/features/providers/sheets/forms/SponsorProviderForm.tsx'
+  );
 
   const renderWithTooltips = (element) =>
     renderToStaticMarkup(createElement(TooltipProvider, { delayDuration: 0 }, element));
@@ -37,6 +40,7 @@ try {
     apiKey: `sk-entry-${String(idx + 1).padStart(4, '0')}`,
     groups: idx === 11 ? ['paid'] : [],
     proxyUrl: `http://proxy-${idx + 1}.example`,
+    maxConcurrency: idx + 1,
   }));
   const sharedApiProps = {
     credentialGroupOptions: ['paid', 'fallback'],
@@ -71,7 +75,6 @@ try {
   assert.equal(collapsedApiMarkup.includes('type="password"'), false);
   assert.equal(collapsedApiMarkup.includes('Show all (12)'), true);
   assert.equal((collapsedApiMarkup.match(/>Proxy</g) ?? []).length, 10);
-
   const expandedApiMarkup = renderWithTooltips(
     createElement(ApiKeyEntriesEditor, {
       ...sharedApiProps,
@@ -81,6 +84,7 @@ try {
           apiKey: '',
           groups: ['paid'],
           proxyUrl: 'http://xf-entry-proxy.example',
+          maxConcurrency: 7,
         },
       ],
       statuses: [{ state: 'idle', message: '' }],
@@ -92,6 +96,8 @@ try {
   assert.equal(expandedApiMarkup.includes('xf-entry-alias'), true);
   assert.equal(expandedApiMarkup.includes('paid'), true);
   assert.equal(expandedApiMarkup.includes('http://xf-entry-proxy.example'), true);
+  assert.equal(expandedApiMarkup.includes('value="7"'), true);
+  assert.equal(expandedApiMarkup.includes('Key maximum concurrency'), true);
 
   const models = Array.from({ length: 12 }, (_, idx) => ({
     name: `model-${idx + 1}`,
@@ -147,6 +153,21 @@ try {
   );
   assert.equal(baseFormMarkup.includes('<form id="provider-editor-contract"'), true);
   assert.equal(baseFormMarkup.includes('https://api.x.ai/v1'), true);
+  assert.equal(baseFormMarkup.includes('Maximum concurrency'), true);
+
+  const sponsorFormMarkup = renderWithTooltips(
+    createElement(SponsorProviderForm, {
+      brand: 'kimi',
+      resource: null,
+      mode: 'create',
+      mutating: false,
+      formId: 'sponsor-concurrency-contract',
+      onSubmit: async () => {},
+    })
+  );
+  assert.equal(sponsorFormMarkup.includes('Supplier maximum concurrency'), true);
+  assert.equal(sponsorFormMarkup.includes('Key maximum concurrency'), true);
+  assert.equal((sponsorFormMarkup.match(/max="1000000"/g) ?? []).length, 2);
 
   const baseSource = await readFile(
     new URL('../src/features/providers/sheets/forms/BaseProviderForm.tsx', import.meta.url),

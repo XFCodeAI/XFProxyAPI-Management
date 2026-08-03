@@ -1,18 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Collapsible } from '@/components/ui/Collapsible';
+import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import { Select } from '@/components/ui/Select';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { TooltipIconButton } from '@/components/ui/TooltipControls';
 import {
-  IconAlertTriangle,
   IconChevronDown,
-  IconCheckCircle2,
-  IconDollarSign,
   IconDownload,
   IconEye,
   IconEyeOff,
-  IconLoader2,
   IconPlus,
   IconX,
 } from '@/components/ui/icons';
@@ -20,8 +17,8 @@ import { inputClass } from '@/components/ui/formStyles';
 import { hasDisableAllModelsRule } from '@/components/providers/utils';
 import { cn } from '@/lib/utils';
 import { maskApiKey } from '@/utils/format';
+import { isValidMaxConcurrency, normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import type { ModelInfo } from '@/utils/models';
-import type { ApiKeyFunUsageSummary } from '../../sponsor';
 import { isSponsorPartialMutationError } from '../../sponsorMutationRecovery';
 import {
   discoveryBrandForSponsorProtocol,
@@ -43,7 +40,6 @@ import type {
 } from '../../types';
 import { ModelDiscoveryPanel } from './ModelDiscoveryPanel';
 import { useModelDiscovery, type UseModelDiscoveryResult } from './useModelDiscovery';
-import { useSponsorUsageCheck, type SponsorUsageMessages } from './useSponsorUsageCheck';
 import styles from './sharedForm.module.scss';
 
 interface SponsorProviderFormProps {
@@ -95,6 +91,10 @@ const emptySponsorKeyEntry = (
   disableCooling: false,
   fallback: false,
   priority: undefined,
+  concurrencyMode: 'inherit',
+  maxConcurrency: 0,
+  apiKeyConcurrencyMode: 'inherit',
+  apiKeyMaxConcurrency: 0,
   models: [emptyModel()],
 });
 
@@ -127,21 +127,6 @@ const protocolUrlForEntry = (
   definition: SponsorProviderDefinition
 ): string => sponsorProtocolUrl(definition.getProtocolUrls(entry.baseUrl), entry.protocol);
 
-const formatUsageAmount = (value: ApiKeyFunUsageSummary['remaining'], locale: string): string => {
-  if (value === null) return '--';
-  if (typeof value === 'number') {
-    return new Intl.NumberFormat(locale, {
-      maximumFractionDigits: 6,
-    }).format(value);
-  }
-  return value;
-};
-
-const isHealthyUsageSummary = (summary: ApiKeyFunUsageSummary): boolean => {
-  const normalizedStatus = (summary.status ?? '').trim().toLowerCase();
-  return summary.isValid && (!normalizedStatus || normalizedStatus === 'active');
-};
-
 const modelsFromConfig = (
   models:
     Array<{ name?: string; alias?: string; priority?: number; testModel?: string }> | undefined
@@ -157,29 +142,36 @@ const modelsFromConfig = (
 
 const sponsorEntryFromProviderKey = (
   definition: SponsorProviderDefinition,
-  protocol: Exclude<SponsorProtocol, 'openai'>,
-  config:
-    | SponsorProviderRaw['codex'][number]['config']
-    | SponsorProviderRaw['claude'][number]['config']
-    | SponsorProviderRaw['gemini'][number]['config']
-): SponsorKeyEntryInput => ({
-  ...emptySponsorKeyEntry(definition, protocol),
-  existingApiKey: config.apiKey ?? '',
-  baseUrl: definition.resolveBaseUrl(config.baseUrl),
-  proxyUrl: config.proxyUrl ?? '',
-  prefix: config.prefix ?? '',
-  disabled: hasDisableAllModelsRule(config.excludedModels),
-  disableCooling: config.disableCooling === true,
-  fallback: config.fallback === true,
-  priority: config.priority,
-  models: modelsFromConfig(config.models),
-});
+  protocol: 'claude',
+  config: SponsorProviderRaw['claude'][number]['config']
+): SponsorKeyEntryInput => {
+  const concurrency = normalizeConcurrencySetting(config.concurrencyMode, config.maxConcurrency);
+  return {
+    ...emptySponsorKeyEntry(definition, protocol),
+    existingApiKey: config.apiKey ?? '',
+    baseUrl: definition.resolveBaseUrl(config.baseUrl),
+    proxyUrl: config.proxyUrl ?? '',
+    prefix: config.prefix ?? '',
+    disabled: hasDisableAllModelsRule(config.excludedModels),
+    disableCooling: config.disableCooling === true,
+    fallback: config.fallback === true,
+    priority: config.priority,
+    concurrencyMode: concurrency.mode,
+    maxConcurrency: concurrency.maxConcurrency,
+    models: modelsFromConfig(config.models),
+  };
+};
 
 const sponsorEntryFromOpenAI = (
   definition: SponsorProviderDefinition,
   config: SponsorProviderRaw['openai'][number]['config']
 ): SponsorKeyEntryInput => {
   const firstEntry = config.apiKeyEntries?.find((entry) => entry.apiKey?.trim());
+  const concurrency = normalizeConcurrencySetting(config.concurrencyMode, config.maxConcurrency);
+  const apiKeyConcurrency = normalizeConcurrencySetting(
+    firstEntry?.concurrencyMode,
+    firstEntry?.maxConcurrency
+  );
   return {
     ...emptySponsorKeyEntry(definition, 'openai'),
     existingApiKey: firstEntry?.apiKey ?? '',
@@ -190,6 +182,10 @@ const sponsorEntryFromOpenAI = (
     disableCooling: config.disableCooling === true,
     fallback: config.fallback === true,
     priority: config.priority,
+    concurrencyMode: concurrency.mode,
+    maxConcurrency: concurrency.maxConcurrency,
+    apiKeyConcurrencyMode: apiKeyConcurrency.mode,
+    apiKeyMaxConcurrency: apiKeyConcurrency.maxConcurrency,
     models: modelsFromConfig(config.models),
   };
 };
@@ -361,7 +357,7 @@ function SponsorKeyEntryCard({
   onChange,
   onRemove,
 }: SponsorKeyEntryCardProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [showApiKey, setShowApiKey] = useState(false);
   const [expanded, setExpanded] = useState(
     () => mode === 'create' || !entry.existingApiKey?.trim()
@@ -376,30 +372,6 @@ function SponsorKeyEntryCard({
     ? maskApiKey(summaryKey)
     : t('providersPage.status.notConfigured');
   const modelKey = sponsorProtocolModelI18nKey(entry.protocol);
-  const usageMessages = useMemo<SponsorUsageMessages>(
-    () => ({
-      apiKeyRequired: t('providersPage.sponsor.usageApiKeyRequired'),
-      emptyResponse: t('providersPage.sponsor.usageEmpty'),
-      requestFailed: t('providersPage.connectivity.requestFailed'),
-    }),
-    [t]
-  );
-  const usageCheck = useSponsorUsageCheck(
-    {
-      baseUrl: entry.baseUrl,
-      apiKey: entry.apiKey,
-      fallbackApiKey: entry.existingApiKey,
-    },
-    usageMessages
-  );
-  const usageSummary = usageCheck.status.summary;
-  const usageHealthy = usageSummary ? isHealthyUsageSummary(usageSummary) : true;
-  const usageRemaining =
-    usageSummary !== null ? formatUsageAmount(usageSummary.remaining, i18n.language) : '';
-  const usageUsed =
-    usageSummary !== null ? formatUsageAmount(usageSummary.used, i18n.language) : '';
-  const usageLimit =
-    usageSummary !== null ? formatUsageAmount(usageSummary.limit, i18n.language) : '';
   const discoveryHeaders = useMemo<Array<{ key: string; value: string }>>(() => [], []);
   const openaiDiscoveryEntries = useMemo(
     () => [
@@ -577,74 +549,6 @@ function SponsorKeyEntryCard({
             <span className={styles.labelHint}>{t('providersPage.sponsor.apiKeyHint')}</span>
           </div>
 
-          {definition.supportsUsageCheck ? (
-            <div className={styles.sponsorUsageSection}>
-              <button
-                type="button"
-                className={styles.connectivityBtn}
-                onClick={() => void usageCheck.run()}
-                disabled={mutating || usageCheck.isLoading}
-              >
-                {usageCheck.isLoading ? (
-                  <IconLoader2 className={styles.statusIconLoading} size={14} />
-                ) : (
-                  <IconDollarSign size={14} />
-                )}
-                <span>
-                  {usageCheck.isLoading
-                    ? t('providersPage.sponsor.usageChecking')
-                    : t('providersPage.sponsor.usageCheck')}
-                </span>
-              </button>
-              {usageCheck.status.state === 'success' && usageSummary ? (
-                <div
-                  className={cn(
-                    styles.sponsorUsageResult,
-                    usageHealthy ? '' : styles.sponsorUsageResultWarning
-                  )}
-                >
-                  <div className={styles.sponsorUsageMain}>
-                    {usageHealthy ? (
-                      <IconCheckCircle2
-                        className={`${styles.statusIcon} ${styles.statusIconSuccess}`}
-                        size={14}
-                      />
-                    ) : (
-                      <IconAlertTriangle
-                        className={`${styles.statusIcon} ${styles.statusIconError}`}
-                        size={14}
-                      />
-                    )}
-                    <span>
-                      {t('providersPage.sponsor.usageRemaining', {
-                        amount: usageRemaining,
-                        unit: usageSummary.unit,
-                      })}
-                    </span>
-                  </div>
-                  {usageSummary.used !== null || usageSummary.limit !== null ? (
-                    <span className={styles.sponsorUsageMeta}>
-                      {t('providersPage.sponsor.usageBreakdown', {
-                        used: usageUsed,
-                        limit: usageLimit,
-                      })}
-                    </span>
-                  ) : null}
-                  {!usageHealthy ? (
-                    <span className={styles.sponsorUsageMeta}>
-                      {t('providersPage.sponsor.usageStatus', {
-                        status: usageSummary.status || t('providersPage.sponsor.usageInvalid'),
-                      })}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-              {usageCheck.status.state === 'error' ? (
-                <div className={styles.connectivityError}>{usageCheck.status.message}</div>
-              ) : null}
-            </div>
-          ) : null}
-
           <div className={styles.field}>
             <label className={styles.label} htmlFor={`${formId}-group-${index}-proxy`}>
               {t('providersPage.form.proxyUrl')}
@@ -689,6 +593,37 @@ function SponsorKeyEntryCard({
                 disabled={mutating}
               />
             </div>
+          </div>
+
+          <div className={entry.protocol === 'openai' ? styles.fieldRow : undefined}>
+            <ConcurrencySettingField
+              id={`${formId}-group-${index}-supplier-concurrency`}
+              label={t(
+                entry.protocol === 'openai'
+                  ? 'providersPage.form.supplierMaxConcurrency'
+                  : 'providersPage.form.maxConcurrency'
+              )}
+              mode={entry.concurrencyMode ?? 'inherit'}
+              maxConcurrency={entry.maxConcurrency ?? 0}
+              disabled={mutating}
+              onModeChange={(value) => updateEntry({ concurrencyMode: value })}
+              onMaxConcurrencyChange={(value) =>
+                updateEntry({ maxConcurrency: value === '' ? 0 : Number(value) })
+              }
+            />
+            {entry.protocol === 'openai' ? (
+              <ConcurrencySettingField
+                id={`${formId}-group-${index}-key-concurrency`}
+                label={t('providersPage.form.keyMaxConcurrency')}
+                mode={entry.apiKeyConcurrencyMode ?? 'inherit'}
+                maxConcurrency={entry.apiKeyMaxConcurrency ?? 0}
+                disabled={mutating}
+                onModeChange={(value) => updateEntry({ apiKeyConcurrencyMode: value })}
+                onMaxConcurrencyChange={(value) =>
+                  updateEntry({ apiKeyMaxConcurrency: value === '' ? 0 : Number(value) })
+                }
+              />
+            ) : null}
           </div>
 
           <SelectionCheckbox
@@ -761,7 +696,7 @@ const buildInitialForm = (
 };
 
 export function SponsorProviderForm({
-  brand = 'apikeyFun',
+  brand = 'kimi',
   resource,
   mode,
   mutating,
@@ -830,6 +765,17 @@ export function SponsorProviderForm({
     const protocolSet = new Set(entries.map((entry) => entry.protocol));
     if (protocolSet.size !== entries.length) {
       return t('providersPage.sponsor.validation.protocolDuplicate');
+    }
+    if (
+      entries.some(
+        (entry) =>
+          (entry.maxConcurrency !== undefined && !isValidMaxConcurrency(entry.maxConcurrency)) ||
+          (entry.protocol === 'openai' &&
+            entry.apiKeyMaxConcurrency !== undefined &&
+            !isValidMaxConcurrency(entry.apiKeyMaxConcurrency))
+      )
+    ) {
+      return t('providersPage.form.validation.maxConcurrency');
     }
     return null;
   };

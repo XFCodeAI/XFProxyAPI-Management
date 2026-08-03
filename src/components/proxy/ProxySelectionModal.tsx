@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import type { ProxyPoolStatusEntry, ProxySelection } from '@/types';
@@ -17,8 +18,10 @@ interface ProxySelectionModalProps {
   pools: ProxyPoolStatusEntry[];
   loading?: boolean;
   confirming?: boolean;
+  confirmDisabled?: boolean;
   allowFileMode?: boolean;
   inspection?: AuthFileProxyInspection;
+  children?: ReactNode;
   onChange: (value: ProxySelection) => void;
   onRefresh?: () => void;
   onCancel: () => void;
@@ -32,8 +35,10 @@ export function ProxySelectionModal({
   pools,
   loading = false,
   confirming = false,
+  confirmDisabled = false,
   allowFileMode = false,
   inspection,
+  children,
   onChange,
   onRefresh,
   onCancel,
@@ -68,7 +73,12 @@ export function ProxySelectionModal({
             type="button"
             onClick={onConfirm}
             loading={confirming}
-            disabled={inspectionLoading || (needsSmartProxy && loading) || smartProxyUnavailable}
+            disabled={
+              confirmDisabled ||
+              inspectionLoading ||
+              (needsSmartProxy && loading) ||
+              smartProxyUnavailable
+            }
           >
             {t('common.confirm')}
           </Button>
@@ -85,6 +95,7 @@ export function ProxySelectionModal({
           onChange={onChange}
           onRefresh={onRefresh}
         />
+        {children}
         {smartProxyUnavailable ? (
           <div className={styles.inspectionWarning}>
             {t('proxy_selection.smart_unavailable', {

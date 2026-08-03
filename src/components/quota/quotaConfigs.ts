@@ -54,7 +54,6 @@ import {
   XAI_PAID_HEALTH_MODEL,
   XAI_REQUEST_HEADERS,
   normalizeNumberValue,
-  normalizePlanType,
   normalizeStringValue,
   parseAntigravityPayload,
   parseClaudeUsagePayload,
@@ -801,8 +800,6 @@ const renderAntigravityItems = (
   return h(Fragment, null, ...nodes);
 };
 
-const PREMIUM_CODEX_PLAN_TYPES = new Set(['pro', 'prolite', 'pro-lite', 'pro_lite']);
-
 const formatCodexWindowDuration = (seconds: number | null, t: TFunction): string => {
   if (seconds === null || !Number.isFinite(seconds) || seconds < 0) {
     return t('codex_quota.value_unknown');
@@ -827,178 +824,24 @@ const renderCodexItems = (
   const { styles: styleMap, QuotaProgressBar } = helpers;
   const { createElement: h, Fragment } = React;
   const limits = quota.limits ?? [];
-  const account = quota.account ?? null;
-  const observedAt = quota.observedAt ?? '';
-  const observationStale = quota.observationStale === true;
   const subscriptionActiveUntil = quota.subscriptionActiveUntil ?? null;
-  const rateLimitResetCreditsAvailableCount = quota.rateLimitResetCreditsAvailableCount ?? null;
   const rateLimitResetCredits = quota.rateLimitResetCredits ?? [];
   const rateLimitResetCreditsError = quota.rateLimitResetCreditsError ?? '';
-
-  const getPlanLabel = (pt?: string | null): string | null => {
-    const normalized = normalizePlanType(pt);
-    if (!normalized) return null;
-    if (normalized === 'pro') return t('codex_quota.plan_pro');
-    if (PREMIUM_CODEX_PLAN_TYPES.has(normalized) && normalized !== 'pro') {
-      return t('codex_quota.plan_prolite');
-    }
-    if (normalized === 'plus') return t('codex_quota.plan_plus');
-    if (normalized === 'team') return t('codex_quota.plan_team');
-    if (normalized === 'free') return t('codex_quota.plan_free');
-    return pt || normalized;
-  };
-
-  const upstreamPlanLabel = getPlanLabel(account?.upstreamPlanType);
-  const credentialPlanLabel = getPlanLabel(account?.credentialPlanType);
-  const isPremiumPlan = PREMIUM_CODEX_PLAN_TYPES.has(
-    normalizePlanType(account?.upstreamPlanType ?? account?.credentialPlanType) ?? ''
-  );
   const expiryLabel = subscriptionActiveUntil ? formatDateTimeValue(subscriptionActiveUntil) : '';
   const nodes: ReactNode[] = [];
 
-  if (account || expiryLabel || rateLimitResetCreditsAvailableCount !== null) {
-    const planValueClass = isPremiumPlan ? styleMap.premiumPlanValue : styleMap.codexPlanValue;
-    const planNodes: ReactNode[] = [];
-
-    const appendPlanItem = (
-      key: string,
-      label: string,
-      value: string,
-      valueClassName = styleMap.codexPlanValue
-    ) => {
-      planNodes.push(
-        h(
-          'span',
-          { key, className: styleMap.codexPlanItem },
-          h('span', { className: styleMap.codexPlanLabel }, label),
-          h('span', { className: valueClassName }, value)
-        )
-      );
-    };
-
-    if (account) {
-      appendPlanItem(
-        'upstream-plan-type',
-        t('codex_quota.upstream_plan_label'),
-        upstreamPlanLabel ?? t('codex_quota.value_unknown'),
-        planValueClass
-      );
-      appendPlanItem(
-        'credential-plan-type',
-        t('codex_quota.credential_plan_label'),
-        credentialPlanLabel ?? t('codex_quota.value_unknown')
-      );
-    }
-
-    if (expiryLabel) {
-      appendPlanItem('subscription-expiry', t('codex_quota.expires_label'), expiryLabel);
-    }
-
-    if (rateLimitResetCreditsAvailableCount !== null) {
-      appendPlanItem(
-        'reset-credits',
-        t('codex_quota.reset_credits_label'),
-        rateLimitResetCreditsAvailableCount.toString()
-      );
-    }
-
-    nodes.push(h('div', { key: 'plan', className: styleMap.codexPlan }, ...planNodes));
-  }
-
-  if (account || observedAt || observationStale) {
-    const evidenceNodes: ReactNode[] = [];
-    const appendEvidenceItem = (
-      key: string,
-      label: string,
-      value: string,
-      tone: 'ok' | 'warning' | 'muted' = 'muted'
-    ) => {
-      evidenceNodes.push(
-        h(
-          'span',
-          { key, className: styleMap.codexEvidenceItem },
-          h('span', { className: styleMap.codexEvidenceLabel }, label),
-          h(
-            'span',
-            {
-              className: `${styleMap.codexEvidenceValue} ${
-                tone === 'ok'
-                  ? styleMap.codexEvidenceValueOk
-                  : tone === 'warning'
-                    ? styleMap.codexEvidenceValueWarning
-                    : styleMap.codexEvidenceValueMuted
-              }`,
-            },
-            value
-          )
-        )
-      );
-    };
-    const fingerprint = (value?: string | null) =>
-      value ? `#${value}` : t('codex_quota.value_unknown');
-
-    if (account) {
-      appendEvidenceItem(
-        'selected-workspace',
-        t('codex_quota.selected_workspace_label'),
-        fingerprint(account.selectedAccountFingerprint)
-      );
-      appendEvidenceItem(
-        'upstream-workspace',
-        t('codex_quota.upstream_workspace_label'),
-        fingerprint(account.upstreamAccountFingerprint)
-      );
-      appendEvidenceItem(
-        'workspace-match',
-        t('codex_quota.workspace_match_label'),
-        account.accountMatchesUpstream === null
-          ? t('codex_quota.workspace_match_unknown')
-          : account.accountMatchesUpstream
-            ? t('codex_quota.workspace_match_yes')
-            : t('codex_quota.workspace_match_no'),
-        account.accountMatchesUpstream === null
-          ? 'muted'
-          : account.accountMatchesUpstream
-            ? 'ok'
-            : 'warning'
-      );
-      appendEvidenceItem(
-        'token-claim-workspace',
-        t('codex_quota.token_claim_workspace_label'),
-        fingerprint(account.tokenClaimAccountFingerprint)
-      );
-      appendEvidenceItem(
-        'token-claim-context',
-        t('codex_quota.token_claim_context_label'),
-        !account.tokenClaimsPresent
-          ? t('codex_quota.token_claim_unknown')
-          : account.tokenClaimMismatch
-            ? t('codex_quota.token_claim_mismatch')
-            : t('codex_quota.token_claim_match'),
-        !account.tokenClaimsPresent ? 'muted' : account.tokenClaimMismatch ? 'warning' : 'ok'
-      );
-      appendEvidenceItem(
-        'fedramp',
-        t('codex_quota.fedramp_label'),
-        account.fedRAMPKnown
-          ? account.fedRAMP
-            ? t('common.yes')
-            : t('common.no')
-          : t('codex_quota.value_unknown')
-      );
-    }
-
-    const observedLabel = formatDateTimeValue(observedAt) || t('codex_quota.value_unknown');
-    appendEvidenceItem(
-      'observed-at',
-      t('codex_quota.observed_at_label'),
-      observationStale
-        ? t('codex_quota.observed_at_stale', { time: observedLabel })
-        : observedLabel,
-      observationStale ? 'warning' : 'muted'
-    );
+  if (expiryLabel) {
     nodes.push(
-      h('div', { key: 'account-evidence', className: styleMap.codexEvidence }, ...evidenceNodes)
+      h(
+        'div',
+        { key: 'subscription-expiry', className: styleMap.codexPlan },
+        h(
+          'span',
+          { className: styleMap.codexPlanItem },
+          h('span', { className: styleMap.codexPlanLabel }, t('codex_quota.expires_label')),
+          h('span', { className: styleMap.codexPlanValue }, expiryLabel)
+        )
+      )
     );
   }
 

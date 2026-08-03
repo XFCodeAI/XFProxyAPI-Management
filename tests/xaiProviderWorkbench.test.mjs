@@ -55,6 +55,8 @@ try {
     groups: ['paid'],
     priority: 7,
     fallback: true,
+    concurrencyMode: 'inherit',
+    maxConcurrency: 0,
     prefix: 'grok',
     baseUrl: 'https://api.x.ai/v1',
     websockets: true,
@@ -102,7 +104,15 @@ try {
       })
     )
   );
-  for (const fieldId of ['-name', '-apiKey', '-baseUrl', '-proxy', '-prefix', '-prio']) {
+  for (const fieldId of [
+    '-name',
+    '-apiKey',
+    '-baseUrl',
+    '-proxy',
+    '-prefix',
+    '-prio',
+    '-concurrency-value',
+  ]) {
     assert.equal(createFormMarkup.includes(fieldId), true, `missing xAI form field ${fieldId}`);
   }
   assert.equal(createFormMarkup.includes('https://api.x.ai/v1'), true);
@@ -165,6 +175,8 @@ try {
       apiKey: 'created',
       groups: ['paid'],
       fallback: true,
+      concurrencyMode: 'inherit',
+      maxConcurrency: 0,
       priority: 9,
       prefix: 'team',
       baseUrl: 'https://api.x.ai/v1',
@@ -191,6 +203,8 @@ try {
       'api-key': 'created',
       groups: ['paid'],
       fallback: true,
+      'concurrency-mode': 'inherit',
+      'max-concurrency': 0,
       priority: 9,
       prefix: 'team',
       'base-url': 'https://api.x.ai/v1',
@@ -250,6 +264,8 @@ try {
       groups: [],
       fallback: false,
       priority: 0,
+      'concurrency-mode': 'inherit',
+      'max-concurrency': 0,
       prefix: '',
       'base-url': 'https://api.x.ai/v1',
       websockets: false,

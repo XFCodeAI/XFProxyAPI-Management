@@ -9,6 +9,7 @@ export * from './apiKeys';
 export * from './codexProviderProfile';
 export * from './codexQuota';
 export * from './credentialGroups';
+export * from './credentialConcurrency';
 export * from './providers';
 export * from './authFiles';
 export * from './oauth';

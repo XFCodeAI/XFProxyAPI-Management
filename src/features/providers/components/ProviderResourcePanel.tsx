@@ -4,6 +4,7 @@ import type { ProviderRecentUsageMap } from '@/components/providers/utils';
 import { PROVIDER_LOGOS } from '../brandLogos';
 import { PROVIDER_DESCRIPTORS } from '../descriptors';
 import type { ProviderGroup, ProviderResource } from '../types';
+import type { SupplierBillingProbeEntriesByResource } from '../useSupplierBillingProbes';
 import { ProviderResourceTable } from './ProviderResourceTable';
 import { ProviderResourceToolbar } from './ProviderResourceToolbar';
 import type { ProviderSortBy, SortDir } from '../types';
@@ -27,8 +28,13 @@ interface ProviderResourcePanelProps {
   selectedId: string | null;
   disableMutations?: boolean;
   usageByProvider?: ProviderRecentUsageMap;
+  billingProbeEntriesByResource?: SupplierBillingProbeEntriesByResource;
+  onRefreshBillingProbe?: (targetId: string) => Promise<void>;
   toolbarControls?: ProviderPanelControls;
+  emptyText?: string;
+  showEmptyAction?: boolean;
   onView: (resource: ProviderResource) => void;
+  onViewFailures: (resource: ProviderResource) => void;
   onEdit: (resource: ProviderResource) => void;
   onDelete: (resource: ProviderResource) => void;
   onToggleDisabled?: (resource: ProviderResource, disabled: boolean) => void;
@@ -43,8 +49,13 @@ export function ProviderResourcePanel({
   selectedId,
   disableMutations,
   usageByProvider,
+  billingProbeEntriesByResource,
+  onRefreshBillingProbe,
   toolbarControls,
+  emptyText: emptyTextOverride,
+  showEmptyAction = true,
   onView,
+  onViewFailures,
   onEdit,
   onDelete,
   onToggleDisabled,
@@ -55,7 +66,7 @@ export function ProviderResourcePanel({
   const providerTitle = t(`providersPage.providerNames.${group.id}`, {
     defaultValue: PROVIDER_DESCRIPTORS[group.id].displayName,
   });
-  const emptyText = t('providersPage.table.empty');
+  const emptyText = emptyTextOverride ?? t('providersPage.table.empty');
   const logoClassName = [
     styles.logo,
     logo?.darkSrc ? styles.logoThemeLight : '',
@@ -119,12 +130,14 @@ export function ProviderResourcePanel({
       {realResources.length === 0 ? (
         <div className={styles.empty}>
           <div>{emptyText}</div>
-          <div className={styles.emptyAction}>
-            <button type="button" className={styles.emptyActionButton} onClick={onCreate}>
-              <IconPlus size={16} />
-              <span>{t('providersPage.actions.new')}</span>
-            </button>
-          </div>
+          {showEmptyAction ? (
+            <div className={styles.emptyAction}>
+              <button type="button" className={styles.emptyActionButton} onClick={onCreate}>
+                <IconPlus size={16} />
+                <span>{t('providersPage.actions.new')}</span>
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <ProviderResourceTable
@@ -132,7 +145,10 @@ export function ProviderResourcePanel({
           selectedId={selectedId}
           disableMutations={disableMutations}
           usageByProvider={usageByProvider}
+          billingProbeEntriesByResource={billingProbeEntriesByResource}
+          onRefreshBillingProbe={onRefreshBillingProbe}
           onView={onView}
+          onViewFailures={onViewFailures}
           onEdit={onEdit}
           onDelete={onDelete}
           onToggleDisabled={onToggleDisabled}

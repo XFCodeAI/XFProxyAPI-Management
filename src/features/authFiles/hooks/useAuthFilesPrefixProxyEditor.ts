@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api';
-import type { AuthFileItem } from '@/types';
+import type { AuthFileItem, ConcurrencyMode } from '@/types';
 import { useAuthInventoryStore, useNotificationStore } from '@/stores';
 import { normalizeProviderKey, parsePriorityValue } from '@/features/authFiles/constants';
 import {
@@ -12,6 +12,11 @@ import {
   supportsAuthFileWebsockets,
 } from '@/features/authFiles/authFileProviderFields';
 import { normalizeCredentialGroups } from '@/utils/credentialGroups';
+import {
+  normalizeConcurrencySetting,
+  parseOptionalMaxConcurrency,
+  resolveAuthFileConcurrencySetting,
+} from '@/utils/maxConcurrency';
 
 type AuthFileHeaders = Record<string, string>;
 type AuthFileHeadersErrorKey =
@@ -25,6 +30,8 @@ export type PrefixProxyEditorField =
   | 'prefix'
   | 'proxyUrl'
   | 'priority'
+  | 'concurrencyMode'
+  | 'maxConcurrency'
   | 'fallback'
   | 'disableCooling'
   | 'websockets'
@@ -49,6 +56,9 @@ export type PrefixProxyEditorState = {
   prefix: string;
   proxyUrl: string;
   priority: string;
+  concurrencyMode: ConcurrencyMode;
+  maxConcurrency: string;
+  maxConcurrencyError: string | null;
   fallback: boolean;
   disableCooling: boolean;
   websockets: boolean;
@@ -275,6 +285,24 @@ export const buildAuthFileFieldsPatch = (
     }
   }
 
+  const originalConcurrency = resolveAuthFileConcurrencySetting(original);
+  const maxConcurrencyText = editor.maxConcurrency.trim();
+  const parsedMaxConcurrency = parseOptionalMaxConcurrency(maxConcurrencyText);
+  if (!parsedMaxConcurrency.valid) {
+    throw new Error('AUTH_FILE_MAX_CONCURRENCY_INVALID');
+  }
+  const nextConcurrency = normalizeConcurrencySetting(
+    editor.concurrencyMode,
+    parsedMaxConcurrency.value ?? 0
+  );
+  if (
+    nextConcurrency.mode !== originalConcurrency.mode ||
+    nextConcurrency.maxConcurrency !== originalConcurrency.maxConcurrency
+  ) {
+    patch.concurrency_mode = nextConcurrency.mode;
+    patch.max_concurrency = nextConcurrency.maxConcurrency;
+  }
+
   const originalFallback = original.fallback === true;
   if (editor.fallback !== originalFallback) {
     patch.fallback = editor.fallback;
@@ -353,6 +381,21 @@ export const buildPrefixProxyUpdatedText = (
     }
   }
 
+  if (patch.concurrency_mode !== undefined || patch.max_concurrency !== undefined) {
+    const concurrency = normalizeConcurrencySetting(
+      patch.concurrency_mode ?? editor.concurrencyMode,
+      patch.max_concurrency ?? editor.maxConcurrency
+    );
+    delete next['concurrency-mode'];
+    delete next['max-concurrency'];
+    next.concurrency_mode = concurrency.mode;
+    if (concurrency.mode === 'independent') {
+      next.max_concurrency = concurrency.maxConcurrency;
+    } else {
+      delete next.max_concurrency;
+    }
+  }
+
   if (patch.fallback !== undefined) {
     next.fallback = patch.fallback;
   }
@@ -392,7 +435,8 @@ export function useAuthFilesPrefixProxyEditor(
   const [prefixProxyEditor, setPrefixProxyEditor] = useState<PrefixProxyEditorState | null>(null);
 
   const hasBlockingValidationError = Boolean(
-    prefixProxyEditor?.headersTouched && prefixProxyEditor.headersError
+    (prefixProxyEditor?.headersTouched && prefixProxyEditor.headersError) ||
+    prefixProxyEditor?.maxConcurrencyError
   );
   const prefixProxyUpdatedText =
     prefixProxyEditor && !hasBlockingValidationError
@@ -435,6 +479,9 @@ export function useAuthFilesPrefixProxyEditor(
       prefix: '',
       proxyUrl: '',
       priority: '',
+      concurrencyMode: 'inherit',
+      maxConcurrency: '0',
+      maxConcurrencyError: null,
       fallback: false,
       disableCooling: false,
       websockets: false,
@@ -486,6 +533,7 @@ export function useAuthFilesPrefixProxyEditor(
       const prefix = typeof json.prefix === 'string' ? json.prefix : '';
       const proxyUrl = typeof json.proxy_url === 'string' ? json.proxy_url : '';
       const priority = parsePriorityValue(json.priority);
+      const concurrency = resolveAuthFileConcurrencySetting(json);
       const fallback = json.fallback === true;
       const disableCooling = readAuthFileDisableCooling(json);
       const websockets = supportsAuthFileWebsockets(providerKey)
@@ -516,6 +564,9 @@ export function useAuthFilesPrefixProxyEditor(
           prefix,
           proxyUrl,
           priority: priority !== undefined ? String(priority) : '',
+          concurrencyMode: concurrency.mode,
+          maxConcurrency: String(concurrency.maxConcurrency),
+          maxConcurrencyError: null,
           fallback,
           disableCooling,
           websockets,
@@ -549,6 +600,18 @@ export function useAuthFilesPrefixProxyEditor(
       if (field === 'prefix') return { ...prev, prefix: String(value) };
       if (field === 'proxyUrl') return { ...prev, proxyUrl: String(value) };
       if (field === 'priority') return { ...prev, priority: String(value) };
+      if (field === 'concurrencyMode') {
+        return { ...prev, concurrencyMode: String(value) as ConcurrencyMode };
+      }
+      if (field === 'maxConcurrency') {
+        const maxConcurrency = String(value);
+        const parsed = parseOptionalMaxConcurrency(maxConcurrency);
+        return {
+          ...prev,
+          maxConcurrency,
+          maxConcurrencyError: parsed.valid ? null : t('auth_files.max_concurrency_invalid'),
+        };
+      }
       if (field === 'fallback') return { ...prev, fallback: Boolean(value) };
       if (field === 'disableCooling') {
         return { ...prev, disableCooling: Boolean(value) };
@@ -583,7 +646,12 @@ export function useAuthFilesPrefixProxyEditor(
     try {
       payload = buildAuthFileFieldsPatch(prefixProxyEditor, (key) => t(key));
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Invalid format';
+      const errorMessage =
+        err instanceof Error && err.message === 'AUTH_FILE_MAX_CONCURRENCY_INVALID'
+          ? t('auth_files.max_concurrency_invalid')
+          : err instanceof Error
+            ? err.message
+            : 'Invalid format';
       showNotification(errorMessage, 'error');
       return;
     }

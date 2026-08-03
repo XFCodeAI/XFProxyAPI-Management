@@ -919,28 +919,86 @@
   background: var(--background);
 }
 
+.bindingError {
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 36%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--destructive) 8%, var(--background));
+  color: var(--destructive);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.bindingSection {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+
+  &:first-child {
+    border-top: 0;
+  }
+}
+
+.bindingSectionHeader {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  background: var(--muted);
+
+  strong,
+  span {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 750;
+  }
+}
+
+.bindingEmptyGroup {
+  padding: 16px 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+}
+
 .bindingRow {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) minmax(90px, 0.35fr);
+  grid-template-columns: 18px minmax(0, 1fr) minmax(120px, 0.45fr);
   gap: 10px;
   align-items: center;
   min-height: 44px;
   padding: 9px 10px;
   border-top: 1px solid var(--border);
 
-  &:first-child {
-    border-top: 0;
-  }
+  @include mobile {
+    grid-template-columns: 18px minmax(0, 1fr);
 
-  input {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--primary);
+    .bindingMeta {
+      grid-column: 2;
+      align-items: flex-start;
+      text-align: left;
+    }
   }
 }
 
-.bindingName,
-.bindingProvider {
+.bindingIdentity,
+.bindingMeta,
+.bindingSupplierIdentity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bindingIdentity > span,
+.bindingMeta > span,
+.bindingSupplierIdentity > strong,
+.bindingSupplierIdentity > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -953,9 +1011,81 @@
   font-weight: 700;
 }
 
+.bindingIdentity > span:last-child,
 .bindingProvider {
   color: var(--muted-foreground);
   font-weight: 650;
+}
+
+.bindingMeta {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.bindingState,
+.bindingStateMuted {
+  color: var(--muted-foreground);
+  font-size: 11px !important;
+  font-weight: 650;
+}
+
+.bindingStateMuted {
+  color: var(--destructive);
+}
+
+.bindingSupplier {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+
+  &:first-of-type {
+    border-top: 0;
+  }
+}
+
+.bindingSupplierHeader {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--muted) 58%, var(--background));
+}
+
+.bindingSupplierIdentity {
+  strong {
+    color: var(--foreground);
+    font-weight: 700;
+  }
+
+  span {
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 650;
+  }
+}
+
+.bindingSupplierCount {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.bindingSupplierKeys {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+
+  .bindingRow {
+    padding-left: 28px;
+
+    @include mobile {
+      padding-left: 16px;
+    }
+  }
 }
 
 @include mobile {

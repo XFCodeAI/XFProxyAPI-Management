@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@/components/ui/Modal';
+import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Input } from '@/components/ui/Input';
@@ -150,6 +151,17 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                       hint={t('auth_files.priority_hint')}
                       disabled={disableControls || editor.saving || !editor.json}
                       onChange={(e) => onChange('priority', e.target.value)}
+                    />
+                    <ConcurrencySettingField
+                      id="auth-file-concurrency"
+                      className={styles.prefixProxyFullField}
+                      label={t('auth_files.max_concurrency_label')}
+                      mode={editor.concurrencyMode}
+                      maxConcurrency={editor.maxConcurrency}
+                      error={editor.maxConcurrencyError ?? undefined}
+                      disabled={disableControls || editor.saving || !editor.json}
+                      onModeChange={(value) => onChange('concurrencyMode', value)}
+                      onMaxConcurrencyChange={(value) => onChange('maxConcurrency', value)}
                     />
                     <div className={cn(fieldRootClass, styles.prefixProxyToggleField)}>
                       <label className={fieldLabelClass}>{t('auth_files.fallback_label')}</label>

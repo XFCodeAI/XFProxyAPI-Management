@@ -17,6 +17,8 @@ import { useInterval } from '@/hooks/useInterval';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
+import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
+import { CredentialConcurrencyDefaultControl } from '@/components/concurrency/CredentialConcurrencyDefaultControl';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -63,7 +65,13 @@ import {
   type AuthFilesStatusFilterMode,
   type AuthFilesSortMode,
 } from '@/features/authFiles/uiState';
-import { useAuthStore, useNotificationStore, useThemeStore } from '@/stores';
+import {
+  runtimeObservationResourceKey,
+  useAuthStore,
+  useNotificationStore,
+  useRuntimeObservationStore,
+  useThemeStore,
+} from '@/stores';
 import styles from './AuthFilesPage.module.scss';
 
 const easePower3Out = (progress: number) => 1 - (1 - progress) ** 4;
@@ -104,6 +112,7 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
   const showNotification = useNotificationStore((state) => state.showNotification);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const resolvedTheme: ResolvedTheme = useThemeStore((state) => state.resolvedTheme);
+  const runtimeResources = useRuntimeObservationStore((state) => state.resourcesByKey);
   const pageTransitionLayer = usePageTransitionLayer();
   const isCurrentLayer = pageTransitionLayer ? pageTransitionLayer.status === 'current' : true;
   const navigate = useNavigate();
@@ -144,6 +153,9 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
     uploadProxyPools,
     uploadProxyPoolsLoading,
     uploadProxyInspection,
+    uploadConcurrencyModeDefault,
+    uploadMaxConcurrencyDefaultInput,
+    uploadMaxConcurrencyDefaultError,
     groupAssignment,
     groupAssigning,
     groupAssignmentError,
@@ -164,6 +176,8 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
     batchSetStatus,
     batchDelete,
     setUploadProxySelection,
+    setUploadConcurrencyModeDefault,
+    setUploadMaxConcurrencyDefaultInput,
     refreshUploadProxyPools,
     confirmUploadProxySelection,
     cancelUploadProxySelection,
@@ -702,9 +716,12 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
   return (
     <div className={`${styles.container} ${embedded ? styles.embeddedContainer : ''}`}>
       {!embedded && (
-        <div className={styles.pageHeader}>
-          <h1 className={styles.pageTitle}>{t('auth_files.title')}</h1>
-        </div>
+        <>
+          <div className={styles.pageHeader}>
+            <h1 className={styles.pageTitle}>{t('auth_files.title')}</h1>
+          </div>
+          <CredentialConcurrencyDefaultControl />
+        </>
       )}
 
       <Card
@@ -848,6 +865,13 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
                   <AuthFileCard
                     key={file.name}
                     file={file}
+                    runtimeResource={
+                      file.id
+                        ? runtimeResources[
+                            runtimeObservationResourceKey('credential', String(file.id))
+                          ]
+                        : undefined
+                    }
                     compact={compactMode}
                     selected={selectedFiles.has(file.name)}
                     resolvedTheme={resolvedTheme}
@@ -965,13 +989,25 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
         pools={uploadProxyPools}
         loading={uploadProxyPoolsLoading}
         confirming={uploading}
+        confirmDisabled={Boolean(uploadMaxConcurrencyDefaultError)}
         inspection={uploadProxyInspection}
         allowFileMode
         onChange={setUploadProxySelection}
         onRefresh={() => void refreshUploadProxyPools()}
         onCancel={cancelUploadProxySelection}
         onConfirm={() => void confirmUploadProxySelection()}
-      />
+      >
+        <ConcurrencySettingField
+          id="auth-file-import-concurrency"
+          label={t('auth_files.import_max_concurrency_default_label')}
+          mode={uploadConcurrencyModeDefault}
+          maxConcurrency={uploadMaxConcurrencyDefaultInput}
+          error={uploadMaxConcurrencyDefaultError || undefined}
+          disabled={uploading}
+          onModeChange={setUploadConcurrencyModeDefault}
+          onMaxConcurrencyChange={setUploadMaxConcurrencyDefaultInput}
+        />
+      </ProxySelectionModal>
 
       {batchActionBarVisible && typeof document !== 'undefined'
         ? createPortal(

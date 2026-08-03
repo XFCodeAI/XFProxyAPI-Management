@@ -18,18 +18,14 @@ export const KIMI_BASE_URL_OPTIONS = [
     descriptionKey: 'domestic',
     baseUrl: KIMI_DOMESTIC_OPENAI_BASE_URL,
     openaiBaseUrl: KIMI_DOMESTIC_OPENAI_BASE_URL,
-    codexBaseUrl: '',
     anthropicBaseUrl: KIMI_DOMESTIC_ANTHROPIC_BASE_URL,
-    geminiBaseUrl: '',
   },
   {
     id: 'overseas',
     descriptionKey: 'overseas',
     baseUrl: KIMI_OPENAI_BASE_URL,
     openaiBaseUrl: KIMI_OPENAI_BASE_URL,
-    codexBaseUrl: '',
     anthropicBaseUrl: KIMI_ANTHROPIC_BASE_URL,
-    geminiBaseUrl: '',
   },
 ] as const;
 
@@ -69,8 +65,6 @@ export const getKimiProtocolUrls = (value: string | undefined | null) => {
   return {
     anthropic: matched.anthropicBaseUrl,
     openai: matched.openaiBaseUrl,
-    codex: '',
-    gemini: '',
   };
 };
 
@@ -99,6 +93,4 @@ export const buildKimiRaw = (config: Config | null | undefined): SponsorProvider
   claude: (config?.claudeApiKeys ?? [])
     .map((item, index) => ({ config: item, index }))
     .filter((item) => isKimiClaudeProvider(item.config)),
-  codex: [],
-  gemini: [],
 });

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CredentialGroupsField } from '@/components/credentialGroups/CredentialGroupsField';
+import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import {
   IconChevronDown,
   IconEye,
@@ -62,6 +63,7 @@ export function ApiKeyEntriesEditor({
   onTestAll,
 }: ApiKeyEntriesEditorProps) {
   const { t } = useTranslation();
+  const inputIdPrefix = useId();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(() =>
     entries.length === 1 && isBlankEntry(entries[0]) ? 0 : null
   );
@@ -134,6 +136,10 @@ export function ApiKeyEntriesEditor({
         const expanded = expandedIdx === idx;
         const summaryKey = entry.apiKey.trim() || entry.existingApiKey?.trim() || '';
         const alias = entry.name?.trim() ?? '';
+        const aliasInputId = `${inputIdPrefix}-entry-${idx}-alias`;
+        const apiKeyInputId = `${inputIdPrefix}-entry-${idx}-api-key`;
+        const proxyInputId = `${inputIdPrefix}-entry-${idx}-proxy`;
+        const maxConcurrencyInputId = `${inputIdPrefix}-entry-${idx}-max-concurrency`;
         return (
           <div
             key={idx}
@@ -206,11 +212,12 @@ export function ApiKeyEntriesEditor({
             {expanded ? (
               <div className={styles.entryCardBody}>
                 <div className={styles.field}>
-                  <label className={styles.label}>
+                  <label className={styles.label} htmlFor={aliasInputId}>
                     {aliasLabel}
                     <span className={styles.labelHint}> · {aliasHint}</span>
                   </label>
                   <input
+                    id={aliasInputId}
                     className={inputClass}
                     value={entry.name ?? ''}
                     onChange={(e) => onUpdate(idx, { name: e.target.value })}
@@ -227,9 +234,12 @@ export function ApiKeyEntriesEditor({
                   emptyText={credentialGroupsEmpty}
                 />
                 <div className={styles.field}>
-                  <label className={styles.label}>{t('providersPage.form.apiKey')}</label>
+                  <label className={styles.label} htmlFor={apiKeyInputId}>
+                    {t('providersPage.form.apiKey')}
+                  </label>
                   <div className={styles.passwordField}>
                     <input
+                      id={apiKeyInputId}
                       className={cn(inputClass, styles.passwordInput)}
                       type={showPasswords.has(idx) ? 'text' : 'password'}
                       value={entry.apiKey}
@@ -260,8 +270,11 @@ export function ApiKeyEntriesEditor({
                   </div>
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}>{t('providersPage.form.proxyUrl')}</label>
+                  <label className={styles.label} htmlFor={proxyInputId}>
+                    {t('providersPage.form.proxyUrl')}
+                  </label>
                   <input
+                    id={proxyInputId}
                     className={inputClass}
                     value={entry.proxyUrl}
                     onChange={(e) => onUpdate(idx, { proxyUrl: e.target.value })}
@@ -269,6 +282,19 @@ export function ApiKeyEntriesEditor({
                     placeholder="http://127.0.0.1:7890"
                   />
                 </div>
+                <ConcurrencySettingField
+                  id={maxConcurrencyInputId}
+                  label={t('providersPage.form.keyMaxConcurrency')}
+                  mode={entry.concurrencyMode ?? 'inherit'}
+                  maxConcurrency={entry.maxConcurrency ?? 0}
+                  disabled={mutating}
+                  onModeChange={(value) => onUpdate(idx, { concurrencyMode: value })}
+                  onMaxConcurrencyChange={(value) =>
+                    onUpdate(idx, {
+                      maxConcurrency: value === '' ? 0 : Number(value),
+                    })
+                  }
+                />
               </div>
             ) : null}
           </div>

@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { Sheet } from '@/components/ui/Sheet';
 import { IconLoader2, IconPencil } from '@/components/ui/icons';
 import type { ProviderRecentUsageMap } from '@/components/providers/utils';
+import type { SupplierBillingProbeEntry } from '@/services/api/supplierBillingProbe';
 import { useCredentialGroupsCatalog } from '@/hooks/useCredentialGroupsCatalog';
 import { useNotificationStore } from '@/stores';
 import { PROVIDER_DESCRIPTORS } from '../descriptors';
@@ -29,6 +30,7 @@ export interface ProviderSheetState {
   brand: ProviderBrand;
   mode: SheetMode;
   resource: ProviderResource | null;
+  focusFailureHistory?: boolean;
 }
 
 export interface ProviderSheetHandle {
@@ -44,6 +46,8 @@ interface ProviderSheetProps {
   onUpdated: () => void;
   mutationDisabled?: boolean;
   usageByProvider?: ProviderRecentUsageMap;
+  billingProbeEntries?: readonly SupplierBillingProbeEntry[];
+  onRefreshBillingProbe?: (targetId: string) => Promise<void>;
   ref?: Ref<ProviderSheetHandle>;
 }
 
@@ -56,6 +60,8 @@ export function ProviderSheet({
   onUpdated,
   mutationDisabled = false,
   usageByProvider,
+  billingProbeEntries,
+  onRefreshBillingProbe,
   ref,
 }: ProviderSheetProps) {
   const { t } = useTranslation();
@@ -164,7 +170,15 @@ export function ProviderSheet({
       if (!state.resource) {
         return null;
       }
-      return <ResourceDetailView resource={state.resource} usageByProvider={usageByProvider} />;
+      return (
+        <ResourceDetailView
+          resource={state.resource}
+          usageByProvider={usageByProvider}
+          focusFailureHistory={state.focusFailureHistory === true}
+          billingProbeEntries={billingProbeEntries}
+          onRefreshBillingProbe={onRefreshBillingProbe}
+        />
+      );
     }
     const formKey = `${state.brand}:${state.resource?.id ?? 'new'}:${state.mode}`;
     if (isMultiProtocolSponsorBrand(state.brand)) {

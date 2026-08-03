@@ -1,10 +1,12 @@
-import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   IconAlertTriangle,
   IconCheckCircle2,
   IconEye,
+  IconInfo,
+  IconLoader2,
   IconPencil,
+  IconRefreshCw,
   IconTrash2,
 } from '@/components/ui/icons';
 import {
@@ -18,16 +20,23 @@ import {
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { TooltipIconButton as ActionTooltipButton } from '@/components/ui/TooltipControls';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
-import {
-  getOpenAIProviderRecentStatusData,
-  getOpenAIProviderTotalStats,
-  getProviderRecentStatusData,
-  getProviderTotalStats,
-  type ProviderRecentUsageMap,
-} from '@/components/providers/utils';
-import type { OpenAIProviderConfig } from '@/types';
-import type { StatusBarData } from '@/utils/recentRequests';
+import { RuntimeCapacityBadge } from '@/components/runtime/RuntimeCapacityBadge';
+import type { ProviderRecentUsageMap } from '@/components/providers/utils';
+import { useAuthInventoryStore, useRuntimeObservationStore } from '@/stores';
+import { statusBarDataFromRecentRequests } from '@/utils/recentRequests';
+import type { SupplierBillingProbeEntry } from '@/services/api/supplierBillingProbe';
 import type { ProviderResource } from '../types';
+import {
+  getProviderResourceStatusData,
+  getProviderResourceTotalStats,
+  getProviderResourceUsage,
+} from '../providerUsage';
+import { getProviderHomepageUrl } from '../providerHomepage';
+import { getProviderRuntimeObservation } from '@/features/runtimeObservations/selectors';
+import {
+  supplierBillingResourceKey,
+  type SupplierBillingProbeEntriesByResource,
+} from '../useSupplierBillingProbes';
 import styles from './ProviderResourceTable.module.scss';
 import statusBarStyles from './providerStatusBar.module.scss';
 
@@ -36,42 +45,29 @@ interface ProviderResourceTableProps {
   selectedId?: string | null;
   disableMutations?: boolean;
   usageByProvider?: ProviderRecentUsageMap;
+  billingProbeEntriesByResource?: SupplierBillingProbeEntriesByResource;
+  onRefreshBillingProbe?: (targetId: string) => Promise<void>;
   onView: (resource: ProviderResource) => void;
+  onViewFailures: (resource: ProviderResource) => void;
   onEdit: (resource: ProviderResource) => void;
   onDelete: (resource: ProviderResource) => void;
   onToggleDisabled?: (resource: ProviderResource, disabled: boolean) => void;
 }
 
-const columnWidths = ['160px', '174px', '210px', '70px', '130px', '176px'];
+const columnWidths = ['154px', '180px', '160px', '90px', '176px'];
 
-const resolveStatusBarData = (
-  resource: ProviderResource,
-  usageByProvider: ProviderRecentUsageMap
-): StatusBarData => {
-  if (resource.brand === 'openaiCompatibility') {
-    return getOpenAIProviderRecentStatusData(resource.raw as OpenAIProviderConfig, usageByProvider);
+const formatUsageBalance = (
+  remaining: number,
+  unit: string | undefined,
+  locale: string
+): string => {
+  let value = String(remaining);
+  try {
+    value = new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(remaining);
+  } catch {
+    value = String(remaining);
   }
-  return getProviderRecentStatusData(
-    usageByProvider,
-    resource.brand,
-    resource.apiKey ?? undefined,
-    resource.baseUrl ?? undefined
-  );
-};
-
-const resolveTotalStats = (
-  resource: ProviderResource,
-  usageByProvider: ProviderRecentUsageMap
-): { success: number; failure: number } => {
-  if (resource.brand === 'openaiCompatibility') {
-    return getOpenAIProviderTotalStats(resource.raw as OpenAIProviderConfig, usageByProvider);
-  }
-  return getProviderTotalStats(
-    usageByProvider,
-    resource.brand,
-    resource.apiKey ?? undefined,
-    resource.baseUrl ?? undefined
-  );
+  return `${value} ${unit?.trim() || 'USD'}`;
 };
 
 export function ProviderResourceTable({
@@ -79,210 +75,301 @@ export function ProviderResourceTable({
   selectedId,
   disableMutations,
   usageByProvider,
+  billingProbeEntriesByResource,
+  onRefreshBillingProbe,
   onView,
+  onViewFailures,
   onEdit,
   onDelete,
   onToggleDisabled,
 }: ProviderResourceTableProps) {
-  const { t } = useTranslation();
-
-  const renderMetric = (key: string, label: string, value: number) => (
-    <span key={key} className={styles.metric}>
-      <span className={styles.metricLabel}>{label}</span>
-      <span className={styles.metricValue}>{value}</span>
-    </span>
+  const { t, i18n } = useTranslation();
+  const authFiles = useAuthInventoryStore((state) => state.files);
+  const runtimeResources = useRuntimeObservationStore((state) => state.resourcesByKey);
+  const runtimeCredentialsByAuthIndex = useRuntimeObservationStore(
+    (state) => state.credentialsByAuthIndex
   );
 
-  const renderFlagTag = (key: string, label: string) => (
-    <span key={key} className={styles.flagTag}>
-      {label}
-    </span>
-  );
-
-  const renderModelsSummary = (r: ProviderResource) => {
-    const items: ReactNode[] = [];
-    if (r.brand === 'apikeyFun') {
-      (r.flags.protocols ?? []).forEach((protocol) => {
-        items.push(renderFlagTag(protocol, t(`providersPage.sponsor.protocols.${protocol}`)));
-      });
-      items.push(renderMetric('keys', t('providersPage.table.metrics.keys'), r.apiKeyEntryCount));
-    } else if (r.brand === 'openaiCompatibility') {
-      items.push(
-        renderMetric('models', t('providersPage.table.metrics.models'), r.modelCount),
-        renderMetric('keys', t('providersPage.table.metrics.keys'), r.apiKeyEntryCount),
-        renderMetric('headers', t('providersPage.table.metrics.headers'), r.headerCount)
-      );
-    } else {
-      items.push(
-        renderMetric('models', t('providersPage.table.metrics.models'), r.modelCount),
-        renderMetric('headers', t('providersPage.table.metrics.headers'), r.headerCount)
-      );
-      if (r.brand === 'codex' && r.flags.websockets) {
-        items.push(renderFlagTag('ws', t('providersPage.table.websocketsTag')));
-      }
-      if (r.brand === 'claude' && r.flags.cloakEnabled) {
-        items.push(renderFlagTag('cloak', t('providersPage.table.cloakTag')));
-      }
-    }
-    return <div className={styles.metricsCell}>{items}</div>;
-  };
-
-  const renderStatus = (r: ProviderResource) => {
-    const connectivity = r.runtimeStatus?.connectivity ?? 'unknown';
-    const scheduling = r.runtimeStatus?.scheduling ?? (r.disabled ? 'disabled' : 'not_registered');
-    const schedulingReady = r.runtimeStatus?.ready === true;
-    const connectivityClass =
-      connectivity === 'reachable'
-        ? styles.statusActive
-        : connectivity === 'unreachable'
-          ? styles.statusError
-          : styles.statusDisabled;
-    const schedulingClass = schedulingReady
+  const renderStatus = (
+    resource: ProviderResource,
+    runtimeResource: ReturnType<typeof getProviderRuntimeObservation>
+  ) => {
+    const connectivity = resource.runtimeStatus?.connectivity ?? 'unknown';
+    const scheduling =
+      resource.runtimeStatus?.scheduling ?? (resource.disabled ? 'disabled' : 'not_registered');
+    const ready = resource.runtimeStatus?.ready === true && !resource.disabled;
+    const statusClass = ready
       ? styles.statusActive
-      : scheduling === 'cooling' || scheduling === 'no_effective_model'
-        ? styles.statusWarning
-        : scheduling === 'unavailable'
-          ? styles.statusError
+      : connectivity === 'unreachable' || scheduling === 'unavailable'
+        ? styles.statusError
+        : scheduling === 'cooling' || scheduling === 'no_effective_model'
+          ? styles.statusWarning
           : styles.statusDisabled;
+    const label = ready
+      ? t('providersPage.runtime.scheduling.ready')
+      : connectivity === 'unreachable'
+        ? t('providersPage.runtime.connectivity.unreachable')
+        : t(`providersPage.runtime.scheduling.${scheduling}`);
+    const title = `${t(`providersPage.runtime.connectivity.${connectivity}`)} · ${t(
+      `providersPage.runtime.scheduling.${scheduling}`
+    )}`;
 
     return (
-      <div className={styles.statusBadges}>
-        <span className={`${styles.statusBadge} ${connectivityClass}`}>
-          {connectivity === 'reachable' ? (
-            <IconCheckCircle2 size={14} />
-          ) : (
-            <IconAlertTriangle size={14} />
-          )}
-          {t(`providersPage.runtime.connectivity.${connectivity}`)}
+      <>
+        <span className={`${styles.statusBadge} ${statusClass}`} title={title}>
+          {ready ? <IconCheckCircle2 size={14} /> : <IconAlertTriangle size={14} />}
+          {label}
         </span>
-        <span
-          className={`${styles.statusBadge} ${schedulingClass}`}
-          title={r.runtimeStatus?.nextRetryAfter}
-        >
-          {schedulingReady ? <IconCheckCircle2 size={14} /> : <IconAlertTriangle size={14} />}
-          {t(`providersPage.runtime.scheduling.${scheduling}`)}
-        </span>
-      </div>
+        <RuntimeCapacityBadge
+          resource={runtimeResource ?? undefined}
+          mode={resource.concurrencyMode}
+          maxConcurrency={resource.maxConcurrency}
+          aggregate={resource.concurrencyMode === null}
+        />
+      </>
     );
   };
 
-  const renderPrimary = (r: ProviderResource) => {
-    const visibleGroups = r.groups.slice(0, 2);
-    const hiddenGroupCount = Math.max(0, r.groups.length - visibleGroups.length);
+  const renderRequestHealth = (
+    resource: ProviderResource,
+    runtimeResource: ReturnType<typeof getProviderRuntimeObservation>
+  ) => {
+    if (!usageByProvider && !runtimeResource) return null;
+    const stats = runtimeResource
+      ? { success: runtimeResource.success, failure: runtimeResource.failed }
+      : getProviderResourceTotalStats(resource, usageByProvider!);
+    const statusData = runtimeResource
+      ? statusBarDataFromRecentRequests(runtimeResource.recentRequests)
+      : getProviderResourceStatusData(resource, usageByProvider!);
+    const usage = usageByProvider ? getProviderResourceUsage(resource, usageByProvider) : null;
+    const latestFailure = usage?.latestFailure ?? null;
+    const failureMeta = latestFailure
+      ? [
+          latestFailure.statusCode ? `HTTP ${latestFailure.statusCode}` : '',
+          latestFailure.code ?? '',
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : '';
 
-    if (r.brand === 'apikeyFun') {
-      return (
-        <div className={styles.primaryCell}>
-          <div className={styles.primaryTitleRow}>
-            <span className={styles.primaryName}>{r.name ?? r.identifier}</span>
-            {r.fallback ? (
-              <span className={styles.fallbackBadge}>{t('providersPage.table.fallbackTag')}</span>
-            ) : null}
-          </div>
-          <span className={styles.primarySub}>
-            {r.apiKeyPreview ?? t('providersPage.status.notConfigured')}
+    return (
+      <>
+        <div className={styles.stats}>
+          <span className={`${styles.statPill} ${styles.statSuccess}`}>
+            {t('stats.success')}: {stats.success}
           </span>
-          {visibleGroups.length > 0 ? (
-            <div className={styles.groupList}>
-              {visibleGroups.map((group) => (
-                <span key={group} className={styles.groupChip}>
-                  {group}
-                </span>
-              ))}
-              {hiddenGroupCount > 0 ? (
-                <span className={styles.groupChip}>+{hiddenGroupCount}</span>
-              ) : null}
-            </div>
-          ) : null}
+          {(usage?.recentFailureCount ?? 0) > 0 ? (
+            <button
+              type="button"
+              className={`${styles.statPill} ${styles.statFailure} ${styles.statFailureButton}`}
+              aria-label={t('providersPage.failures.viewHistory', {
+                count: usage?.recentFailureCount ?? 0,
+              })}
+              onClick={(event) => {
+                event.stopPropagation();
+                onViewFailures(resource);
+              }}
+            >
+              {t('stats.failure')}: {stats.failure}
+            </button>
+          ) : (
+            <span className={`${styles.statPill} ${styles.statFailure}`}>
+              {t('stats.failure')}: {stats.failure}
+            </span>
+          )}
         </div>
-      );
-    }
-    if (r.brand === 'openaiCompatibility') {
-      const extra = r.apiKeyEntryCount > 1 ? ` · +${r.apiKeyEntryCount - 1}` : '';
-      return (
-        <div className={styles.primaryCell}>
-          <div className={styles.primaryTitleRow}>
-            <span className={styles.primaryName}>{r.name ?? r.identifier}</span>
-            {r.fallback ? (
-              <span className={styles.fallbackBadge}>{t('providersPage.table.fallbackTag')}</span>
-            ) : null}
+        <div className={styles.statusBarWrap}>
+          <ProviderStatusBar statusData={statusData} styles={statusBarStyles} />
+        </div>
+        {latestFailure ? (
+          <div className={styles.latestFailure} title={latestFailure.message}>
+            <IconAlertTriangle size={13} />
+            <span className={styles.latestFailureText}>
+              {failureMeta ? <strong>{failureMeta}</strong> : null}
+              <span>{latestFailure.message}</span>
+            </span>
           </div>
-          <span className={styles.primarySub}>{(r.apiKeyPreview ?? '—') + extra}</span>
-          {visibleGroups.length > 0 ? (
-            <div className={styles.groupList}>
-              {visibleGroups.map((group) => (
-                <span key={group} className={styles.groupChip}>
-                  {group}
-                </span>
-              ))}
-              {hiddenGroupCount > 0 ? (
-                <span className={styles.groupChip}>+{hiddenGroupCount}</span>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      );
-    }
-    const primaryName = r.name ?? r.apiKeyPreview ?? '—';
-    const secondaryDetails = [
-      r.name && r.apiKeyPreview ? r.apiKeyPreview : null,
-      r.authIndex ? `auth: ${r.authIndex}` : null,
+        ) : null}
+      </>
+    );
+  };
+
+  const renderPrimary = (resource: ProviderResource) => {
+    const name = resource.name ?? resource.identifier;
+    const homepageUrl = getProviderHomepageUrl(resource.baseUrl);
+    const secondary = [
+      resource.apiKeyPreview,
+      resource.apiKeyEntryCount > 1
+        ? t('providersPage.table.keyCount', { count: resource.apiKeyEntryCount })
+        : null,
+      resource.groups.length > 0
+        ? t('providersPage.table.groupSummary', { groups: resource.groups.join(', ') })
+        : null,
+      resource.fallback ? t('providersPage.table.fallbackTag') : null,
     ].filter((value): value is string => Boolean(value));
+
     return (
       <div className={styles.primaryCell}>
-        <div className={styles.primaryTitleRow}>
-          <span className={styles.primaryName}>{primaryName}</span>
-          {r.fallback ? (
-            <span className={styles.fallbackBadge}>{t('providersPage.table.fallbackTag')}</span>
-          ) : null}
-        </div>
-        {secondaryDetails.length > 0 ? (
-          <span className={styles.primarySub}>{secondaryDetails.join(' · ')}</span>
-        ) : null}
-        {visibleGroups.length > 0 ? (
-          <div className={styles.groupList}>
-            {visibleGroups.map((group) => (
-              <span key={group} className={styles.groupChip}>
-                {group}
-              </span>
-            ))}
-            {hiddenGroupCount > 0 ? (
-              <span className={styles.groupChip}>+{hiddenGroupCount}</span>
-            ) : null}
-          </div>
+        {homepageUrl ? (
+          <a
+            className={`${styles.primaryName} ${styles.primaryNameLink}`}
+            href={homepageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={homepageUrl}
+          >
+            {name}
+          </a>
+        ) : (
+          <span className={styles.primaryName}>{name}</span>
+        )}
+        {secondary.length > 0 ? (
+          <span className={styles.primarySub}>{secondary.join(' · ')}</span>
         ) : null}
       </div>
     );
   };
 
-  const renderBaseUrl = (r: ProviderResource) => {
-    if (r.brand === 'apikeyFun') {
-      return <span className={styles.baseUrl}>{t('providersPage.sponsor.protocolSummary')}</span>;
-    }
-    if (r.brand === 'claude' && !r.baseUrl) {
+  const renderBaseUrl = (resource: ProviderResource) => {
+    if (resource.brand === 'claude' && !resource.baseUrl) {
       return (
         <span className={styles.baseUrl}>
           https://api.anthropic.com {t('providersPage.status.defaultSuffix')}
         </span>
       );
     }
-    return <span className={styles.baseUrl}>{r.baseUrl ?? t('providersPage.status.notSet')}</span>;
+    return (
+      <span className={styles.baseUrl} title={resource.baseUrl ?? undefined}>
+        {resource.baseUrl ?? t('providersPage.status.notSet')}
+      </span>
+    );
+  };
+
+  const billingStatusText = (entry: SupplierBillingProbeEntry): string => {
+    if (entry.probing) return t('providersPage.billingProbe.probing');
+    if (entry.stale && entry.status === 'ok') return t('providersPage.billingProbe.stale');
+    return t(`providersPage.billingProbe.status.${entry.status}`);
+  };
+
+  const usageStatusText = (entry: SupplierBillingProbeEntry): string => {
+    const usage = entry.usage;
+    if (entry.probing) return t('providersPage.billingProbe.probing');
+    if (!usage) return t('providersPage.billingProbe.status.not_checked');
+    if (usage.stale && usage.status === 'ok') return t('providersPage.billingProbe.stale');
+    if (usage.status === 'ok' && usage.is_valid === false) {
+      return t('providersPage.billingProbe.usageInvalid');
+    }
+    if (usage.status === 'ok' && usage.remaining === undefined) {
+      return t('providersPage.billingProbe.balanceUnavailable');
+    }
+    return t(`providersPage.billingProbe.status.${usage.status}`);
+  };
+
+  const renderBillingStatusIcon = (entry: SupplierBillingProbeEntry) => {
+    if (entry.probing) {
+      return <IconLoader2 className={styles.rateLoading} size={13} />;
+    }
+    if (entry.status === 'ok' && !entry.stale) {
+      return <IconCheckCircle2 className={styles.rateSuccess} size={13} />;
+    }
+    if (entry.status === 'not_checked') {
+      return <IconInfo className={styles.rateMuted} size={13} />;
+    }
+    return <IconAlertTriangle className={styles.rateError} size={13} />;
+  };
+
+  const renderMultiplier = (resource: ProviderResource) => {
+    const entries =
+      billingProbeEntriesByResource?.[
+        supplierBillingResourceKey(resource.brand, resource.originalIndex)
+      ] ?? [];
+    if (entries.length === 0) {
+      return (
+        <span className={styles.rateUnavailable}>
+          {t('providersPage.billingProbe.notEligible')}
+        </span>
+      );
+    }
+    const multiple = entries.length > 1;
+    return (
+      <div className={styles.rateList}>
+        {entries.map((entry) => {
+          const statusText = billingStatusText(entry);
+          const rate = entry.multiplier?.effective_rate_multiplier_text;
+          const usage = entry.usage;
+          const usageAmount =
+            usage?.remaining !== undefined && usage.received_at
+              ? formatUsageBalance(usage.remaining, usage.unit, i18n.language)
+              : null;
+          const usageState = usageStatusText(entry);
+          const usageWarning =
+            !usage || usage.status !== 'ok' || usage.stale || usage.is_valid === false;
+          const usageError = usage?.status === 'failed' || usage?.is_valid === false;
+          return (
+            <div
+              key={entry.target_id}
+              className={`${styles.rateLine} ${multiple ? styles.rateLineWithAlias : ''}`}
+              title={`${statusText} · ${usageStatusText(entry)}`}
+            >
+              {multiple ? (
+                <span className={styles.rateAlias} title={entry.alias}>
+                  {entry.alias ||
+                    t('providersPage.billingProbe.keyNumber', {
+                      index: entry.api_key_index + 1,
+                    })}
+                </span>
+              ) : null}
+              <span className={styles.rateMetrics}>
+                <span className={styles.rateValue}>{rate ? `${rate}x` : statusText}</span>
+                <span
+                  className={`${styles.usageValue} ${usageWarning ? styles.usageValueWarning : ''}`}
+                >
+                  {usageAmount ?? usageState}
+                </span>
+                {usageAmount && usageWarning ? (
+                  <span
+                    className={`${styles.usageState} ${usageError ? styles.usageStateError : ''}`}
+                  >
+                    {usageState}
+                  </span>
+                ) : null}
+              </span>
+              <span className={styles.rateStatusSlot}>{renderBillingStatusIcon(entry)}</span>
+              <span className={styles.rateRefreshSlot}>
+                {entry.eligible && onRefreshBillingProbe ? (
+                  <ActionTooltipButton
+                    className={styles.rateRefresh}
+                    label={t('providersPage.billingProbe.refresh')}
+                    disabled={entry.probing}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void onRefreshBillingProbe(entry.target_id).catch(() => undefined);
+                    }}
+                  >
+                    <IconRefreshCw size={14} />
+                  </ActionTooltipButton>
+                ) : null}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
     <Table
       className={styles.providerTable}
-      cols={columnWidths.map((w, i) => (
-        <col key={i} style={{ width: w }} />
+      cols={columnWidths.map((width, index) => (
+        <col key={index} style={{ width }} />
       ))}
     >
       <TableHeader>
         <TableRow>
-          <TableHead>{t('providersPage.table.key')}</TableHead>
+          <TableHead>{t('providersPage.table.supplier')}</TableHead>
           <TableHead>{t('providersPage.table.status')}</TableHead>
-          <TableHead>{t('providersPage.table.baseUrl')}</TableHead>
-          <TableHead>{t('providersPage.table.prefix')}</TableHead>
-          <TableHead>{t('providersPage.table.models')}</TableHead>
+          <TableHead>{t('providersPage.table.multiplierBalance')}</TableHead>
+          <TableHead>{t('providersPage.table.serviceAddress')}</TableHead>
           <TableHead alignRight className={styles.actionsHead}>
             {t('providersPage.table.actions')}
           </TableHead>
@@ -290,46 +377,34 @@ export function ProviderResourceTable({
       </TableHeader>
       <TableBody>
         {resources.map((resource) => {
+          const runtimeResource = getProviderRuntimeObservation(
+            resource,
+            authFiles,
+            runtimeResources,
+            runtimeCredentialsByAuthIndex
+          );
           return (
-            <TableRow key={resource.id} selected={resource.id === selectedId}>
-              <TableCell>{renderPrimary(resource)}</TableCell>
-              <TableCell>
+            <TableRow
+              key={resource.id}
+              className={styles.resourceRow}
+              selected={resource.id === selectedId}
+            >
+              <TableCell className={styles.primaryTableCell}>{renderPrimary(resource)}</TableCell>
+              <TableCell className={styles.statusTableCell}>
                 <div className={styles.statusCell}>
-                  {renderStatus(resource)}
-                  {usageByProvider && resource.brand !== 'apikeyFun' ? (
-                    <>
-                      {(() => {
-                        const stats = resolveTotalStats(resource, usageByProvider);
-                        return (
-                          <div className={styles.stats}>
-                            <span className={`${styles.statPill} ${styles.statSuccess}`}>
-                              {t('stats.success')}: {stats.success}
-                            </span>
-                            <span className={`${styles.statPill} ${styles.statFailure}`}>
-                              {t('stats.failure')}: {stats.failure}
-                            </span>
-                          </div>
-                        );
-                      })()}
-                      <div className={styles.statusBarWrap}>
-                        <ProviderStatusBar
-                          statusData={resolveStatusBarData(resource, usageByProvider)}
-                          styles={statusBarStyles}
-                        />
-                      </div>
-                    </>
-                  ) : null}
+                  <div className={styles.statusSummary}>
+                    {renderStatus(resource, runtimeResource)}
+                  </div>
+                  {renderRequestHealth(resource, runtimeResource)}
                 </div>
               </TableCell>
-              <TableCell>{renderBaseUrl(resource)}</TableCell>
-              <TableCell>
-                {resource.prefix ? (
-                  <span className={styles.chip}>{resource.prefix}</span>
-                ) : (
-                  <span className={styles.baseUrl}>{t('providersPage.status.none')}</span>
-                )}
+              <TableCell className={styles.rateCell}>
+                <span className={styles.mobileRateLabel} data-testid="provider-rate-label">
+                  {t('providersPage.table.multiplierBalance')}
+                </span>
+                {renderMultiplier(resource)}
               </TableCell>
-              <TableCell>{renderModelsSummary(resource)}</TableCell>
+              <TableCell className={styles.baseUrlCell}>{renderBaseUrl(resource)}</TableCell>
               <TableCell
                 alignRight
                 className={[
@@ -341,7 +416,10 @@ export function ProviderResourceTable({
               >
                 <div className={styles.actions}>
                   {onToggleDisabled ? (
-                    <span className={styles.toggleWrap} onClick={(e) => e.stopPropagation()}>
+                    <span
+                      className={styles.toggleWrap}
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <ToggleSwitch
                         checked={!resource.disabled}
                         disabled={disableMutations}
@@ -357,8 +435,8 @@ export function ProviderResourceTable({
                   <ActionTooltipButton
                     className={styles.iconBtn}
                     label={t('providersPage.actions.view')}
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       onView(resource);
                     }}
                   >
@@ -368,8 +446,8 @@ export function ProviderResourceTable({
                     className={styles.iconBtn}
                     label={t('providersPage.actions.edit')}
                     disabled={disableMutations}
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       onEdit(resource);
                     }}
                   >
@@ -379,8 +457,8 @@ export function ProviderResourceTable({
                     className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
                     label={t('providersPage.actions.delete')}
                     disabled={disableMutations}
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       onDelete(resource);
                     }}
                   >

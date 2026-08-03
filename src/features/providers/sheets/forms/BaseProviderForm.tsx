@@ -10,6 +10,7 @@ import {
   IconX,
 } from '@/components/ui/icons';
 import { Collapsible } from '@/components/ui/Collapsible';
+import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import { Select } from '@/components/ui/Select';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { TooltipIconButton } from '@/components/ui/TooltipControls';
@@ -17,8 +18,8 @@ import { inputClass, textareaClass } from '@/components/ui/formStyles';
 import { hasDisableAllModelsRule } from '@/components/providers/utils';
 import { cn } from '@/lib/utils';
 import type { GeminiKeyConfig, OpenAIProviderConfig, ProviderKeyConfig } from '@/types';
+import { isValidMaxConcurrency, normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import type { ModelInfo } from '@/utils/models';
-import { CLAUDE_API_BASE_URL } from '../../claudeApi';
 import { PROVIDER_DESCRIPTORS } from '../../descriptors';
 import type {
   ApiKeyEntryInput,
@@ -59,16 +60,20 @@ const emptyApiKeyEntry = (): ApiKeyEntryInput => ({
   apiKey: '',
   groups: [],
   proxyUrl: '',
+  concurrencyMode: 'inherit',
+  maxConcurrency: 0,
 });
 
 type PrimaryField =
   | 'name'
   | 'apiKey'
   | 'baseUrl'
+  | 'authMode'
   | 'protocolMode'
   | 'retryOwner'
   | 'proxyUrl'
   | 'routing'
+  | 'maxConcurrency'
   | 'testModel';
 type ToggleField = 'websockets' | 'fallback' | 'disabled' | 'disableCooling';
 type AdvancedSection = 'apiKeyEntries' | 'headers' | 'models' | 'excludedModels' | 'cloak';
@@ -83,70 +88,89 @@ interface ProviderFormLayout {
 
 const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
   gemini: {
-    primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
+    primaryFields: [
+      'name',
+      'apiKey',
+      'baseUrl',
+      'proxyUrl',
+      'routing',
+      'maxConcurrency',
+      'testModel',
+    ],
     toggleFields: ['fallback', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
   codex: {
-    primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
+    primaryFields: [
+      'name',
+      'apiKey',
+      'baseUrl',
+      'proxyUrl',
+      'routing',
+      'maxConcurrency',
+      'testModel',
+    ],
     toggleFields: ['websockets', 'fallback', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
   xai: {
-    primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
+    primaryFields: [
+      'name',
+      'apiKey',
+      'baseUrl',
+      'proxyUrl',
+      'routing',
+      'maxConcurrency',
+      'testModel',
+    ],
     toggleFields: ['websockets', 'fallback', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
   claude: {
-    primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing', 'testModel'],
-    toggleFields: ['fallback', 'disabled', 'disableCooling'],
-    advancedSections: ['headers', 'models', 'excludedModels', 'cloak'],
-    modelEntryMode: 'standard',
-  },
-  claudeApi: {
-    primaryFields: ['apiKey', 'proxyUrl', 'routing', 'testModel'],
+    primaryFields: [
+      'name',
+      'apiKey',
+      'baseUrl',
+      'authMode',
+      'proxyUrl',
+      'routing',
+      'maxConcurrency',
+      'testModel',
+    ],
     toggleFields: ['fallback', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels', 'cloak'],
     modelEntryMode: 'standard',
   },
   vertex: {
-    primaryFields: ['name', 'apiKey', 'baseUrl', 'proxyUrl', 'routing'],
+    primaryFields: [
+      'name',
+      'apiKey',
+      'baseUrl',
+      'proxyUrl',
+      'routing',
+      'maxConcurrency',
+      'testModel',
+    ],
     toggleFields: ['fallback', 'disabled'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
   openaiCompatibility: {
-    primaryFields: ['name', 'baseUrl', 'protocolMode', 'retryOwner', 'routing', 'testModel'],
+    primaryFields: [
+      'name',
+      'baseUrl',
+      'protocolMode',
+      'retryOwner',
+      'routing',
+      'maxConcurrency',
+      'testModel',
+    ],
     toggleFields: ['fallback', 'disabled', 'disableCooling'],
     advancedSections: ['apiKeyEntries', 'headers', 'models'],
     modelEntryMode: 'openai',
-  },
-  apikeyFun: {
-    primaryFields: [],
-    toggleFields: [],
-    advancedSections: [],
-    modelEntryMode: 'standard',
-  },
-  code0: {
-    primaryFields: [],
-    toggleFields: [],
-    advancedSections: [],
-    modelEntryMode: 'standard',
-  },
-  fennoAI: {
-    primaryFields: [],
-    toggleFields: [],
-    advancedSections: [],
-    modelEntryMode: 'standard',
-  },
-  qiniuCloud: {
-    primaryFields: [],
-    toggleFields: [],
-    advancedSections: [],
-    modelEntryMode: 'standard',
   },
   kimi: {
     primaryFields: [],
@@ -164,8 +188,7 @@ const formatJsonObject = (value?: Record<string, unknown>): string => {
   return JSON.stringify(value, null, 2);
 };
 
-const isClaudeLikeBrand = (brand: ProviderBrand): boolean =>
-  brand === 'claude' || brand === 'claudeApi';
+const isClaudeLikeBrand = (brand: ProviderBrand): boolean => brand === 'claude';
 
 function buildInitialForm(
   brand: ProviderBrand,
@@ -177,8 +200,8 @@ function buildInitialForm(
       apiKey: '',
       name: '',
       groups: [],
-      baseUrl:
-        brand === 'claudeApi' ? CLAUDE_API_BASE_URL : brand === 'xai' ? XAI_API_BASE_URL : '',
+      baseUrl: brand === 'xai' ? XAI_API_BASE_URL : '',
+      authMode: brand === 'claude' ? 'x-api-key' : undefined,
       protocolMode: brand === 'openaiCompatibility' ? 'chat-completions' : undefined,
       retryOwner: brand === 'openaiCompatibility' ? 'xfpa' : undefined,
       proxyUrl: '',
@@ -187,6 +210,8 @@ function buildInitialForm(
       disableCooling: false,
       fallback: false,
       priority: undefined,
+      concurrencyMode: 'inherit',
+      maxConcurrency: 0,
       models: [emptyModel()],
       headers: [emptyHeader()],
       excludedModelsText: '',
@@ -200,7 +225,8 @@ function buildInitialForm(
         brand === 'codex' ||
         brand === 'xai' ||
         isClaudeLikeBrand(brand) ||
-        brand === 'gemini'
+        brand === 'gemini' ||
+        brand === 'vertex'
           ? ''
           : undefined,
       apiKeyEntries: brand === 'openaiCompatibility' ? [emptyApiKeyEntry()] : undefined,
@@ -210,6 +236,7 @@ function buildInitialForm(
   const raw = resource.raw;
   if (brand === 'openaiCompatibility') {
     const cfg = raw as OpenAIProviderConfig;
+    const concurrency = normalizeConcurrencySetting(cfg.concurrencyMode, cfg.maxConcurrency);
     return {
       apiKey: '',
       name: cfg.name ?? '',
@@ -222,6 +249,8 @@ function buildInitialForm(
       disableCooling: cfg.disableCooling === true,
       fallback: cfg.fallback === true,
       priority: cfg.priority,
+      concurrencyMode: concurrency.mode,
+      maxConcurrency: concurrency.maxConcurrency,
       models: cfg.models?.length
         ? cfg.models.map((m) => ({
             name: m.name,
@@ -238,19 +267,28 @@ function buildInitialForm(
       excludedModelsText: '',
       testModel: cfg.testModel ?? '',
       apiKeyEntries: cfg.apiKeyEntries?.length
-        ? cfg.apiKeyEntries.map((entry) => ({
-            name: entry.name ?? '',
-            apiKey: '',
-            existingApiKey: entry.apiKey,
-            groups: entry.groups ?? [],
-            proxyUrl: entry.proxyUrl ?? '',
-            authIndex: entry.authIndex,
-          }))
+        ? cfg.apiKeyEntries.map((entry) => {
+            const entryConcurrency = normalizeConcurrencySetting(
+              entry.concurrencyMode,
+              entry.maxConcurrency
+            );
+            return {
+              name: entry.name ?? '',
+              apiKey: '',
+              existingApiKey: entry.apiKey,
+              groups: entry.groups ?? [],
+              proxyUrl: entry.proxyUrl ?? '',
+              authIndex: entry.authIndex,
+              concurrencyMode: entryConcurrency.mode,
+              maxConcurrency: entryConcurrency.maxConcurrency,
+            };
+          })
         : [emptyApiKeyEntry()],
     };
   }
 
   const cfg = raw as GeminiKeyConfig & ProviderKeyConfig;
+  const concurrency = normalizeConcurrencySetting(cfg.concurrencyMode, cfg.maxConcurrency);
   const disabled = hasDisableAllModelsRule(cfg.excludedModels);
   const excludedList = stripDisableAllRule(cfg.excludedModels);
   return {
@@ -262,12 +300,15 @@ function buildInitialForm(
     name: cfg.name ?? '',
     groups: cfg.groups ?? [],
     baseUrl: cfg.baseUrl ?? '',
+    authMode: brand === 'claude' ? (cfg.authMode ?? '') : undefined,
     proxyUrl: cfg.proxyUrl ?? '',
     prefix: cfg.prefix ?? '',
     disabled,
     disableCooling: cfg.disableCooling === true,
     fallback: cfg.fallback === true,
     priority: cfg.priority,
+    concurrencyMode: concurrency.mode,
+    maxConcurrency: concurrency.maxConcurrency,
     models: cfg.models?.length
       ? cfg.models.map((m) => ({
           name: m.name,
@@ -296,7 +337,11 @@ function buildInitialForm(
       ? (cfg as ProviderKeyConfig).experimentalCchSigning === true
       : undefined,
     testModel:
-      brand === 'codex' || brand === 'xai' || isClaudeLikeBrand(brand) || brand === 'gemini'
+      brand === 'codex' ||
+      brand === 'xai' ||
+      isClaudeLikeBrand(brand) ||
+      brand === 'gemini' ||
+      brand === 'vertex'
         ? ''
         : undefined,
   };
@@ -364,6 +409,16 @@ export function BaseProviderForm({
       modelRequired: t('providersPage.connectivity.modelRequired'),
       timeout: (seconds: number) => t('providersPage.connectivity.timeout', { seconds }),
       requestFailed: t('providersPage.connectivity.requestFailed'),
+      authFailed: (status: number, detail: string) =>
+        t('providersPage.connectivity.authFailed', { status, detail }),
+      routeUnsupported: (status: number, detail: string) =>
+        t('providersPage.connectivity.routeUnsupported', { status, detail }),
+      rateLimited: (status: number, detail: string) =>
+        t('providersPage.connectivity.rateLimited', { status, detail }),
+      serverFailed: (status: number, detail: string) =>
+        t('providersPage.connectivity.serverFailed', { status, detail }),
+      protocolFailed: (status: number, detail: string) =>
+        t('providersPage.connectivity.protocolFailed', { status, detail }),
     }),
     [t]
   );
@@ -379,6 +434,9 @@ export function BaseProviderForm({
       apiKey: form.apiKey,
       fallbackApiKey,
       authIndex: fallbackAuthIndex,
+      proxyUrl: form.proxyUrl,
+      authMode: form.authMode,
+      protocolMode: form.protocolMode,
     },
     connectivityMessages
   );
@@ -507,6 +565,17 @@ export function BaseProviderForm({
     if (descriptor.baseUrlRequired && !form.baseUrl.trim()) {
       return t('providersPage.form.validation.baseUrlRequired');
     }
+    if (form.maxConcurrency !== undefined && !isValidMaxConcurrency(form.maxConcurrency)) {
+      return t('providersPage.form.validation.maxConcurrency');
+    }
+    if (
+      form.apiKeyEntries?.some(
+        (entry) =>
+          entry.maxConcurrency !== undefined && !isValidMaxConcurrency(entry.maxConcurrency)
+      )
+    ) {
+      return t('providersPage.form.validation.maxConcurrency');
+    }
     return null;
   };
 
@@ -559,9 +628,11 @@ export function BaseProviderForm({
       ? { status: connectivity.codexStatus, run: connectivity.runCodex }
       : brand === 'gemini'
         ? { status: connectivity.geminiStatus, run: connectivity.runGemini }
-        : isClaudeLikeBrand(brand)
-          ? { status: connectivity.claudeStatus, run: connectivity.runClaude }
-          : null;
+        : brand === 'vertex'
+          ? { status: connectivity.vertexStatus, run: connectivity.runVertex }
+          : isClaudeLikeBrand(brand)
+            ? { status: connectivity.claudeStatus, run: connectivity.runClaude }
+            : null;
 
   const updateModelEntry = (idx: number, patch: Partial<ModelEntryInput>) => {
     updateField(
@@ -658,6 +729,28 @@ export function BaseProviderForm({
           </div>
         ) : null}
 
+        {hasPrimaryField('authMode') ? (
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${fid}-authMode`}>
+              {t('providersPage.form.authMode')}
+            </label>
+            <Select
+              id={`${fid}-authMode`}
+              value={form.authMode ?? ''}
+              options={[
+                { value: '', label: t('providersPage.form.authModeLegacy') },
+                { value: 'x-api-key', label: t('providersPage.form.authModeXAPIKey') },
+                { value: 'bearer', label: t('providersPage.form.authModeBearer') },
+              ]}
+              onChange={(value) =>
+                updateField('authMode', value === 'x-api-key' || value === 'bearer' ? value : '')
+              }
+              disabled={mutating}
+              ariaLabel={t('providersPage.form.authMode')}
+            />
+          </div>
+        ) : null}
+
         {hasPrimaryField('protocolMode') ? (
           <div className={styles.field}>
             <label className={styles.label} htmlFor={`${fid}-protocolMode`}>
@@ -675,11 +768,15 @@ export function BaseProviderForm({
                   value: 'preserve-openai',
                   label: t('providersPage.form.protocolModePreserveOpenAI'),
                 },
+                {
+                  value: 'auto',
+                  label: t('providersPage.form.protocolModeAuto'),
+                },
               ]}
               onChange={(value) =>
                 updateField(
                   'protocolMode',
-                  value === 'preserve-openai' ? 'preserve-openai' : 'chat-completions'
+                  value === 'preserve-openai' || value === 'auto' ? value : 'chat-completions'
                 )
               }
               disabled={mutating}
@@ -766,6 +863,25 @@ export function BaseProviderForm({
               </div>
             ) : null}
           </div>
+        ) : null}
+
+        {hasPrimaryField('maxConcurrency') ? (
+          <ConcurrencySettingField
+            id={`${fid}-concurrency`}
+            className={styles.concurrencyField}
+            label={t(
+              brand === 'openaiCompatibility'
+                ? 'providersPage.form.supplierMaxConcurrency'
+                : 'providersPage.form.maxConcurrency'
+            )}
+            mode={form.concurrencyMode ?? 'inherit'}
+            maxConcurrency={form.maxConcurrency ?? 0}
+            disabled={mutating}
+            onModeChange={(value) => updateField('concurrencyMode', value)}
+            onMaxConcurrencyChange={(value) =>
+              updateField('maxConcurrency', value === '' ? 0 : Number(value))
+            }
+          />
         ) : null}
 
         {hasPrimaryField('testModel') ? (

@@ -3,6 +3,8 @@
  * Based on the original src/modules/ai-providers.js module.
  */
 
+import type { ConcurrencyMode } from './concurrency';
+
 export interface ModelAlias {
   name: string;
   alias?: string;
@@ -35,6 +37,8 @@ export interface ApiKeyEntry {
   proxyUrl?: string;
   authIndex?: string;
   groups?: string[];
+  concurrencyMode?: ConcurrencyMode;
+  maxConcurrency?: number;
   runtimeStatus?: ProviderRuntimeStatus;
 }
 
@@ -45,8 +49,9 @@ export interface CloakConfig {
   cacheUserId?: boolean;
 }
 
-export type OpenAIProviderProtocolMode = 'chat-completions' | 'preserve-openai';
+export type OpenAIProviderProtocolMode = 'chat-completions' | 'preserve-openai' | 'auto';
 export type OpenAIProviderRetryOwner = 'xfpa' | 'upstream';
+export type ClaudeAuthMode = 'x-api-key' | 'bearer';
 
 export interface GeminiKeyConfig {
   name?: string;
@@ -54,6 +59,8 @@ export interface GeminiKeyConfig {
   groups?: string[];
   priority?: number;
   fallback?: boolean;
+  concurrencyMode?: ConcurrencyMode;
+  maxConcurrency?: number;
   prefix?: string;
   baseUrl?: string;
   proxyUrl?: string;
@@ -71,8 +78,11 @@ export interface ProviderKeyConfig {
   groups?: string[];
   priority?: number;
   fallback?: boolean;
+  concurrencyMode?: ConcurrencyMode;
+  maxConcurrency?: number;
   prefix?: string;
   baseUrl?: string;
+  authMode?: ClaudeAuthMode;
   websockets?: boolean;
   proxyUrl?: string;
   headers?: Record<string, string>;
@@ -89,6 +99,8 @@ export interface OpenAIProviderConfig {
   name: string;
   prefix?: string;
   baseUrl: string;
+  concurrencyMode?: ConcurrencyMode;
+  maxConcurrency?: number;
   protocolMode?: OpenAIProviderProtocolMode;
   retryOwner?: OpenAIProviderRetryOwner;
   apiKeyEntries: ApiKeyEntry[];

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { oauthApi } from '@/services/api';
-import type { OAuthCredentialResult } from '@/services/api/oauth';
+import type { OAuthCredentialResult, OAuthStartOptions } from '@/services/api/oauth';
 import { useAuthStore, useNotificationStore } from '@/stores';
-import type { ProxySelection } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
 import { getErrorMessage, isRecord } from '@/utils/helpers';
 import { waitForOAuthStatus } from './oauthStatusPolling';
@@ -333,7 +332,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
   );
 
   const startAuth = useCallback(
-    async (provider: string, proxySelection?: ProxySelection) => {
+    async (provider: string, options: OAuthStartOptions = {}) => {
       abortProviderAttempt(provider);
       clearProviderTimers(provider);
       cancelRequested.current[provider] = false;
@@ -354,7 +353,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         callbackUrl: '',
       });
       try {
-        const res = await oauthApi.startAuth(provider, proxySelection);
+        const res = await oauthApi.startAuth(provider, options);
         if (cancelRequested.current[provider] || !isCurrentProviderAttempt(provider, attempt)) {
           if (res.state) {
             void oauthApi.cancelAuth(provider, res.state).catch(() => {});

@@ -4,6 +4,7 @@
 
 import { apiClient } from './client';
 import { isRecord } from '@/utils/helpers';
+import { normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import {
   normalizeGeminiKeyConfig,
   normalizeOpenAIProvider,
@@ -20,6 +21,14 @@ import type {
 const serializeHeaders = (headers?: Record<string, string>) =>
   headers && Object.keys(headers).length ? headers : undefined;
 
+const serializeConcurrency = (mode: unknown, maxConcurrency: unknown) => {
+  const setting = normalizeConcurrencySetting(mode, maxConcurrency);
+  return {
+    'concurrency-mode': setting.mode,
+    'max-concurrency': setting.mode === 'independent' ? setting.maxConcurrency : 0,
+  };
+};
+
 const RESPONSE_ONLY_FIELDS = ['auth-index', 'runtime-status'] as const;
 
 const PROVIDER_COMMON_KEY_FIELDS = [
@@ -28,6 +37,8 @@ const PROVIDER_COMMON_KEY_FIELDS = [
   'groups',
   'priority',
   'fallback',
+  'concurrency-mode',
+  'max-concurrency',
   'prefix',
   'base-url',
   'proxy-url',
@@ -42,6 +53,7 @@ const CODEX_KEY_FIELDS = [...PROVIDER_COMMON_KEY_FIELDS, 'websockets'] as const;
 const XAI_KEY_FIELDS = CODEX_KEY_FIELDS;
 const CLAUDE_KEY_FIELDS = [
   ...PROVIDER_COMMON_KEY_FIELDS,
+  'auth-mode',
   'cloak',
   'experimental-cch-signing',
 ] as const;
@@ -51,6 +63,8 @@ const VERTEX_KEY_FIELDS = [
   'groups',
   'priority',
   'fallback',
+  'concurrency-mode',
+  'max-concurrency',
   'prefix',
   'base-url',
   'proxy-url',
@@ -66,6 +80,8 @@ const OPENAI_PROVIDER_FIELDS = [
   'disabled',
   'prefix',
   'base-url',
+  'concurrency-mode',
+  'max-concurrency',
   'protocol-mode',
   'retry-owner',
   'api-key-entries',
@@ -78,7 +94,14 @@ const OPENAI_PROVIDER_FIELDS = [
 const MODEL_ALIAS_FIELDS = ['name', 'alias', 'priority', 'test-model'] as const;
 const OPENAI_MODEL_ALIAS_FIELDS = [...MODEL_ALIAS_FIELDS, 'image', 'thinking'] as const;
 
-const API_KEY_ENTRY_FIELDS = ['name', 'api-key', 'proxy-url', 'groups'] as const;
+const API_KEY_ENTRY_FIELDS = [
+  'name',
+  'api-key',
+  'proxy-url',
+  'groups',
+  'concurrency-mode',
+  'max-concurrency',
+] as const;
 
 const CLOAK_FIELDS = ['mode', 'strict-mode', 'sensitive-words', 'cache-user-id'] as const;
 
@@ -269,6 +292,11 @@ const mergeProviderKeyPayload = (
   return next;
 };
 
+export const mergeClaudeProviderPayload = (
+  raw: unknown,
+  payload: Record<string, unknown>
+): Record<string, unknown> => mergeProviderKeyPayload(raw, payload, CLAUDE_KEY_FIELDS);
+
 export const mergeOpenAIProviderPayload = (raw: unknown, payload: Record<string, unknown>) => {
   const next = mergeKnownFields(raw, payload, OPENAI_PROVIDER_FIELDS);
   const rawApiKeyEntries = isRecord(raw) ? raw['api-key-entries'] : undefined;
@@ -373,7 +401,10 @@ const serializeModelAliases = (models?: ModelAlias[], includeOpenAIFields = fals
     : undefined;
 
 const serializeApiKeyEntry = (entry: ApiKeyEntry) => {
-  const payload: Record<string, unknown> = { 'api-key': entry.apiKey };
+  const payload: Record<string, unknown> = {
+    'api-key': entry.apiKey,
+    ...serializeConcurrency(entry.concurrencyMode, entry.maxConcurrency),
+  };
   if (entry.name?.trim()) payload.name = entry.name.trim();
   if (entry.proxyUrl) payload['proxy-url'] = entry.proxyUrl;
   if (entry.groups?.length) payload.groups = entry.groups;
@@ -381,13 +412,17 @@ const serializeApiKeyEntry = (entry: ApiKeyEntry) => {
 };
 
 export const serializeProviderKey = (config: ProviderKeyConfig) => {
-  const payload: Record<string, unknown> = { 'api-key': config.apiKey };
+  const payload: Record<string, unknown> = {
+    'api-key': config.apiKey,
+    ...serializeConcurrency(config.concurrencyMode, config.maxConcurrency),
+  };
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
   if (config.fallback) payload.fallback = true;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
+  if (config.authMode) payload['auth-mode'] = config.authMode;
   if (config.websockets !== undefined) payload.websockets = config.websockets;
   if (config.proxyUrl) payload['proxy-url'] = config.proxyUrl;
   if (config.disableCooling) payload['disable-cooling'] = true;
@@ -425,6 +460,7 @@ export const serializeXAIKey = (config: ProviderKeyConfig): Record<string, unkno
   'api-key': config.apiKey.trim(),
   groups: config.groups ?? [],
   fallback: config.fallback === true,
+  ...serializeConcurrency(config.concurrencyMode, config.maxConcurrency),
   priority: config.priority ?? 0,
   prefix: config.prefix?.trim() ?? '',
   'base-url': config.baseUrl?.trim() ?? '',
@@ -449,7 +485,10 @@ const serializeVertexModelAliases = (models?: ModelAlias[]) =>
     : undefined;
 
 const serializeVertexKey = (config: ProviderKeyConfig) => {
-  const payload: Record<string, unknown> = { 'api-key': config.apiKey };
+  const payload: Record<string, unknown> = {
+    'api-key': config.apiKey,
+    ...serializeConcurrency(config.concurrencyMode, config.maxConcurrency),
+  };
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
@@ -468,7 +507,10 @@ const serializeVertexKey = (config: ProviderKeyConfig) => {
 };
 
 export const serializeGeminiKey = (config: GeminiKeyConfig) => {
-  const payload: Record<string, unknown> = { 'api-key': config.apiKey };
+  const payload: Record<string, unknown> = {
+    'api-key': config.apiKey,
+    ...serializeConcurrency(config.concurrencyMode, config.maxConcurrency),
+  };
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
@@ -491,13 +533,14 @@ export const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
   const payload: Record<string, unknown> = {
     name: provider.name,
     'base-url': provider.baseUrl,
+    ...serializeConcurrency(provider.concurrencyMode, provider.maxConcurrency),
     'api-key-entries': Array.isArray(provider.apiKeyEntries)
       ? provider.apiKeyEntries.map((entry) => serializeApiKeyEntry(entry))
       : [],
   };
   if (provider.prefix?.trim()) payload.prefix = provider.prefix.trim();
-  if (provider.protocolMode === 'preserve-openai') {
-    payload['protocol-mode'] = 'preserve-openai';
+  if (provider.protocolMode === 'preserve-openai' || provider.protocolMode === 'auto') {
+    payload['protocol-mode'] = provider.protocolMode;
   }
   if (provider.retryOwner === 'upstream') {
     payload['retry-owner'] = 'upstream';
@@ -631,8 +674,10 @@ export const providersApi = {
 
   createClaudeConfig: (config: ProviderKeyConfig) =>
     mutateLatestProviderList('claude-api-key', (latestItems) =>
-      appendLatestProviderRecord(latestItems, serializeProviderKey(config), (raw, payload) =>
-        mergeProviderKeyPayload(raw, payload, CLAUDE_KEY_FIELDS)
+      appendLatestProviderRecord(
+        latestItems,
+        serializeProviderKey(config),
+        mergeClaudeProviderPayload
       )
     ),
 
@@ -642,7 +687,7 @@ export const providersApi = {
         latestItems,
         (record) => matchesProviderKey(record, apiKey, baseUrl),
         serializeProviderKey(config),
-        (raw, payload) => mergeProviderKeyPayload(raw, payload, CLAUDE_KEY_FIELDS)
+        mergeClaudeProviderPayload
       )
     ),
 
@@ -661,7 +706,7 @@ export const providersApi = {
         'claude-api-key',
         configs,
         serializeProviderKey,
-        (raw, payload) => mergeProviderKeyPayload(raw, payload, CLAUDE_KEY_FIELDS),
+        mergeClaudeProviderPayload,
         providerKeyIdentity
       )
     ),

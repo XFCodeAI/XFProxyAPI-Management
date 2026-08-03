@@ -11,6 +11,19 @@ import {
 
 const DISABLE_ALL_MODELS_RULE = '*';
 const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com';
+const DEFAULT_VERTEX_BASE_URL = 'https://aiplatform.googleapis.com';
+
+const OPENAI_ENDPOINT_SUFFIXES = [
+  '/responses/compact',
+  '/chat/completions',
+  '/images/generations',
+  '/images/edits',
+  '/videos/generations',
+  '/videos/edits',
+  '/videos/extensions',
+  '/responses',
+  '/completions',
+];
 
 export const hasDisableAllModelsRule = (models?: string[]) =>
   Array.isArray(models) &&
@@ -53,29 +66,40 @@ const buildGeminiModelResource = (model: string): string => {
   return `models/${encodeURIComponent(trimmed)}`;
 };
 
-export const buildOpenAIChatCompletionsEndpoint = (baseUrl: string): string => {
+const isVersionPathSegment = (value: string): boolean => /^v\d[\da-z.-]*$/i.test(value);
+
+const buildOpenAIVersionedEndpoint = (baseUrl: string, endpoint: string): string => {
   const trimmed = normalizeUpstreamBaseUrl(baseUrl);
   if (!trimmed) return '';
-  if (trimmed.endsWith('/chat/completions')) {
-    return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    let path = parsed.pathname.replace(/\/+$/g, '');
+    const lowerPath = path.toLowerCase();
+    const suffix = OPENAI_ENDPOINT_SUFFIXES.find((candidate) =>
+      lowerPath.endsWith(candidate.toLowerCase())
+    );
+    if (suffix) path = path.slice(0, -suffix.length);
+
+    const segments = path.split('/').filter(Boolean);
+    const endpointRemainder = endpoint.replace(/^\/v1\/?/i, '/');
+    path = isVersionPathSegment(segments[segments.length - 1] ?? '')
+      ? `${path}${endpointRemainder}`
+      : `${path}/v1${endpointRemainder}`;
+    parsed.pathname = path.replace(/\/{2,}/g, '/');
+    return parsed.toString();
+  } catch {
+    return '';
   }
-  return `${trimmed}/chat/completions`;
 };
 
-export const buildCodexResponsesEndpoint = (baseUrl: string): string => {
-  const trimmed = normalizeUpstreamBaseUrl(baseUrl);
-  if (!trimmed) return '';
-  if (/\/v1\/responses$/i.test(trimmed)) {
-    return trimmed;
-  }
-  if (/\/v1\/models$/i.test(trimmed)) {
-    return trimmed.replace(/\/models$/i, '/responses');
-  }
-  if (/\/v1$/i.test(trimmed)) {
-    return `${trimmed}/responses`;
-  }
-  return `${trimmed}/v1/responses`;
-};
+export const buildOpenAIChatCompletionsEndpoint = (baseUrl: string): string =>
+  buildOpenAIVersionedEndpoint(baseUrl, '/v1/chat/completions');
+
+export const buildOpenAIResponsesEndpoint = (baseUrl: string): string =>
+  buildOpenAIVersionedEndpoint(baseUrl, '/v1/responses');
+
+export const buildCodexResponsesEndpoint = (baseUrl: string): string =>
+  buildOpenAIVersionedEndpoint(baseUrl, '/v1/responses');
 
 export const buildClaudeMessagesEndpoint = (baseUrl: string): string => {
   const trimmed = normalizeUpstreamBaseUrl(baseUrl, 'https://api.anthropic.com');
@@ -110,12 +134,43 @@ export const buildGeminiGenerateContentEndpoint = (baseUrl: string, model: strin
   return `${root}/${resource}:generateContent`;
 };
 
+export const buildVertexGenerateContentEndpoint = (baseUrl: string, model: string): string => {
+  const modelName = String(model || '')
+    .trim()
+    .replace(/^\/+|:generateContent$/gi, '');
+  if (!modelName) return '';
+
+  const trimmed = normalizeUpstreamBaseUrl(baseUrl, DEFAULT_VERTEX_BASE_URL);
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    let path = parsed.pathname.replace(/\/+$/g, '');
+    const modelsIndex = path.toLowerCase().lastIndexOf('/publishers/google/models/');
+    if (modelsIndex >= 0) path = path.slice(0, modelsIndex);
+    const segments = path.split('/').filter(Boolean);
+    const versionRoot = isVersionPathSegment(segments[segments.length - 1] ?? '')
+      ? path
+      : `${path}/v1`;
+    parsed.pathname =
+      `${versionRoot}/publishers/google/models/${encodeURIComponent(modelName)}:generateContent`.replace(
+        /\/{2,}/g,
+        '/'
+      );
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+};
+
 export type ProviderRecentUsageMap = Map<string, Map<string, RecentRequestUsageEntry>>;
 
 const EMPTY_RECENT_USAGE_ENTRY: RecentRequestUsageEntry = {
   success: 0,
   failed: 0,
   recentRequests: [],
+  authIndexes: [],
+  recentFailureCount: 0,
+  latestFailure: null,
 };
 
 const normalizeProviderRecentKey = (value: unknown): string =>
@@ -123,7 +178,7 @@ const normalizeProviderRecentKey = (value: unknown): string =>
     .trim()
     .toLowerCase();
 
-const getProviderRecentUsageEntry = (
+export const getProviderRecentUsageEntry = (
   usageByProvider: ProviderRecentUsageMap,
   provider: string,
   apiKey?: string,

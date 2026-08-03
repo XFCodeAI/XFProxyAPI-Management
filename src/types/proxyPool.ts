@@ -25,12 +25,40 @@ export interface ProxyPoolUsage {
 
 export interface ProxyPoolAssignment {
   id: string;
+  resourceId: string;
+  kind: ProxyPoolAssignableResourceKind;
   provider: string;
+  supplierId?: string;
+  supplierAlias?: string;
+  keyAlias?: string;
   label?: string;
+  alias?: string;
+  maskedIdentity?: string;
   fileName?: string;
   email?: string;
+  disabled: boolean;
   proxySupported: boolean;
   proxySupportStatus: string;
+}
+
+export type ProxyPoolAssignableResourceKind = 'credential' | 'provider_api_key';
+
+export interface ProxyPoolAssignableResource {
+  resourceId: string;
+  kind: ProxyPoolAssignableResourceKind;
+  provider: string;
+  supplierId?: string;
+  supplierAlias?: string;
+  keyAlias?: string;
+  label: string;
+  alias?: string;
+  maskedIdentity?: string;
+  fileName?: string;
+  email?: string;
+  disabled: boolean;
+  proxySupported: boolean;
+  proxySupportStatus: string;
+  currentPoolId?: string;
 }
 
 export interface ProxyPoolAssignmentFailure {
@@ -116,6 +144,24 @@ export interface ProxyPoolStatusEntry {
   assignedTo: ProxyPoolAssignment[];
   unsupportedAssignedCount: number;
   unsupportedAssignedTo: ProxyPoolAssignment[];
+}
+
+export interface ProxyPoolStatusSnapshot {
+  pools: ProxyPoolStatusEntry[];
+  assignableResources: ProxyPoolAssignableResource[];
+  assignmentRevision: string;
+  credentialCount: number;
+  assignableResourceCount: number;
+}
+
+export type ProxyPoolAssignmentStatus =
+  'ok' | 'noop' | 'stale' | 'rolled_back' | 'partial' | 'failed';
+
+export interface ProxyPoolAssignmentResult extends ProxyPoolStatusSnapshot {
+  status: ProxyPoolAssignmentStatus;
+  updated: number;
+  failed: number;
+  failures: ProxyPoolRebalanceFailure[];
 }
 
 export type ProxySelectionMode = 'file' | 'smart' | 'proxy' | 'direct';

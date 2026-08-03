@@ -31,6 +31,11 @@ import {
 } from '@/services/api';
 import type { AuthFileReconciliationCounts } from '@/services/api';
 import {
+  assignedProxyPoolResourceIDs,
+  groupProxyPoolBindingResources,
+  setProxyPoolResourceSelection,
+} from '@/features/proxyPools/bindingResources';
+import {
   createStatusSnapshotCoordinator,
   reconcileBindingSelection,
   startStatusPolling,
@@ -45,9 +50,11 @@ import {
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import type {
   AuthFileItem,
+  ProxyPoolAssignableResource,
   ProxyPoolEntry,
   ProxyPoolRebalancePreview,
   ProxyPoolStatusEntry,
+  ProxyPoolStatusSnapshot,
   ProxyPoolUsage,
 } from '@/types';
 import { generateId } from '@/utils/helpers';
@@ -152,6 +159,27 @@ function usageKindLabel(
   }
 }
 
+function proxyBindingProviderLabel(provider: string): string {
+  switch (provider.trim().toLowerCase()) {
+    case 'gemini':
+      return 'Gemini';
+    case 'interactions':
+      return 'Gemini Interactions';
+    case 'claude':
+      return 'Claude';
+    case 'codex':
+      return 'Codex';
+    case 'xai':
+      return 'xAI';
+    case 'vertex':
+      return 'Vertex';
+    case 'openai-compatibility':
+      return 'OpenAI Compatible';
+    default:
+      return provider || 'API';
+  }
+}
+
 function proxyPoolMatchKey(pool: Pick<ProxyPoolEntry, 'protocol' | 'host' | 'port' | 'username'>) {
   return [
     pool.protocol,
@@ -252,6 +280,9 @@ export function ProxyPoolsPage() {
   const [bindingTarget, setBindingTarget] = useState<ProxyPoolStatusEntry | null>(null);
   const [bindingSelected, setBindingSelected] = useState<Set<string>>(new Set());
   const [bindingSaving, setBindingSaving] = useState(false);
+  const [bindingResources, setBindingResources] = useState<ProxyPoolAssignableResource[]>([]);
+  const [bindingRevision, setBindingRevision] = useState('');
+  const [bindingError, setBindingError] = useState('');
   const [activePanel, setActivePanel] = useState<ProxyPoolsPanel>(
     () =>
       readNavigationPreference(PROXY_POOLS_ACTIVE_PANEL_STORAGE_KEY, PROXY_POOLS_PANELS) ??
@@ -267,17 +298,28 @@ export function ProxyPoolsPage() {
   const [rebalanceRefreshVersion, setRebalanceRefreshVersion] = useState(0);
   const rebalancePreviewRequestRef = useRef(0);
   const syncingBindingsRef = useRef(false);
+  const bindingAssignedRef = useRef<string[]>([]);
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
   const statusPoolsRef = useRef<ProxyPoolStatusEntry[]>([]);
-  const statusCoordinatorRef = useRef<StatusSnapshotCoordinator<ProxyPoolStatusEntry[]> | null>(
+  const statusSnapshotRef = useRef<ProxyPoolStatusSnapshot>({
+    pools: [],
+    assignableResources: [],
+    assignmentRevision: '',
+    credentialCount: 0,
+    assignableResourceCount: 0,
+  });
+  const statusCoordinatorRef = useRef<StatusSnapshotCoordinator<ProxyPoolStatusSnapshot> | null>(
     null
   );
   if (statusCoordinatorRef.current === null) {
     statusCoordinatorRef.current = createStatusSnapshotCoordinator({
-      load: () => proxyPoolsApi.loadStatus(),
+      load: () => proxyPoolsApi.loadStatusSnapshot(),
       onSnapshot: (snapshot) => {
-        statusPoolsRef.current = snapshot;
-        setStatusPools(snapshot);
+        statusSnapshotRef.current = snapshot;
+        statusPoolsRef.current = snapshot.pools;
+        setStatusPools(snapshot.pools);
+        setBindingResources(snapshot.assignableResources);
+        setBindingRevision(snapshot.assignmentRevision);
         setStatusFailed(false);
         setRebalanceRefreshVersion((current) => current + 1);
       },
@@ -290,8 +332,14 @@ export function ProxyPoolsPage() {
     () => statusCoordinatorRef.current!.refreshLatest(),
     []
   );
-  const publishProxyPoolStatus = useCallback((snapshot: ProxyPoolStatusEntry[]) => {
+  const publishProxyPoolSnapshot = useCallback((snapshot: ProxyPoolStatusSnapshot) => {
     statusCoordinatorRef.current!.publish(snapshot);
+  }, []);
+  const publishProxyPoolStatus = useCallback((poolsSnapshot: ProxyPoolStatusEntry[]) => {
+    statusCoordinatorRef.current!.publish({
+      ...statusSnapshotRef.current,
+      pools: poolsSnapshot,
+    });
   }, []);
 
   const disabled = connectionStatus !== 'connected';
@@ -352,7 +400,7 @@ export function ProxyPoolsPage() {
     [selectedPoolStatuses]
   );
   const parsedRebalanceThreshold = parseRebalanceThreshold(rebalanceThreshold);
-  const boundCredentialsCount = statusPools.reduce((sum, pool) => sum + pool.assignedCount, 0);
+  const boundResourcesCount = statusPools.reduce((sum, pool) => sum + pool.assignedCount, 0);
   const availableCount = statusPools.filter((pool) => pool.checked && pool.available).length;
   const authFileIDs = useMemo(
     () =>
@@ -365,6 +413,23 @@ export function ProxyPoolsPage() {
         )
       ),
     [authFiles]
+  );
+  const bindingResourceGroups = useMemo(
+    () => groupProxyPoolBindingResources(bindingResources),
+    [bindingResources]
+  );
+  const bindableResourceIDs = useMemo(
+    () =>
+      new Set(
+        bindingResources
+          .filter((resource) => resource.proxySupported)
+          .map((resource) => resource.resourceId)
+      ),
+    [bindingResources]
+  );
+  const poolNameByID = useMemo(
+    () => new Map(statusPools.map((pool) => [pool.id, pool.name || pool.redactedUrl])),
+    [statusPools]
   );
 
   const loadProxyPools = useCallback(async () => {
@@ -516,27 +581,25 @@ export function ProxyPoolsPage() {
     if (!nextTarget) {
       setBindingTarget(null);
       setBindingSelected(new Set());
+      bindingAssignedRef.current = [];
       return;
     }
+    const nextAssigned = assignedProxyPoolResourceIDs(bindingResources, bindingTarget.id);
     setBindingSelected((current) =>
-      reconcileBindingSelection(
-        current,
-        bindingTarget.assignedTo.map((assignment) => assignment.id),
-        nextTarget.assignedTo.map((assignment) => assignment.id)
-      )
+      reconcileBindingSelection(current, bindingAssignedRef.current, nextAssigned)
     );
+    bindingAssignedRef.current = nextAssigned;
     if (nextTarget !== bindingTarget) {
       setBindingTarget(nextTarget);
     }
-  }, [bindingTarget, statusPools]);
+  }, [bindingResources, bindingTarget, statusPools]);
 
   useEffect(() => {
-    const available = new Set(authFileIDs);
     setBindingSelected((current) => {
-      const next = new Set(Array.from(current).filter((id) => available.has(id)));
+      const next = new Set(Array.from(current).filter((id) => bindableResourceIDs.has(id)));
       return next.size === current.size ? current : next;
     });
-  }, [authFileIDs]);
+  }, [bindableResourceIDs]);
 
   useEffect(() => {
     setSelectedPoolIDs((current) => {
@@ -887,6 +950,11 @@ export function ProxyPoolsPage() {
     try {
       const result = await proxyPoolsApi.autoAssignUnassigned(authFileIDs);
       publishProxyPoolStatus(result.pools);
+      try {
+        await refreshLatestProxyPoolStatus();
+      } catch {
+        setStatusFailed(true);
+      }
       if (result.failed > 0) {
         showNotification(
           t('proxy_pools.balance_partial', {
@@ -1102,47 +1170,104 @@ export function ProxyPoolsPage() {
   };
 
   const openBindingModal = (status: ProxyPoolStatusEntry) => {
+    const assigned = assignedProxyPoolResourceIDs(bindingResources, status.id);
+    bindingAssignedRef.current = assigned;
     setBindingTarget(status);
-    setBindingSelected(new Set(status.assignedTo.map((item) => item.id)));
+    setBindingSelected(new Set(assigned));
+    setBindingError('');
   };
 
   const closeBindingModal = () => {
     if (bindingSaving) return;
     setBindingTarget(null);
     setBindingSelected(new Set());
+    bindingAssignedRef.current = [];
+    setBindingError('');
   };
 
-  const toggleBindingAuth = (name: string) => {
+  const toggleBindingResource = (resourceID: string) => {
     setBindingSelected((current) => {
       const next = new Set(current);
-      if (next.has(name)) {
-        next.delete(name);
+      if (next.has(resourceID)) {
+        next.delete(resourceID);
       } else {
-        next.add(name);
+        next.add(resourceID);
       }
       return next;
     });
   };
 
+  const toggleBindingSupplier = (resourceIDs: string[], selected: boolean) => {
+    setBindingSelected((current) => setProxyPoolResourceSelection(current, resourceIDs, selected));
+  };
+
   const saveBinding = async () => {
     if (!bindingTarget) return;
-    setBindingSaving(true);
-    try {
-      publishProxyPoolStatus(
-        await proxyPoolsApi.assign(bindingTarget.id, Array.from(bindingSelected))
+    if (!bindingRevision) {
+      setBindingError(
+        t('proxy_pools.binding_status_unavailable', {
+          defaultValue: '绑定状态尚未加载，请刷新后重试',
+        })
       );
+      return;
+    }
+    setBindingSaving(true);
+    setBindingError('');
+    try {
+      const result = await proxyPoolsApi.assign(
+        bindingTarget.id,
+        Array.from(bindingSelected),
+        bindingRevision
+      );
+      publishProxyPoolSnapshot(result);
+      if (result.status !== 'ok' && result.status !== 'noop') {
+        const statusMessage =
+          result.status === 'stale'
+            ? t('proxy_pools.binding_stale', {
+                defaultValue: '绑定状态已变化，已加载最新状态，请重新确认',
+              })
+            : result.status === 'rolled_back'
+              ? t('proxy_pools.binding_rolled_back', {
+                  defaultValue: '绑定失败，所有变更已回滚',
+                })
+              : result.status === 'partial'
+                ? t('proxy_pools.binding_partial', {
+                    defaultValue: '绑定失败且未能完整回滚，请检查最新状态',
+                  })
+                : t('proxy_pools.binding_failed', { defaultValue: '资源绑定失败' });
+        const failureDetails = Array.from(
+          new Set(result.failures.map((failure) => failure.error).filter(Boolean))
+        ).join('; ');
+        const message = failureDetails ? `${statusMessage}: ${failureDetails}` : statusMessage;
+        setBindingError(message);
+        showNotification(message, result.status === 'stale' ? 'warning' : 'error');
+        return;
+      }
+
+      const [configSnapshotResult] = await Promise.allSettled([
+        proxyPoolsApi.load(),
+        (async () => {
+          useConfigStore.getState().clearCache();
+          await useConfigStore.getState().fetchConfig(undefined, true);
+        })(),
+      ]);
+      if (configSnapshotResult.status === 'fulfilled') {
+        setPools(configSnapshotResult.value.pools);
+        setGlobalProxyUrl(configSnapshotResult.value.globalProxyUrl);
+        setConfigUsages(configSnapshotResult.value.usages);
+      }
       showNotification(
-        t('proxy_pools.binding_success', { defaultValue: '凭证绑定已更新' }),
+        t('proxy_pools.binding_success', { defaultValue: '资源绑定已更新' }),
         'success'
       );
       setBindingTarget(null);
       setBindingSelected(new Set());
+      bindingAssignedRef.current = [];
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
-      showNotification(
-        `${t('proxy_pools.binding_failed', { defaultValue: '凭证绑定失败' })}${message ? `: ${message}` : ''}`,
-        'error'
-      );
+      const notification = `${t('proxy_pools.binding_failed', { defaultValue: '资源绑定失败' })}${message ? `: ${message}` : ''}`;
+      setBindingError(notification);
+      showNotification(notification, 'error');
     } finally {
       setBindingSaving(false);
     }
@@ -1260,8 +1385,8 @@ export function ProxyPoolsPage() {
           <strong>{availableCount}</strong>
         </div>
         <div className={styles.summaryItem}>
-          <span>{t('proxy_pools.summary.bound_credentials', { defaultValue: '绑定凭证' })}</span>
-          <strong>{boundCredentialsCount}</strong>
+          <span>{t('proxy_pools.summary.bound_resources', { defaultValue: '绑定资源' })}</span>
+          <strong>{boundResourcesCount}</strong>
         </div>
       </div>
 
@@ -1297,7 +1422,7 @@ export function ProxyPoolsPage() {
                 <div>{t('common.select', { defaultValue: '选择' })}</div>
                 <div>{t('proxy_pools.columns.address', { defaultValue: '地址' })}</div>
                 <div>{t('proxy_pools.columns.health', { defaultValue: '健康 / 地区' })}</div>
-                <div>{t('proxy_pools.columns.bound', { defaultValue: '绑定凭证' })}</div>
+                <div>{t('proxy_pools.columns.bound', { defaultValue: '绑定资源' })}</div>
                 <div>{t('proxy_pools.columns.note', { defaultValue: '备注' })}</div>
                 <div>{t('proxy_pools.columns.actions', { defaultValue: '操作' })}</div>
               </div>
@@ -1381,10 +1506,12 @@ export function ProxyPoolsPage() {
                       <div className={styles.noteCell}>{pool.note || '-'}</div>
                       <div className={styles.rowActions}>
                         <TooltipIconButton
-                          label={t('proxy_pools.bind_credentials', { defaultValue: '绑定凭证' })}
+                          label={t('proxy_pools.bind_resources', { defaultValue: '绑定资源' })}
                           className={styles.rowIconButton}
                           onClick={() => status && openBindingModal(status)}
-                          disabled={disabled || saving || syncingBindings || !status}
+                          disabled={
+                            disabled || saving || syncingBindings || !status || !bindingRevision
+                          }
                         >
                           <IconKey size={16} />
                         </TooltipIconButton>
@@ -1799,7 +1926,7 @@ export function ProxyPoolsPage() {
         open={Boolean(bindingTarget)}
         onClose={closeBindingModal}
         closeDisabled={bindingSaving}
-        title={t('proxy_pools.binding_title', { defaultValue: '绑定凭证' })}
+        title={t('proxy_pools.binding_title', { defaultValue: '绑定资源' })}
         width={680}
         footer={
           <>
@@ -1811,7 +1938,12 @@ export function ProxyPoolsPage() {
             >
               {t('common.cancel')}
             </Button>
-            <Button type="button" onClick={() => void saveBinding()} loading={bindingSaving}>
+            <Button
+              type="button"
+              onClick={() => void saveBinding()}
+              loading={bindingSaving}
+              disabled={!bindingRevision}
+            >
               <IconCheckCircle2 size={16} />
               {t('common.save', { defaultValue: '保存' })}
             </Button>
@@ -1823,38 +1955,175 @@ export function ProxyPoolsPage() {
             <span>{bindingTarget?.redactedUrl || '-'}</span>
             <strong>
               {t('proxy_pools.binding_selected_count', {
-                defaultValue: '{{count}} 个凭证',
+                defaultValue: '已选 {{count}} 项',
                 count: bindingSelected.size,
               })}
             </strong>
           </div>
+          {bindingError ? <div className={styles.bindingError}>{bindingError}</div> : null}
           <div className={styles.bindingList}>
-            {authFilesFailed ? (
+            {statusFailed && bindingResources.length === 0 ? (
               <div className={styles.emptyState}>
-                {t('proxy_pools.auth_files_failed', { defaultValue: '认证文件读取失败' })}
+                {t('proxy_pools.binding_status_unavailable', {
+                  defaultValue: '绑定状态尚未加载，请刷新后重试',
+                })}
               </div>
-            ) : authFileIDs.length === 0 ? (
+            ) : bindingResources.length === 0 ? (
               <div className={styles.emptyState}>
-                {t('proxy_pools.no_auth_files', { defaultValue: '暂无认证文件' })}
+                {t('proxy_pools.no_binding_resources', { defaultValue: '暂无可绑定资源' })}
               </div>
             ) : (
-              authFiles
-                .filter((file) => file.assignable !== false && authFileSupportsProxy(file))
-                .map((file) => {
-                  const name = String(file.name || '').trim();
-                  const provider = String(file.provider || file.type || 'Auth').trim();
-                  return (
-                    <label className={styles.bindingRow} key={name}>
-                      <input
-                        type="checkbox"
-                        checked={bindingSelected.has(name)}
-                        onChange={() => toggleBindingAuth(name)}
-                      />
-                      <span className={styles.bindingName}>{name}</span>
-                      <span className={styles.bindingProvider}>{provider}</span>
-                    </label>
-                  );
-                })
+              <>
+                <section className={styles.bindingSection}>
+                  <div className={styles.bindingSectionHeader}>
+                    <strong>
+                      {t('proxy_pools.binding_credentials', { defaultValue: '凭证' })}
+                    </strong>
+                    <span>{bindingResourceGroups.credentials.length}</span>
+                  </div>
+                  {bindingResourceGroups.credentials.length === 0 ? (
+                    <div className={styles.bindingEmptyGroup}>
+                      {t('proxy_pools.no_auth_files', { defaultValue: '暂无认证文件' })}
+                    </div>
+                  ) : (
+                    bindingResourceGroups.credentials.map((resource) => (
+                      <div className={styles.bindingRow} key={resource.resourceId}>
+                        <SelectionCheckbox
+                          checked={bindingSelected.has(resource.resourceId)}
+                          onChange={() => toggleBindingResource(resource.resourceId)}
+                          disabled={!resource.proxySupported}
+                          ariaLabel={resource.label}
+                        />
+                        <div className={styles.bindingIdentity}>
+                          <span className={styles.bindingName}>{resource.label}</span>
+                          <span>{resource.maskedIdentity || resource.email || '-'}</span>
+                        </div>
+                        <div className={styles.bindingMeta}>
+                          <span className={styles.bindingProvider}>
+                            {proxyBindingProviderLabel(resource.provider)}
+                          </span>
+                          <span
+                            className={
+                              !resource.proxySupported || resource.disabled
+                                ? styles.bindingStateMuted
+                                : styles.bindingState
+                            }
+                          >
+                            {!resource.proxySupported
+                              ? t('proxy_pools.binding_unsupported', {
+                                  defaultValue: '不支持代理',
+                                })
+                              : resource.disabled
+                                ? t('proxy_pools.disabled', { defaultValue: '停用' })
+                                : resource.currentPoolId
+                                  ? t('proxy_pools.binding_current_pool', {
+                                      defaultValue: '当前：{{pool}}',
+                                      pool:
+                                        poolNameByID.get(resource.currentPoolId) ||
+                                        resource.currentPoolId,
+                                    })
+                                  : t('proxy_pools.binding_unassigned', {
+                                      defaultValue: '未绑定',
+                                    })}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </section>
+
+                <section className={styles.bindingSection}>
+                  <div className={styles.bindingSectionHeader}>
+                    <strong>
+                      {t('proxy_pools.binding_suppliers', { defaultValue: 'AI 供应商' })}
+                    </strong>
+                    <span>{bindingResourceGroups.suppliers.length}</span>
+                  </div>
+                  {bindingResourceGroups.suppliers.length === 0 ? (
+                    <div className={styles.bindingEmptyGroup}>
+                      {t('proxy_pools.no_binding_suppliers', { defaultValue: '暂无 AI 供应商' })}
+                    </div>
+                  ) : (
+                    bindingResourceGroups.suppliers.map((supplier) => {
+                      const selectableIDs = supplier.resources
+                        .filter((resource) => resource.proxySupported)
+                        .map((resource) => resource.resourceId);
+                      const selectedCount = selectableIDs.filter((resourceID) =>
+                        bindingSelected.has(resourceID)
+                      ).length;
+                      const allSelected =
+                        selectableIDs.length > 0 && selectedCount === selectableIDs.length;
+                      return (
+                        <div className={styles.bindingSupplier} key={supplier.id}>
+                          <div className={styles.bindingSupplierHeader}>
+                            <SelectionCheckbox
+                              checked={allSelected}
+                              onChange={(selected) =>
+                                toggleBindingSupplier(selectableIDs, selected)
+                              }
+                              disabled={selectableIDs.length === 0}
+                              ariaLabel={supplier.alias}
+                              label={
+                                <span className={styles.bindingSupplierIdentity}>
+                                  <strong>{supplier.alias}</strong>
+                                  <span>{proxyBindingProviderLabel(supplier.provider)}</span>
+                                </span>
+                              }
+                            />
+                            <span className={styles.bindingSupplierCount}>
+                              {selectedCount}/{selectableIDs.length}
+                            </span>
+                          </div>
+                          <div className={styles.bindingSupplierKeys}>
+                            {supplier.resources.map((resource) => (
+                              <div className={styles.bindingRow} key={resource.resourceId}>
+                                <SelectionCheckbox
+                                  checked={bindingSelected.has(resource.resourceId)}
+                                  onChange={() => toggleBindingResource(resource.resourceId)}
+                                  disabled={!resource.proxySupported}
+                                  ariaLabel={resource.keyAlias || resource.label}
+                                />
+                                <div className={styles.bindingIdentity}>
+                                  <span className={styles.bindingName}>
+                                    {resource.keyAlias || resource.label}
+                                  </span>
+                                  <span>{resource.maskedIdentity || '-'}</span>
+                                </div>
+                                <div className={styles.bindingMeta}>
+                                  <span
+                                    className={
+                                      !resource.proxySupported || resource.disabled
+                                        ? styles.bindingStateMuted
+                                        : styles.bindingState
+                                    }
+                                  >
+                                    {!resource.proxySupported
+                                      ? t('proxy_pools.binding_unsupported', {
+                                          defaultValue: '不支持代理',
+                                        })
+                                      : resource.disabled
+                                        ? t('proxy_pools.disabled', { defaultValue: '停用' })
+                                        : resource.currentPoolId
+                                          ? t('proxy_pools.binding_current_pool', {
+                                              defaultValue: '当前：{{pool}}',
+                                              pool:
+                                                poolNameByID.get(resource.currentPoolId) ||
+                                                resource.currentPoolId,
+                                            })
+                                          : t('proxy_pools.binding_unassigned', {
+                                              defaultValue: '未绑定',
+                                            })}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </section>
+              </>
             )}
           </div>
         </div>

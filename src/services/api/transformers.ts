@@ -10,9 +10,16 @@ import type {
 import type { Config } from '@/types/config';
 import { buildHeaderObject } from '@/utils/headers';
 import { isRecord } from '@/utils/helpers';
+import { normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 
 const normalizeBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
+
+const normalizeMaxConcurrency = (value: unknown): number | undefined => {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 1_000_000 ? parsed : undefined;
+};
 
 const normalizeRecord = (value: unknown): Record<string, unknown> | undefined =>
   isRecord(value) ? value : undefined;
@@ -191,6 +198,12 @@ const normalizeApiKeyEntry = (entry: unknown): ApiKeyEntry | null => {
   if (runtimeStatus) result.runtimeStatus = runtimeStatus;
   const groups = normalizeCredentialGroups(record?.groups);
   if (groups) result.groups = groups;
+  const concurrency = normalizeConcurrencySetting(
+    record?.['concurrency-mode'],
+    normalizeMaxConcurrency(record?.['max-concurrency'])
+  );
+  result.concurrencyMode = concurrency.mode;
+  result.maxConcurrency = concurrency.maxConcurrency;
   return result;
 };
 
@@ -215,11 +228,21 @@ const normalizeProviderKeyConfig = (item: unknown): ProviderKeyConfig | null => 
   }
   const fallback = normalizeBoolean(record?.fallback);
   if (fallback !== undefined) config.fallback = fallback;
+  const concurrency = normalizeConcurrencySetting(
+    record?.['concurrency-mode'],
+    normalizeMaxConcurrency(record?.['max-concurrency'])
+  );
+  config.concurrencyMode = concurrency.mode;
+  config.maxConcurrency = concurrency.maxConcurrency;
   const prefix = normalizePrefix(record?.prefix);
   if (prefix) config.prefix = prefix;
   const baseUrl = record?.['base-url'];
   const proxyUrl = record?.['proxy-url'];
   if (baseUrl) config.baseUrl = String(baseUrl);
+  const authMode = record?.['auth-mode'];
+  if (authMode === 'x-api-key' || authMode === 'bearer') {
+    config.authMode = authMode;
+  }
   const websockets = normalizeBoolean(record?.websockets);
   if (websockets !== undefined) config.websockets = websockets;
   if (proxyUrl) config.proxyUrl = String(proxyUrl);
@@ -291,6 +314,12 @@ const normalizeGeminiKeyConfig = (item: unknown): GeminiKeyConfig | null => {
   }
   const fallback = normalizeBoolean(record?.fallback);
   if (fallback !== undefined) config.fallback = fallback;
+  const concurrency = normalizeConcurrencySetting(
+    record?.['concurrency-mode'],
+    normalizeMaxConcurrency(record?.['max-concurrency'])
+  );
+  config.concurrencyMode = concurrency.mode;
+  config.maxConcurrency = concurrency.maxConcurrency;
   const prefix = normalizePrefix(record?.prefix);
   if (prefix) config.prefix = prefix;
   const baseUrl = record?.['base-url'];
@@ -332,7 +361,9 @@ const normalizeOpenAIProvider = (
   const priority = provider.priority;
   const testModel = provider['test-model'];
   const protocolMode =
-    provider['protocol-mode'] === 'preserve-openai' ? 'preserve-openai' : 'chat-completions';
+    provider['protocol-mode'] === 'preserve-openai' || provider['protocol-mode'] === 'auto'
+      ? provider['protocol-mode']
+      : 'chat-completions';
   const retryOwner = provider['retry-owner'] === 'upstream' ? 'upstream' : 'xfpa';
 
   const result: OpenAIProviderConfig = {
@@ -345,6 +376,12 @@ const normalizeOpenAIProvider = (
 
   const disabled = normalizeBoolean(provider.disabled);
   if (disabled !== undefined) result.disabled = disabled;
+  const concurrency = normalizeConcurrencySetting(
+    provider['concurrency-mode'],
+    normalizeMaxConcurrency(provider['max-concurrency'])
+  );
+  result.concurrencyMode = concurrency.mode;
+  result.maxConcurrency = concurrency.maxConcurrency;
   const fallback = normalizeBoolean(provider.fallback);
   if (fallback !== undefined) result.fallback = fallback;
   const disableCooling = normalizeBoolean(provider['disable-cooling']);

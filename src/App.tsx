@@ -5,7 +5,14 @@ import { ConfirmationModal } from '@/components/common/ConfirmationModal';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { ProtectedRoute } from '@/router/ProtectedRoute';
-import { useAuthInventoryStore, useAuthStore, useLanguageStore, useThemeStore } from '@/stores';
+import {
+  useAuthInventoryStore,
+  useAuthStore,
+  useCredentialConcurrencyStore,
+  useLanguageStore,
+  useRuntimeObservationStore,
+  useThemeStore,
+} from '@/stores';
 
 const LoginPage = lazy(() =>
   import('@/pages/LoginPage').then((module) => ({ default: module.LoginPage }))
@@ -28,19 +35,42 @@ function RootShell() {
   const startInventory = useAuthInventoryStore((state) => state.start);
   const stopInventory = useAuthInventoryStore((state) => state.stop);
   const refreshInventory = useAuthInventoryStore((state) => state.refresh);
+  const startRuntimeObservation = useRuntimeObservationStore((state) => state.start);
+  const stopRuntimeObservation = useRuntimeObservationStore((state) => state.stop);
+  const loadCredentialConcurrency = useCredentialConcurrencyStore((state) => state.load);
+  const resetCredentialConcurrency = useCredentialConcurrencyStore((state) => state.reset);
 
   useEffect(() => {
     if (!isAuthenticated || connectionStatus !== 'connected') {
       stopInventory(true);
+      stopRuntimeObservation(true);
+      resetCredentialConcurrency();
       return;
     }
     startInventory();
-    return () => stopInventory(false);
-  }, [connectionStatus, isAuthenticated, startInventory, stopInventory]);
+    startRuntimeObservation();
+    void loadCredentialConcurrency(true).catch(() => undefined);
+    return () => {
+      stopInventory(false);
+      stopRuntimeObservation(false);
+    };
+  }, [
+    connectionStatus,
+    isAuthenticated,
+    loadCredentialConcurrency,
+    resetCredentialConcurrency,
+    startInventory,
+    startRuntimeObservation,
+    stopInventory,
+    stopRuntimeObservation,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || connectionStatus !== 'connected') return;
-    const refresh = () => void refreshInventory().catch(() => undefined);
+    const refresh = () => {
+      void refreshInventory().catch(() => undefined);
+      void loadCredentialConcurrency(true).catch(() => undefined);
+    };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') refresh();
     };
@@ -50,7 +80,7 @@ function RootShell() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [connectionStatus, isAuthenticated, refreshInventory]);
+  }, [connectionStatus, isAuthenticated, loadCredentialConcurrency, refreshInventory]);
 
   return (
     <>

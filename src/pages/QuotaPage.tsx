@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ShieldAlert, Upload, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -36,9 +37,15 @@ import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useOAuthProviderFlow, type OAuthAttemptContext } from '@/hooks/useOAuthProviderFlow';
 import { authFilesApi, pluginsApi } from '@/services/api';
-import type { OAuthCredentialResult } from '@/services/api/oauth';
-import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
-import type { AuthFileItem, PluginListEntry, ProxySelection } from '@/types';
+import type { OAuthCredentialResult, OAuthStartOptions } from '@/services/api/oauth';
+import {
+  runtimeObservationResourceKey,
+  useAuthInventoryStore,
+  useAuthStore,
+  useNotificationStore,
+  useRuntimeObservationStore,
+} from '@/stores';
+import type { AuthFileItem, PluginListEntry } from '@/types';
 import { copyToClipboard } from '@/utils/clipboard';
 import { readNavigationPreference, writeNavigationPreference } from '@/utils/navigationPreference';
 import { resolveAuthProvider } from '@/utils/quota';
@@ -180,6 +187,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const showNotification = useNotificationStore((state) => state.showNotification);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
+  const runtimeResources = useRuntimeObservationStore((state) => state.resourcesByKey);
 
   const {
     files,
@@ -195,6 +203,9 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     uploadProxyPools,
     uploadProxyPoolsLoading,
     uploadProxyInspection,
+    uploadConcurrencyModeDefault,
+    uploadMaxConcurrencyDefaultInput,
+    uploadMaxConcurrencyDefaultError,
     sessionImportResult,
     groupAssignment,
     groupAssigning,
@@ -215,6 +226,8 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     batchDelete,
     batchStatusUpdating,
     setUploadProxySelection,
+    setUploadConcurrencyModeDefault,
+    setUploadMaxConcurrencyDefaultInput,
     refreshUploadProxyPools,
     confirmUploadProxySelection,
     cancelUploadProxySelection,
@@ -499,8 +512,8 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     setOauthDialogProviderId(provider.id);
   };
 
-  const startProviderOAuth = (provider: QuotaProviderSummary, selection?: ProxySelection) => {
-    void oauthFlow.startAuth(provider.oauthProviderId, selection);
+  const startProviderOAuth = (provider: QuotaProviderSummary, options: OAuthStartOptions) => {
+    void oauthFlow.startAuth(provider.oauthProviderId, options);
   };
 
   const openAuthSettings = () => {
@@ -607,27 +620,34 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           />
         ) : (
           <div className={styles.pluginCredentialGrid}>
-            {credentialFiles.map((file) => (
-              <QuotaCard
-                key={file.name}
-                item={file}
-                i18nPrefix="quota_management"
-                cardClassName={styles.pluginCredentialCard}
-                defaultType={provider.oauthProviderId}
-                actionDisabled={disableControls}
-                selected={selectedFiles.has(file.name)}
-                deletingCredentialName={deleting}
-                credentialStatusUpdating={statusUpdating}
-                onDownload={handleDownload}
-                onShowModels={showCredentialModels}
-                onOpenSettings={openCredentialSettings}
-                onDelete={handleDelete}
-                onToggleStatus={handleStatusToggle}
-                onToggleSelect={toggleSelect}
-                hideQuotaSection
-                renderQuotaItems={() => null}
-              />
-            ))}
+            {credentialFiles.map((file) => {
+              const credentialID = String(file.id ?? '').trim();
+              const runtimeResource = credentialID
+                ? runtimeResources[runtimeObservationResourceKey('credential', credentialID)]
+                : undefined;
+              return (
+                <QuotaCard
+                  key={file.name}
+                  item={file}
+                  runtimeResource={runtimeResource}
+                  i18nPrefix="quota_management"
+                  cardClassName={styles.pluginCredentialCard}
+                  defaultType={provider.oauthProviderId}
+                  actionDisabled={disableControls}
+                  selected={selectedFiles.has(file.name)}
+                  deletingCredentialName={deleting}
+                  credentialStatusUpdating={statusUpdating}
+                  onDownload={handleDownload}
+                  onShowModels={showCredentialModels}
+                  onOpenSettings={openCredentialSettings}
+                  onDelete={handleDelete}
+                  onToggleStatus={handleStatusToggle}
+                  onToggleSelect={toggleSelect}
+                  hideQuotaSection
+                  renderQuotaItems={() => null}
+                />
+              );
+            })}
           </div>
         )}
       </Card>
@@ -818,7 +838,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           pluginProvider={isPluginProvider(oauthDialogProvider)}
           state={oauthFlow.states[oauthDialogProvider.oauthProviderId] || {}}
           onClose={closeOAuthDialog}
-          onStart={(selection) => startProviderOAuth(oauthDialogProvider, selection)}
+          onStart={(options) => startProviderOAuth(oauthDialogProvider, options)}
           onCopyLink={(url) => void oauthFlow.copyLink(url)}
           onSubmitCallback={() => void submitOAuthCallback(oauthDialogProvider)}
           onCallbackUrlChange={(value) =>
@@ -857,13 +877,25 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
         pools={uploadProxyPools}
         loading={uploadProxyPoolsLoading}
         confirming={uploading}
+        confirmDisabled={Boolean(uploadMaxConcurrencyDefaultError)}
         inspection={uploadProxyInspection}
         allowFileMode
         onChange={setUploadProxySelection}
         onRefresh={() => void refreshUploadProxyPools()}
         onCancel={cancelUploadProxySelection}
         onConfirm={() => void confirmUploadProxySelection()}
-      />
+      >
+        <ConcurrencySettingField
+          id="quota-import-concurrency"
+          label={t('auth_files.import_max_concurrency_default_label')}
+          mode={uploadConcurrencyModeDefault}
+          maxConcurrency={uploadMaxConcurrencyDefaultInput}
+          error={uploadMaxConcurrencyDefaultError || undefined}
+          disabled={uploading}
+          onModeChange={setUploadConcurrencyModeDefault}
+          onMaxConcurrencyChange={setUploadMaxConcurrencyDefaultInput}
+        />
+      </ProxySelectionModal>
       <QuotaAuthSettingsDialog open={authSettingsOpen} onClose={closeAuthSettings} />
       <AuthFileModelsModal
         open={modelsModalOpen}

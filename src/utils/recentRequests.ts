@@ -22,10 +22,36 @@ export interface RecentRequestBucket {
   failed: number;
 }
 
+export interface RecentFailure {
+  timestamp: string;
+  statusCode?: number;
+  code?: string;
+  message: string;
+  model?: string;
+  requestId?: string;
+  scope: string;
+  retryable: boolean;
+  retryAfterSeconds?: number;
+  nextRetryAt?: string;
+}
+
 export interface RecentRequestUsageEntry {
   success: number;
   failed: number;
   recentRequests: RecentRequestBucket[];
+  authIndexes: string[];
+  recentFailureCount: number;
+  latestFailure: RecentFailure | null;
+}
+
+export interface ApiKeyFailureHistory {
+  authIndex: string;
+  authId: string;
+  provider: string;
+  alias: string;
+  keyPreview: string;
+  monitoringAvailable: boolean;
+  failures: RecentFailure[];
 }
 
 export type ApiKeyUsageResponse = Record<
@@ -37,6 +63,12 @@ export type ApiKeyUsageResponse = Record<
       failed?: unknown;
       recent_requests?: unknown;
       recentRequests?: unknown;
+      auth_indexes?: unknown;
+      authIndexes?: unknown;
+      recent_failure_count?: unknown;
+      recentFailureCount?: unknown;
+      latest_failure?: unknown;
+      latestFailure?: unknown;
     }
   >
 >;
@@ -47,6 +79,18 @@ const RECENT_REQUEST_BLOCK_DURATION_MS = 10 * 60 * 1000;
 const toFiniteNumber = (value: unknown): number => {
   const numberValue = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numberValue) ? numberValue : 0;
+};
+
+const toOptionalFiniteNumber = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+};
+
+const normalizeOptionalString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
 };
 
 export function normalizeUsageTotal(value: unknown): number {
@@ -81,6 +125,53 @@ export function normalizeRecentRequestAuthIndex(value: unknown): string | null {
   return null;
 }
 
+export function normalizeRecentFailure(input: unknown): RecentFailure | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  const message = normalizeOptionalString(record.message);
+  if (!message) return null;
+
+  const timestamp = normalizeOptionalString(record.timestamp) ?? '';
+  const statusCode = toOptionalFiniteNumber(record.status_code ?? record.statusCode);
+  const retryAfterSeconds = toOptionalFiniteNumber(
+    record.retry_after_seconds ?? record.retryAfterSeconds
+  );
+  const code = normalizeOptionalString(record.code);
+  const model = normalizeOptionalString(record.model);
+  const requestId = normalizeOptionalString(record.request_id ?? record.requestId);
+  const nextRetryAt = normalizeOptionalString(record.next_retry_at ?? record.nextRetryAt);
+
+  return {
+    timestamp,
+    ...(statusCode !== undefined ? { statusCode } : {}),
+    ...(code ? { code } : {}),
+    message,
+    ...(model ? { model } : {}),
+    ...(requestId ? { requestId } : {}),
+    scope: normalizeOptionalString(record.scope) ?? 'transport',
+    retryable: record.retryable === true,
+    ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+    ...(nextRetryAt ? { nextRetryAt } : {}),
+  };
+}
+
+const normalizeRecentFailureList = (input: unknown): RecentFailure[] =>
+  Array.isArray(input)
+    ? input
+        .map((item) => normalizeRecentFailure(item))
+        .filter((item): item is RecentFailure => item !== null)
+    : [];
+
+const normalizeAuthIndexes = (input: unknown): string[] => {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  input.forEach((value) => {
+    const normalized = normalizeRecentRequestAuthIndex(value);
+    if (normalized) seen.add(normalized);
+  });
+  return Array.from(seen);
+};
+
 export function normalizeRecentRequestBuckets(input: unknown): RecentRequestBucket[] {
   if (!Array.isArray(input)) {
     return [];
@@ -104,15 +195,41 @@ export function normalizeRecentRequestUsageEntry(input: unknown): RecentRequestU
       success: 0,
       failed: 0,
       recentRequests: [],
+      authIndexes: [],
+      recentFailureCount: 0,
+      latestFailure: null,
     };
   }
 
   const record = input as Record<string, unknown>;
+  const recentFailureCount = Math.max(
+    0,
+    Math.trunc(toFiniteNumber(record.recent_failure_count ?? record.recentFailureCount))
+  );
 
   return {
     success: normalizeUsageTotal(record.success),
     failed: normalizeUsageTotal(record.failed),
     recentRequests: normalizeRecentRequestBuckets(record.recent_requests ?? record.recentRequests),
+    authIndexes: normalizeAuthIndexes(record.auth_indexes ?? record.authIndexes),
+    recentFailureCount,
+    latestFailure: normalizeRecentFailure(record.latest_failure ?? record.latestFailure),
+  };
+}
+
+export function normalizeApiKeyFailureHistory(input: unknown): ApiKeyFailureHistory {
+  const record =
+    input && typeof input === 'object' && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {};
+  return {
+    authIndex: normalizeRecentRequestAuthIndex(record.auth_index ?? record.authIndex) ?? '',
+    authId: normalizeOptionalString(record.auth_id ?? record.authId) ?? '',
+    provider: normalizeOptionalString(record.provider) ?? '',
+    alias: normalizeOptionalString(record.alias) ?? '',
+    keyPreview: normalizeOptionalString(record.key_preview ?? record.keyPreview) ?? '',
+    monitoringAvailable: (record.monitoring_available ?? record.monitoringAvailable) === true,
+    failures: normalizeRecentFailureList(record.failures),
   };
 }
 

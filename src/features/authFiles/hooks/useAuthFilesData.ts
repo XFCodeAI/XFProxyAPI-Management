@@ -4,7 +4,13 @@ import { authFilesApi, proxyPoolsApi } from '@/services/api';
 import { apiClient } from '@/services/api/client';
 import type { AuthFileBatchDeleteResult } from '@/services/api/authFiles';
 import { useAuthInventoryStore, useNotificationStore } from '@/stores';
-import type { AuthFileItem, ProxyPoolStatusEntry, ProxySelection } from '@/types';
+import type {
+  AuthFileItem,
+  ConcurrencyMode,
+  ConcurrencySetting,
+  ProxyPoolStatusEntry,
+  ProxySelection,
+} from '@/types';
 import { formatFileSize } from '@/utils/format';
 import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
 import { downloadBlob } from '@/utils/download';
@@ -31,6 +37,7 @@ import {
 } from '@/features/authFiles/sessionImportValidation';
 import { normalizeCredentialGroups } from '@/utils/credentialGroups';
 import { isRecord } from '@/utils/helpers';
+import { parseOptionalMaxConcurrency } from '@/utils/maxConcurrency';
 
 type DeleteAllOptions = {
   filter: string;
@@ -103,6 +110,9 @@ export type UseAuthFilesDataResult = {
   uploadProxyPools: ProxyPoolStatusEntry[];
   uploadProxyPoolsLoading: boolean;
   uploadProxyInspection: AuthFileProxyInspection;
+  uploadConcurrencyModeDefault: ConcurrencyMode;
+  uploadMaxConcurrencyDefaultInput: string;
+  uploadMaxConcurrencyDefaultError: string;
   sessionImportResult: SessionImportResult | null;
   groupAssignment: AuthFileGroupAssignmentState | null;
   groupAssigning: boolean;
@@ -125,6 +135,8 @@ export type UseAuthFilesDataResult = {
   batchSetStatus: (names: string[], enabled: boolean) => Promise<void>;
   batchDelete: (names: string[]) => void;
   setUploadProxySelection: (selection: ProxySelection) => void;
+  setUploadConcurrencyModeDefault: (mode: ConcurrencyMode) => void;
+  setUploadMaxConcurrencyDefaultInput: (value: string) => void;
   refreshUploadProxyPools: () => Promise<void>;
   confirmUploadProxySelection: () => Promise<void>;
   cancelUploadProxySelection: () => void;
@@ -273,6 +285,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [uploadProxyInspection, setUploadProxyInspection] = useState<AuthFileProxyInspection>(() =>
     emptyAuthFileProxyInspection()
   );
+  const [uploadConcurrencyModeDefault, setUploadConcurrencyModeDefault] =
+    useState<ConcurrencyMode>('inherit');
+  const [uploadMaxConcurrencyDefaultInput, setUploadMaxConcurrencyDefaultInput] = useState('0');
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
   const [pendingUploadSource, setPendingUploadSource] = useState<PendingUploadSource>('file');
   const [sessionImportResult, setSessionImportResult] = useState<SessionImportResult | null>(null);
@@ -288,6 +303,11 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const filesRef = useRef<AuthFileItem[]>([]);
   const pendingUploadGroupNamesRef = useRef<string[]>([]);
   const selectionCount = selectedFiles.size;
+  const uploadMaxConcurrencyDefaultError =
+    uploadConcurrencyModeDefault === 'independent' &&
+    !parseOptionalMaxConcurrency(uploadMaxConcurrencyDefaultInput).valid
+      ? t('auth_files.max_concurrency_invalid')
+      : '';
 
   useEffect(() => {
     filesRef.current = files;
@@ -539,10 +559,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   );
 
   const uploadFilesWithSelection = useCallback(
-    async (validFiles: File[], selection: ProxySelection) => {
+    async (
+      validFiles: File[],
+      selection: ProxySelection,
+      concurrencyDefault: ConcurrencySetting
+    ) => {
       setUploading(true);
       try {
-        const result = await authFilesApi.uploadFiles(validFiles, selection);
+        const result = await authFilesApi.uploadFiles(validFiles, selection, concurrencyDefault);
         const successCount = result.uploaded;
 
         if (successCount > 0) {
@@ -590,7 +614,11 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   );
 
   const validateAndUploadSessionFiles = useCallback(
-    async (validFiles: File[], selection: ProxySelection) => {
+    async (
+      validFiles: File[],
+      selection: ProxySelection,
+      concurrencyDefault: ConcurrencySetting
+    ) => {
       setUploading(true);
       const failures: SessionImportFailure[] = [];
       let validatedCount = 0;
@@ -649,7 +677,11 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           }
 
           try {
-            const uploadResult = await authFilesApi.uploadFiles(filesToUpload, uploadSelection);
+            const uploadResult = await authFilesApi.uploadFiles(
+              filesToUpload,
+              uploadSelection,
+              concurrencyDefault
+            );
             const reconciled = reconcileSessionUpload(
               filesToUpload.map((file) => file.name),
               uploadResult,
@@ -736,6 +768,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
       setPendingUploadFiles(validFiles);
       setPendingUploadSource(options.source ?? 'file');
+      setUploadConcurrencyModeDefault('inherit');
+      setUploadMaxConcurrencyDefaultInput('0');
       uploadProxySelectionTouchedRef.current = false;
       setUploadProxySelection({ mode: 'file' });
       void inspectUploadProxyFiles(validFiles).then((inspection) => {
@@ -1264,6 +1298,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     uploadProxyInspectionSeqRef.current += 1;
     setPendingUploadFiles([]);
     setPendingUploadSource('file');
+    setUploadConcurrencyModeDefault('inherit');
+    setUploadMaxConcurrencyDefaultInput('0');
     uploadProxySelectionTouchedRef.current = false;
     setUploadProxyInspection(emptyAuthFileProxyInspection());
     setUploadProxyDialogOpen(false);
@@ -1273,19 +1309,46 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const confirmUploadProxySelection = useCallback(async () => {
     if (pendingUploadFiles.length === 0) {
       setUploadProxyDialogOpen(false);
+      setUploadConcurrencyModeDefault('inherit');
+      setUploadMaxConcurrencyDefaultInput('0');
       return;
     }
+    const parsedMaxConcurrencyDefault = parseOptionalMaxConcurrency(
+      uploadMaxConcurrencyDefaultInput
+    );
+    if (uploadConcurrencyModeDefault === 'independent' && !parsedMaxConcurrencyDefault.valid) {
+      return;
+    }
+    const concurrencyDefault: ConcurrencySetting = {
+      mode: uploadConcurrencyModeDefault,
+      maxConcurrency:
+        uploadConcurrencyModeDefault === 'independent'
+          ? (parsedMaxConcurrencyDefault.value ?? 0)
+          : 0,
+    };
     const filesToUpload = pendingUploadFiles;
     const source = pendingUploadSource;
     setUploadProxyDialogOpen(false);
     setPendingUploadFiles([]);
     setPendingUploadSource('file');
     if (source === 'session') {
-      await validateAndUploadSessionFiles(filesToUpload, uploadProxySelection);
+      await validateAndUploadSessionFiles(
+        filesToUpload,
+        uploadProxySelection,
+        concurrencyDefault
+      );
+      setUploadConcurrencyModeDefault('inherit');
+      setUploadMaxConcurrencyDefaultInput('0');
       return;
     }
-    const failedFiles = await uploadFilesWithSelection(filesToUpload, uploadProxySelection);
+    const failedFiles = await uploadFilesWithSelection(
+      filesToUpload,
+      uploadProxySelection,
+      concurrencyDefault
+    );
     if (failedFiles.length === 0) {
+      setUploadConcurrencyModeDefault('inherit');
+      setUploadMaxConcurrencyDefaultInput('0');
       setUploadProxyInspection(emptyAuthFileProxyInspection());
       flushPendingUploadGroupAssignment('file');
       return;
@@ -1299,6 +1362,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     pendingUploadFiles,
     pendingUploadSource,
     uploadFilesWithSelection,
+    uploadConcurrencyModeDefault,
+    uploadMaxConcurrencyDefaultInput,
     uploadProxySelection,
     validateAndUploadSessionFiles,
   ]);
@@ -1320,6 +1385,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     uploadProxyPools,
     uploadProxyPoolsLoading,
     uploadProxyInspection,
+    uploadConcurrencyModeDefault,
+    uploadMaxConcurrencyDefaultInput,
+    uploadMaxConcurrencyDefaultError,
     sessionImportResult,
     groupAssignment,
     groupAssigning,
@@ -1342,6 +1410,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     batchSetStatus,
     batchDelete,
     setUploadProxySelection: changeUploadProxySelection,
+    setUploadConcurrencyModeDefault,
+    setUploadMaxConcurrencyDefaultInput,
     refreshUploadProxyPools,
     confirmUploadProxySelection,
     cancelUploadProxySelection,

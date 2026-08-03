@@ -10,6 +10,9 @@ const server = await createServer({
 try {
   const proxyPools = await server.ssrLoadModule('/src/services/api/proxyPools.ts');
   const authFiles = await server.ssrLoadModule('/src/services/api/authFiles.ts');
+  const bindingResources = await server.ssrLoadModule(
+    '/src/features/proxyPools/bindingResources.ts'
+  );
   const statusRefresh = await server.ssrLoadModule('/src/features/proxyPools/statusRefresh.ts');
 
   const reconciliation = authFiles.normalizeAuthFileReconciliationResult({
@@ -129,6 +132,101 @@ proxy-pools:
     ],
   });
   assert.equal(emptyCount.assignedCount, 1);
+
+  const bindingSnapshot = proxyPools.normalizeProxyPoolStatusSnapshot({
+    assignment_revision: 'assignment-7',
+    credential_count: 1,
+    assignable_resource_count: 3,
+    pools: [
+      {
+        id: 'pool-main',
+        assigned_to: [
+          {
+            id: 'credential.json',
+            resource_id: 'credential-resource',
+            kind: 'credential',
+            provider: 'codex',
+          },
+        ],
+      },
+    ],
+    assignable_resources: [
+      {
+        resource_id: 'credential-resource',
+        kind: 'credential',
+        provider: 'codex',
+        label: 'credential.json',
+        masked_identity: 'cred...json',
+        proxy_supported: true,
+        proxy_support_status: 'supported',
+        current_pool_id: 'pool-main',
+      },
+      {
+        resource_id: 'provider-key-1',
+        kind: 'provider_api_key',
+        provider: 'openai-compatibility',
+        supplier_id: 'supplier-team',
+        supplier_alias: 'Team gateway',
+        key_alias: 'primary',
+        label: 'primary',
+        masked_identity: 'sk-a...0001',
+        proxy_supported: true,
+        proxy_support_status: 'supported',
+      },
+      {
+        resource_id: 'provider-key-2',
+        kind: 'provider_api_key',
+        provider: 'openai-compatibility',
+        supplier_id: 'supplier-team',
+        supplier_alias: 'Team gateway',
+        key_alias: 'secondary',
+        label: 'secondary',
+        masked_identity: 'sk-b...0002',
+        proxy_supported: true,
+        proxy_support_status: 'supported',
+      },
+    ],
+  });
+  assert.equal(bindingSnapshot.assignmentRevision, 'assignment-7');
+  assert.equal(bindingSnapshot.pools[0].assignedTo[0].resourceId, 'credential-resource');
+  assert.equal(bindingSnapshot.assignableResources[1].maskedIdentity, 'sk-a...0001');
+
+  const groupedBindings = bindingResources.groupProxyPoolBindingResources(
+    bindingSnapshot.assignableResources
+  );
+  assert.equal(groupedBindings.credentials.length, 1);
+  assert.equal(groupedBindings.suppliers.length, 1);
+  assert.equal(groupedBindings.suppliers[0].alias, 'Team gateway');
+  assert.deepEqual(
+    groupedBindings.suppliers[0].resources.map((resource) => resource.keyAlias),
+    ['primary', 'secondary']
+  );
+  const selectedSupplierKeys = bindingResources.setProxyPoolResourceSelection(
+    new Set(['credential-resource']),
+    groupedBindings.suppliers[0].resources.map((resource) => resource.resourceId),
+    true
+  );
+  assert.deepEqual(Array.from(selectedSupplierKeys).sort(), [
+    'credential-resource',
+    'provider-key-1',
+    'provider-key-2',
+  ]);
+  assert.deepEqual(
+    bindingResources.assignedProxyPoolResourceIDs(bindingSnapshot.assignableResources, 'pool-main'),
+    ['credential-resource']
+  );
+
+  const staleAssignment = proxyPools.normalizeProxyPoolAssignmentResult({
+    ...{
+      assignment_revision: 'assignment-8',
+      assignable_resources: bindingSnapshot.assignableResources,
+      pools: bindingSnapshot.pools,
+    },
+    status: 'stale',
+    failures: [],
+  });
+  assert.equal(staleAssignment.status, 'stale');
+  assert.equal(staleAssignment.assignmentRevision, 'assignment-8');
 
   assert.equal(
     proxyPools.parseProxyPoolURL('http://127.0.0.1:7890').excludeFromSmartAssignment,

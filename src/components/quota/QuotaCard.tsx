@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import type { ReactElement, ReactNode } from 'react';
 import type { TFunction } from 'i18next';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
+import { RuntimeCapacityBadge } from '@/components/runtime/RuntimeCapacityBadge';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { TooltipButton } from '@/components/ui/TooltipControls';
@@ -25,12 +26,14 @@ import {
   parsePriorityValue,
 } from '@/features/authFiles/constants';
 import type { AuthFileItem } from '@/types';
+import type { RuntimeObservationResource } from '@/types/runtimeObservation';
 import {
   normalizeRecentRequestBuckets,
   normalizeUsageTotal,
   statusBarDataFromRecentRequests,
 } from '@/utils/recentRequests';
 import { formatFileSize } from '@/utils/format';
+import { resolveAuthFileConcurrencySetting } from '@/utils/maxConcurrency';
 import { useThemeStore } from '@/stores';
 import quotaStyles from '@/pages/QuotaPage.module.scss';
 import authStyles from '@/pages/AuthFilesPage.module.scss';
@@ -100,6 +103,7 @@ export interface QuotaRenderHelpers {
 
 interface QuotaCardProps<TState extends QuotaStatusState> {
   item: AuthFileItem;
+  runtimeResource?: RuntimeObservationResource;
   quota?: TState;
   i18nPrefix: string;
   cardIdleMessageKey?: string;
@@ -124,6 +128,7 @@ interface QuotaCardProps<TState extends QuotaStatusState> {
 
 export function QuotaCard<TState extends QuotaStatusState>({
   item,
+  runtimeResource,
   quota,
   i18nPrefix,
   cardIdleMessageKey,
@@ -156,6 +161,7 @@ export function QuotaCard<TState extends QuotaStatusState>({
   const typeColor = getTypeColor(providerKey, resolvedTheme);
   const typeLabel = getTypeLabel(t, providerKey);
   const providerIcon = getAuthFileIcon(providerKey, resolvedTheme);
+  const concurrency = resolveAuthFileConcurrencySetting(item);
   const rawStatusMessage = getAuthFileStatusMessage(item);
   const hasStatusWarning =
     Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase());
@@ -167,13 +173,14 @@ export function QuotaCard<TState extends QuotaStatusState>({
     0,
     credentialGroups.length - visibleCredentialGroups.length
   );
+  const recentBuckets = runtimeResource
+    ? runtimeResource.recentRequests
+    : normalizeRecentRequestBuckets(item.recent_requests ?? item.recentRequests);
   const fileStats = {
-    success: normalizeUsageTotal(item.success),
-    failure: normalizeUsageTotal(item.failed),
+    success: runtimeResource?.success ?? normalizeUsageTotal(item.success),
+    failure: runtimeResource?.failed ?? normalizeUsageTotal(item.failed),
   };
-  const statusData = statusBarDataFromRecentRequests(
-    normalizeRecentRequestBuckets(item.recent_requests ?? item.recentRequests)
-  );
+  const statusData = statusBarDataFromRecentRequests(recentBuckets);
   const stateLabel = isRuntimeOnly
     ? t('auth_files.type_virtual')
     : item.disabled
@@ -210,6 +217,8 @@ export function QuotaCard<TState extends QuotaStatusState>({
       className={`${authStyles.fileCard} ${cardClassName} ${
         selected ? authStyles.fileCardSelected : ''
       } ${item.disabled ? authStyles.fileCardDisabled : ''}`}
+      data-auth-id={String(item.id ?? '').trim() || undefined}
+      data-runtime-id={runtimeResource?.id}
     >
       <div className={authStyles.fileCardLayout}>
         <div className={authStyles.fileCardMain}>
@@ -321,6 +330,11 @@ export function QuotaCard<TState extends QuotaStatusState>({
 
           <div className={authStyles.cardInsights}>
             <div className={authStyles.cardStats}>
+              <RuntimeCapacityBadge
+                resource={runtimeResource}
+                mode={concurrency.mode}
+                maxConcurrency={concurrency.maxConcurrency}
+              />
               <div className={`${authStyles.statPill} ${authStyles.statSuccess}`}>
                 <span className={authStyles.statLabel}>{t('stats.success')}</span>
                 <span className={authStyles.statValue}>{fileStats.success}</span>

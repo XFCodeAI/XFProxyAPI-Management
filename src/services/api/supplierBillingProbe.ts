@@ -4,6 +4,21 @@ const SUPPLIER_BILLING_PROBE_TIMEOUT_MS = 20 * 1000;
 
 export type SupplierBillingProbeStatus = 'not_checked' | 'ok' | 'unsupported' | 'failed';
 
+export interface SupplierUsageProbeEntry {
+  status: SupplierBillingProbeStatus;
+  is_valid?: boolean;
+  remaining?: number;
+  unit?: string;
+  stale: boolean;
+  received_at?: string;
+  fresh_until?: string;
+  last_attempt_at?: string;
+  next_probe_at?: string;
+  failure_count?: number;
+  http_status?: number;
+  last_error?: string;
+}
+
 export interface SupplierBillingMultiplier {
   schema_version: number;
   billing_scope: string;
@@ -27,15 +42,25 @@ export interface SupplierBillingMultiplier {
 }
 
 export interface SupplierBillingProbeEntry {
+  target_id: string;
+  provider_brand: string;
   provider_name: string;
+  provider_index: number;
   api_key_index: number;
   alias?: string;
+  eligible: boolean;
+  probing: boolean;
+  stale: boolean;
   status: SupplierBillingProbeStatus;
   multiplier?: SupplierBillingMultiplier;
   received_at?: string;
+  fresh_until?: string;
   last_attempt_at?: string;
+  next_probe_at?: string;
+  failure_count?: number;
   http_status?: number;
   last_error?: string;
+  usage?: SupplierUsageProbeEntry;
 }
 
 export interface SupplierBillingProbeResponse {
@@ -44,15 +69,21 @@ export interface SupplierBillingProbeResponse {
 }
 
 export const supplierBillingProbeApi = {
-  list: (providerName: string) =>
-    apiClient.get<SupplierBillingProbeResponse>('/supplier-billing-probes', {
-      params: { provider_name: providerName },
+  list: (resourceKeys?: readonly string[]) => {
+    const normalizedResourceKeys = Array.from(
+      new Set((resourceKeys ?? []).map((value) => value.trim()).filter(Boolean))
+    ).sort();
+    return apiClient.get<SupplierBillingProbeResponse>('/supplier-billing-probes', {
+      ...(normalizedResourceKeys.length > 0
+        ? { params: { resource_keys: normalizedResourceKeys.join(',') } }
+        : {}),
       timeout: SUPPLIER_BILLING_PROBE_TIMEOUT_MS,
-    }),
-  probe: (providerName: string, apiKeyIndex: number) =>
+    });
+  },
+  probe: (targetId: string) =>
     apiClient.post<SupplierBillingProbeEntry>(
       '/supplier-billing-probes',
-      { provider_name: providerName, api_key_index: apiKeyIndex },
+      { target_id: targetId },
       { timeout: SUPPLIER_BILLING_PROBE_TIMEOUT_MS }
     ),
 };

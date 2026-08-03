@@ -4,7 +4,7 @@
 
 import { apiClient } from './client';
 import type { AuthFilesResponse } from '@/types/authFile';
-import type { OAuthModelAliasEntry, ProxySelection } from '@/types';
+import type { ConcurrencySetting, OAuthModelAliasEntry, ProxySelection } from '@/types';
 import { normalizeOAuthProviderKey } from '@/utils/providerKeys';
 import { parseTimestampMs } from '@/utils/timestamp';
 import { proxySelectionParams } from './proxyPools';
@@ -33,6 +33,8 @@ export type AuthFileFieldsPatch = {
   proxy_url?: string;
   headers?: Record<string, string>;
   priority?: number;
+  concurrency_mode?: ConcurrencySetting['mode'];
+  max_concurrency?: number | null;
   fallback?: boolean;
   disable_cooling?: boolean;
   websockets?: boolean;
@@ -345,9 +347,7 @@ const normalizeCodexIdentityAuditIssue = (value: unknown): CodexIdentityAuditIss
   };
 };
 
-export const normalizeCodexIdentityAuditResult = (
-  payload: unknown
-): CodexIdentityAuditResult => {
+export const normalizeCodexIdentityAuditResult = (payload: unknown): CodexIdentityAuditResult => {
   const record = asRecord(payload);
   const issues = Array.isArray(record.issues)
     ? record.issues
@@ -638,9 +638,7 @@ export const authFilesApi = {
   list: async () => dedupeAuthFilesResponse(await apiClient.get<AuthFilesResponse>('/auth-files')),
 
   getCodexIdentityAudit: async (): Promise<CodexIdentityAuditResult> =>
-    normalizeCodexIdentityAuditResult(
-      await apiClient.get('/auth-files/codex-identity-audit')
-    ),
+    normalizeCodexIdentityAuditResult(await apiClient.get('/auth-files/codex-identity-audit')),
 
   reconcileBindings: async () =>
     normalizeAuthFileReconciliationResult(await apiClient.post('/auth-files/reconcile')),
@@ -673,7 +671,8 @@ export const authFilesApi = {
 
   uploadFiles: async (
     files: File[],
-    proxySelection?: ProxySelection
+    proxySelection?: ProxySelection,
+    concurrencyDefault?: ConcurrencySetting
   ): Promise<AuthFileBatchUploadResult> => {
     const requestedNames = files.map((file) => file.name);
     if (requestedNames.length === 0) {
@@ -687,12 +686,18 @@ export const authFilesApi = {
     Object.entries(proxySelectionParams(proxySelection)).forEach(([key, value]) => {
       formData.append(key, value);
     });
+    if (concurrencyDefault) {
+      formData.append('concurrency_mode_default', concurrencyDefault.mode);
+      if (concurrencyDefault.mode === 'independent') {
+        formData.append('max_concurrency_default', String(concurrencyDefault.maxConcurrency));
+      }
+    }
     const payload = await apiClient.postForm<AuthFileBatchUploadResponse>('/auth-files', formData);
     return normalizeBatchUploadResponse(payload, requestedNames);
   },
 
-  upload: (file: File, proxySelection?: ProxySelection) =>
-    authFilesApi.uploadFiles([file], proxySelection),
+  upload: (file: File, proxySelection?: ProxySelection, concurrencyDefault?: ConcurrencySetting) =>
+    authFilesApi.uploadFiles([file], proxySelection, concurrencyDefault),
 
   validateSessionFiles: async (
     files: File[],

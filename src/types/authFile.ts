@@ -4,6 +4,7 @@
  */
 
 import type { RecentRequestBucket } from '@/utils/recentRequests';
+import type { ConcurrencyMode } from './concurrency';
 
 export type AuthFileType =
   | 'qwen'
@@ -30,6 +31,12 @@ export interface AuthFileItem {
   authIndex?: string | number | null;
   runtimeOnly?: boolean | string;
   fallback?: boolean;
+  concurrencyMode?: ConcurrencyMode;
+  concurrency_mode?: ConcurrencyMode;
+  'concurrency-mode'?: ConcurrencyMode;
+  maxConcurrency?: number;
+  max_concurrency?: number;
+  'max-concurrency'?: number;
   disableCooling?: boolean;
   disable_cooling?: boolean;
   'disable-cooling'?: boolean | string | number;

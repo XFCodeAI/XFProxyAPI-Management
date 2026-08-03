@@ -1,25 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
+import { IconX } from '@/components/ui/icons';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
+import { useCredentialGroupsCatalog } from '@/hooks/useCredentialGroupsCatalog';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { useAuthStore, useNotificationStore } from '@/stores';
+import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
 import { useProviderRecentRequests } from '@/components/providers/hooks/useProviderRecentRequests';
-import {
-  getOpenAIProviderRecentWindowStats,
-  getProviderRecentWindowStats,
-  type ProviderRecentUsageMap,
-} from '@/components/providers/utils';
-import type { OpenAIProviderConfig } from '@/types';
+import type { ProviderRecentUsageMap } from '@/components/providers/utils';
 import { ProviderHeaderCard } from './components/ProviderHeaderCard';
+import { CredentialConcurrencyDefaultControl } from '@/components/concurrency/CredentialConcurrencyDefaultControl';
 import { ProviderCategoryList } from './components/ProviderCategoryList';
 import { ProviderResourcePanel } from './components/ProviderResourcePanel';
+import {
+  classifyCredentialGroupFilterState,
+  clearCredentialGroupFilterParams,
+  credentialGroupKey,
+  filterProviderGroupsByCredentialGroup,
+  hasExactCredentialGroup,
+  readCredentialGroupFilter,
+} from './credentialGroupFilter';
 import type { ProviderPanelControls } from './components/ProviderResourcePanel';
-import { SponsorProviderPanel } from './components/SponsorProviderPanel';
 import { ProviderSheet, type ProviderSheetHandle } from './sheets/ProviderSheet';
-import { isMultiProtocolSponsorBrand } from './sponsorDefinitions';
 import { isSponsorPartialMutationError } from './sponsorMutationRecovery';
 import { useProviderWorkbench } from './useProviderWorkbench';
+import { getProviderResourceRecentWindowStats } from './providerUsage';
+import { supplierBillingResourceKey, useSupplierBillingProbes } from './useSupplierBillingProbes';
 import {
   getProviderFilterState,
   readProvidersWorkbenchUiState,
@@ -37,6 +44,7 @@ interface SheetState {
   brand: ProviderBrand;
   mode: SheetMode;
   resource: ProviderResource | null;
+  focusFailureHistory?: boolean;
 }
 
 const formatDateTime = (iso: string, locale?: string) => {
@@ -75,27 +83,17 @@ const getResourceSortName = (resource: ProviderResource): string =>
 const getResourceRecentSuccess = (
   resource: ProviderResource,
   usageByProvider: ProviderRecentUsageMap
-): number => {
-  if (isMultiProtocolSponsorBrand(resource.brand)) {
-    return 0;
-  }
-  if (resource.brand === 'openaiCompatibility') {
-    return getOpenAIProviderRecentWindowStats(resource.raw as OpenAIProviderConfig, usageByProvider)
-      .success;
-  }
-  const usageProvider = resource.brand === 'claudeApi' ? 'claude' : resource.brand;
-  return getProviderRecentWindowStats(
-    usageByProvider,
-    usageProvider,
-    resource.apiKey ?? undefined,
-    resource.baseUrl ?? undefined
-  ).success;
-};
+): number => getProviderResourceRecentWindowStats(resource, usageByProvider).success;
 
 export function ProvidersWorkbenchPage() {
   const { t, i18n } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const connectionStatus = useAuthStore((s) => s.connectionStatus);
   const { showNotification, showConfirmation } = useNotificationStore();
+  const authFiles = useAuthInventoryStore((state) => state.files);
+  const authInventoryId = useAuthInventoryStore((state) => state.inventoryId);
+  const authInventoryLoading = useAuthInventoryStore((state) => state.loading);
+  const refreshAuthInventory = useAuthInventoryStore((state) => state.refresh);
 
   const pageTransitionLayer = usePageTransitionLayer();
   const isCurrentLayer = pageTransitionLayer ? pageTransitionLayer.status === 'current' : true;
@@ -109,23 +107,44 @@ export function ProvidersWorkbenchPage() {
     resource: null,
   });
   const sheetRef = useRef<ProviderSheetHandle>(null);
+  const requestedAuthInventoryForGroupRef = useRef('');
+  const appliedCredentialGroupFilterRef = useRef('');
 
   const connected = connectionStatus === 'connected';
+  const credentialGroupFilter = useMemo(
+    () => readCredentialGroupFilter(searchParams),
+    [searchParams]
+  );
+  const credentialGroupCatalog = useCredentialGroupsCatalog({
+    enabled: connected && Boolean(credentialGroupFilter),
+  });
   const { usageByProvider, refreshRecentRequests } = useProviderRecentRequests({
     enabled: connected,
   });
-
-  const handleRefresh = useCallback(async () => {
-    await Promise.allSettled([workbench.refetch(), refreshRecentRequests().catch(() => undefined)]);
-  }, [refreshRecentRequests, workbench]);
-
-  useHeaderRefresh(handleRefresh, isCurrentLayer);
 
   const disableMutations =
     connectionStatus !== 'connected' ||
     workbench.mutating ||
     workbench.isFetching ||
     workbench.isError;
+
+  useEffect(() => {
+    const filterKey = credentialGroupKey(credentialGroupFilter);
+    if (!filterKey) {
+      requestedAuthInventoryForGroupRef.current = '';
+      return;
+    }
+    if (!connected || authInventoryId || authInventoryLoading) return;
+    if (requestedAuthInventoryForGroupRef.current === filterKey) return;
+    requestedAuthInventoryForGroupRef.current = filterKey;
+    void refreshAuthInventory().catch(() => undefined);
+  }, [
+    authInventoryId,
+    authInventoryLoading,
+    connected,
+    credentialGroupFilter,
+    refreshAuthInventory,
+  ]);
 
   const persistUiState = useCallback(
     (updater: (prev: ProvidersWorkbenchUiState) => ProvidersWorkbenchUiState) => {
@@ -148,7 +167,10 @@ export function ProvidersWorkbenchPage() {
   );
 
   const allGroups = useMemo(() => workbench.snapshot?.groups ?? [], [workbench.snapshot]);
-  const groups = allGroups;
+  const groups = useMemo(
+    () => filterProviderGroupsByCredentialGroup(allGroups, credentialGroupFilter),
+    [allGroups, credentialGroupFilter]
+  );
   const firstVisibleBrand = groups[0]?.id ?? 'gemini';
   const activeBrand = groups.some((group) => group.id === uiState.activeBrand)
     ? uiState.activeBrand
@@ -158,7 +180,6 @@ export function ProvidersWorkbenchPage() {
   const providerSortBy = activeFilterState.sortBy;
   const providerSortDir = activeFilterState.sortDir;
   const activeGroup = groups.find((g) => g.id === activeBrand) ?? groups[0] ?? null;
-
   useEffect(() => {
     if (groups.length === 0) return;
     if (groups.some((group) => group.id === uiState.activeBrand)) return;
@@ -166,6 +187,19 @@ export function ProvidersWorkbenchPage() {
       prev.activeBrand === firstVisibleBrand ? prev : { ...prev, activeBrand: firstVisibleBrand }
     );
   }, [firstVisibleBrand, groups, persistUiState, uiState.activeBrand]);
+
+  useEffect(() => {
+    const filterKey = credentialGroupKey(credentialGroupFilter);
+    if (!filterKey) {
+      appliedCredentialGroupFilterRef.current = '';
+      return;
+    }
+    if (appliedCredentialGroupFilterRef.current === filterKey) return;
+    const firstMatchingGroup = groups.find((group) => group.resources.length > 0);
+    if (!firstMatchingGroup) return;
+    appliedCredentialGroupFilterRef.current = filterKey;
+    setActiveBrand(firstMatchingGroup.id);
+  }, [credentialGroupFilter, groups, setActiveBrand]);
 
   const updateActiveFilterState = useCallback(
     (patch: Partial<ProviderFilterState>) => {
@@ -233,6 +267,30 @@ export function ProvidersWorkbenchPage() {
     return sorted;
   }, [filteredResources, providerSortBy, providerSortDir, selectedModels, usageByProvider]);
 
+  const visibleBillingResources = useMemo(() => {
+    const next = [...visibleResources];
+    const detailResource = sheetState.open ? sheetState.resource : null;
+    if (detailResource && !next.some((resource) => resource.id === detailResource.id)) {
+      next.push(detailResource);
+    }
+    return next;
+  }, [sheetState.open, sheetState.resource, visibleResources]);
+  const billingProbes = useSupplierBillingProbes({
+    enabled: connected && isCurrentLayer,
+    resources: visibleBillingResources,
+  });
+  const refetchBillingProbes = billingProbes.refetch;
+
+  const handleRefresh = useCallback(async () => {
+    await Promise.allSettled([
+      workbench.refetch(),
+      refreshRecentRequests().catch(() => undefined),
+      refetchBillingProbes().catch(() => undefined),
+    ]);
+  }, [refetchBillingProbes, refreshRecentRequests, workbench]);
+
+  useHeaderRefresh(handleRefresh, isCurrentLayer);
+
   const toolbarControls = useMemo<ProviderPanelControls | undefined>(() => {
     if (!activeGroup) return undefined;
     return {
@@ -275,14 +333,42 @@ export function ProvidersWorkbenchPage() {
     () => groups.filter((g) => g.resources.some((r) => !r.flags.isPlaceholder)).length,
     [groups]
   );
-  const sponsorResource = useMemo(
+  const canonicalCredentialGroup = useMemo(
     () =>
-      activeGroup?.id === 'apikeyFun'
-        ? (activeGroup.resources.find((r) => !r.flags.isPlaceholder) ?? null)
-        : null,
-    [activeGroup]
+      credentialGroupCatalog.groups.find(
+        (group) => credentialGroupKey(group) === credentialGroupKey(credentialGroupFilter)
+      ) ?? credentialGroupFilter,
+    [credentialGroupCatalog.groups, credentialGroupFilter]
   );
-
+  const matchingOAuthCount = useMemo(
+    () =>
+      credentialGroupFilter
+        ? authFiles.filter((file) => hasExactCredentialGroup(file.groups, credentialGroupFilter))
+            .length
+        : 0,
+    [authFiles, credentialGroupFilter]
+  );
+  const credentialGroupFilterState = classifyCredentialGroupFilterState({
+    filter: credentialGroupFilter,
+    catalogReady: credentialGroupCatalog.ready,
+    catalogGroups: credentialGroupCatalog.groups,
+    matchingProviderCount: totalResources,
+    matchingOAuthCount,
+  });
+  const credentialGroupFilterMessage =
+    credentialGroupFilterState === 'stale'
+      ? t('providersPage.groupFilter.stale', { group: canonicalCredentialGroup })
+      : credentialGroupFilterState === 'oauth-only'
+        ? t('providersPage.groupFilter.oauthOnly', {
+            group: canonicalCredentialGroup,
+            count: matchingOAuthCount,
+          })
+        : credentialGroupFilterState === 'empty'
+          ? t('providersPage.groupFilter.empty', { group: canonicalCredentialGroup })
+          : t('providersPage.groupFilter.results', {
+              group: canonicalCredentialGroup,
+              count: totalResources,
+            });
   const updatedAtLabel = workbench.snapshot
     ? formatDateTime(workbench.snapshot.fetchedAt, i18n.language)
     : t('providersPage.modelCatalog.notLoaded');
@@ -298,6 +384,17 @@ export function ProvidersWorkbenchPage() {
       brand: resource.brand,
       mode: 'detail',
       resource,
+      focusFailureHistory: false,
+    });
+  }, []);
+
+  const openFailureHistory = useCallback((resource: ProviderResource) => {
+    setSheetState({
+      open: true,
+      brand: resource.brand,
+      mode: 'detail',
+      resource,
+      focusFailureHistory: true,
     });
   }, []);
 
@@ -307,12 +404,25 @@ export function ProvidersWorkbenchPage() {
       brand: resource.brand,
       mode: 'edit',
       resource,
+      focusFailureHistory: false,
     });
   }, []);
 
   const closeSheet = useCallback(() => {
     setSheetState((s) => ({ ...s, open: false }));
   }, []);
+
+  const clearCredentialGroupFilter = useCallback(() => {
+    const proceed =
+      sheetState.open && sheetRef.current
+        ? sheetRef.current.confirmDiscardIfDirty()
+        : Promise.resolve(true);
+    void proceed.then((confirmed) => {
+      if (!confirmed) return;
+      setSearchParams(clearCredentialGroupFilterParams(searchParams));
+      closeSheet();
+    });
+  }, [closeSheet, searchParams, setSearchParams, sheetState.open]);
 
   const handleDelete = useCallback(
     (resource: ProviderResource) => {
@@ -396,6 +506,7 @@ export function ProvidersWorkbenchPage() {
           onNew={() => {}}
           isNewDisabled
         />
+        <CredentialConcurrencyDefaultControl />
       </div>
     );
   }
@@ -408,12 +519,34 @@ export function ProvidersWorkbenchPage() {
         providerFamilies={providerFamilies}
         updatedAtLabel={updatedAtLabel}
         isFetching={workbench.isFetching}
-        isNewDisabled={disableMutations}
-        showNewAction={activeGroup.id !== 'apikeyFun'}
+        isNewDisabled={disableMutations || credentialGroupFilterState === 'stale'}
         newLabel={t('providersPage.actions.new')}
         onRefresh={() => void handleRefresh()}
         onNew={openCreate}
       />
+      <CredentialConcurrencyDefaultControl />
+
+      {credentialGroupFilter ? (
+        <section
+          className={styles.groupFilterNotice}
+          data-state={credentialGroupFilterState}
+          aria-live="polite"
+        >
+          <div className={styles.groupFilterCopy}>
+            <span className={styles.groupFilterLabel}>{t('providersPage.groupFilter.label')}</span>
+            <strong className={styles.groupFilterName}>{canonicalCredentialGroup}</strong>
+            <p className={styles.groupFilterMessage}>{credentialGroupFilterMessage}</p>
+          </div>
+          <button
+            type="button"
+            className={styles.groupFilterClear}
+            onClick={clearCredentialGroupFilter}
+          >
+            <IconX size={16} />
+            <span>{t('providersPage.groupFilter.clear')}</span>
+          </button>
+        </section>
+      ) : null}
 
       <div className={styles.layout}>
         <ProviderCategoryList
@@ -434,29 +567,34 @@ export function ProvidersWorkbenchPage() {
             });
           }}
         />
-        {activeGroup.id === 'apikeyFun' ? (
-          <SponsorProviderPanel
-            resource={sponsorResource}
-            workbench={workbench}
-            mutationDisabled={disableMutations}
-          />
-        ) : (
-          <ProviderResourcePanel
-            group={activeGroup}
-            filter={filter}
-            onFilterChange={(value) => updateActiveFilterState({ filter: value })}
-            filteredResources={visibleResources}
-            selectedId={sheetState.open ? (sheetState.resource?.id ?? null) : null}
-            disableMutations={disableMutations}
-            usageByProvider={usageByProvider}
-            toolbarControls={toolbarControls}
-            onView={openView}
-            onEdit={openEdit}
-            onDelete={handleDelete}
-            onToggleDisabled={handleToggleDisabled}
-            onCreate={openCreate}
-          />
-        )}
+        <ProviderResourcePanel
+          group={activeGroup}
+          filter={filter}
+          onFilterChange={(value) => updateActiveFilterState({ filter: value })}
+          filteredResources={visibleResources}
+          selectedId={sheetState.open ? (sheetState.resource?.id ?? null) : null}
+          disableMutations={disableMutations}
+          usageByProvider={usageByProvider}
+          billingProbeEntriesByResource={billingProbes.entriesByResource}
+          onRefreshBillingProbe={billingProbes.refreshTarget}
+          toolbarControls={toolbarControls}
+          emptyText={
+            credentialGroupFilter
+              ? activeGroup.resources.length === 0 && totalResources > 0
+                ? t('providersPage.groupFilter.providerEmpty', {
+                    group: canonicalCredentialGroup,
+                  })
+                : credentialGroupFilterMessage
+              : undefined
+          }
+          showEmptyAction={!credentialGroupFilter}
+          onView={openView}
+          onViewFailures={openFailureHistory}
+          onEdit={openEdit}
+          onDelete={handleDelete}
+          onToggleDisabled={handleToggleDisabled}
+          onCreate={openCreate}
+        />
       </div>
 
       <ProviderSheet
@@ -471,6 +609,17 @@ export function ProvidersWorkbenchPage() {
         onUpdated={handleUpdated}
         mutationDisabled={disableMutations}
         usageByProvider={usageByProvider}
+        billingProbeEntries={
+          sheetState.resource
+            ? billingProbes.entriesByResource[
+                supplierBillingResourceKey(
+                  sheetState.resource.brand,
+                  sheetState.resource.originalIndex
+                )
+              ]
+            : undefined
+        }
+        onRefreshBillingProbe={billingProbes.refreshTarget}
       />
     </div>
   );

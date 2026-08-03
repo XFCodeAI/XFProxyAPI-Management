@@ -190,17 +190,14 @@ test('credential and supplier cooling controls preserve live state and fit the v
     );
     window.location.hash = '/ai-providers';
   });
-  const connectivityBadge = page.getByText(/连接：可达|Connectivity: reachable/i);
-  const schedulingBadge = page.getByText(/调度：就绪|Scheduling: ready/i);
-  await expect(connectivityBadge).toBeVisible();
-  await expect(schedulingBadge).toBeVisible();
+  const statusBadge = page.getByText(/调度：就绪|Scheduling: ready/i);
+  await expect(statusBadge).toBeVisible();
+  await expect(page.getByText(/连接：可达|Connectivity: reachable/i)).toHaveCount(0);
   const viewport = page.viewportSize();
-  for (const badge of [connectivityBadge, schedulingBadge]) {
-    const box = await badge.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.x).toBeLessThan(viewport!.width);
-    expect(box!.x + box!.width).toBeGreaterThan(0);
-  }
+  const badgeBox = await statusBadge.boundingBox();
+  expect(badgeBox).not.toBeNull();
+  expect(badgeBox!.x).toBeLessThan(viewport!.width);
+  expect(badgeBox!.x + badgeBox!.width).toBeGreaterThan(0);
   await page.screenshot({
     path: testInfo.outputPath('provider-runtime-status.png'),
     fullPage: true,

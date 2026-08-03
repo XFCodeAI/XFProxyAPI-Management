@@ -1,5 +1,9 @@
 import { parse as parseYaml, parseDocument, isMap } from 'yaml';
 import type {
+  ProxyPoolAssignableResource,
+  ProxyPoolAssignableResourceKind,
+  ProxyPoolAssignmentResult,
+  ProxyPoolAssignmentStatus,
   ProxyPoolAutoAssignResult,
   ProxyPoolEntry,
   ProxyPoolProtocol,
@@ -7,6 +11,7 @@ import type {
   ProxyPoolRebalanceReason,
   ProxyPoolRebalanceResult,
   ProxyPoolStatusEntry,
+  ProxyPoolStatusSnapshot,
   ProxyPoolsConfigSnapshot,
   ProxyPoolUsage,
   ProxySelection,
@@ -253,18 +258,67 @@ function normalizeAssignments(value: unknown): ProxyPoolStatusEntry['assignedTo'
     if (!isRecord(item)) return items;
     const id = readString(item, 'id');
     if (!id) return items;
+    const resourceId = readString(item, 'resource_id') || readString(item, 'resourceId') || id;
     items.push({
       id,
+      resourceId,
+      kind: normalizeAssignableResourceKind(item.kind),
       provider: readString(item, 'provider'),
+      supplierId: readString(item, 'supplier_id') || readString(item, 'supplierId') || undefined,
+      supplierAlias:
+        readString(item, 'supplier_alias') || readString(item, 'supplierAlias') || undefined,
+      keyAlias: readString(item, 'key_alias') || readString(item, 'keyAlias') || undefined,
       label: readString(item, 'label') || undefined,
+      alias: readString(item, 'alias') || undefined,
+      maskedIdentity:
+        readString(item, 'masked_identity') || readString(item, 'maskedIdentity') || undefined,
       fileName: readString(item, 'file_name') || undefined,
       email: readString(item, 'email') || undefined,
+      disabled: readBool(item, 'disabled', false),
       proxySupported: readBool(item, 'proxy_supported', true),
       proxySupportStatus:
         readString(item, 'proxy_support_status') || readString(item, 'proxySupportStatus'),
     });
     return items;
   }, []);
+}
+
+function normalizeAssignableResourceKind(value: unknown): ProxyPoolAssignableResourceKind {
+  return value === 'provider_api_key' ? 'provider_api_key' : 'credential';
+}
+
+function normalizeAssignableResources(value: unknown): ProxyPoolAssignableResource[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const resourceId = readString(item, 'resource_id') || readString(item, 'resourceId');
+    if (!resourceId) return [];
+    return [
+      {
+        resourceId,
+        kind: normalizeAssignableResourceKind(item.kind),
+        provider: readString(item, 'provider'),
+        supplierId: readString(item, 'supplier_id') || readString(item, 'supplierId') || undefined,
+        supplierAlias:
+          readString(item, 'supplier_alias') || readString(item, 'supplierAlias') || undefined,
+        keyAlias: readString(item, 'key_alias') || readString(item, 'keyAlias') || undefined,
+        label: readString(item, 'label') || resourceId,
+        alias: readString(item, 'alias') || undefined,
+        maskedIdentity:
+          readString(item, 'masked_identity') || readString(item, 'maskedIdentity') || undefined,
+        fileName: readString(item, 'file_name') || readString(item, 'fileName') || undefined,
+        email: readString(item, 'email') || undefined,
+        disabled: readBool(item, 'disabled', false),
+        proxySupported: readBool(item, 'proxy_supported', true),
+        proxySupportStatus:
+          readString(item, 'proxy_support_status') ||
+          readString(item, 'proxySupportStatus') ||
+          'supported',
+        currentPoolId:
+          readString(item, 'current_pool_id') || readString(item, 'currentPoolId') || undefined,
+      },
+    ];
+  });
 }
 
 function normalizeStatusEntry(value: unknown): ProxyPoolStatusEntry | null {
@@ -324,6 +378,58 @@ export function normalizeStatusResponse(payload: unknown): ProxyPoolStatusEntry[
   return pools
     .map((item) => normalizeStatusEntry(item))
     .filter((item): item is ProxyPoolStatusEntry => item !== null);
+}
+
+export function normalizeProxyPoolStatusSnapshot(payload: unknown): ProxyPoolStatusSnapshot {
+  const record = isRecord(payload) ? payload : {};
+  const resources = normalizeAssignableResources(
+    record.assignable_resources ?? record.assignableResources
+  );
+  return {
+    pools: normalizeStatusResponse(record),
+    assignableResources: resources,
+    assignmentRevision:
+      readString(record, 'assignment_revision') || readString(record, 'assignmentRevision'),
+    credentialCount: readNumberAlias(record, 'credential_count', 'credentialCount'),
+    assignableResourceCount:
+      readOptionalNumberAlias(record, 'assignable_resource_count', 'assignableResourceCount') ??
+      resources.length,
+  };
+}
+
+function normalizeProxyPoolAssignmentStatus(value: unknown): ProxyPoolAssignmentStatus {
+  switch (value) {
+    case 'ok':
+    case 'noop':
+    case 'stale':
+    case 'rolled_back':
+    case 'partial':
+    case 'failed':
+      return value;
+    default:
+      return 'failed';
+  }
+}
+
+export function normalizeProxyPoolAssignmentResult(payload: unknown): ProxyPoolAssignmentResult {
+  const record = isRecord(payload) ? payload : {};
+  const snapshot = normalizeProxyPoolStatusSnapshot(record);
+  const failures = Array.isArray(record.failures)
+    ? record.failures.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const resourceId = readString(item, 'resource_id') || readString(item, 'resourceId');
+        const error = readString(item, 'error');
+        if (!resourceId || !error) return [];
+        return [{ resourceId, kind: readString(item, 'kind'), error }];
+      })
+    : [];
+  return {
+    ...snapshot,
+    status: normalizeProxyPoolAssignmentStatus(record.status),
+    updated: readNumber(record, 'updated'),
+    failed: readNumber(record, 'failed'),
+    failures,
+  };
 }
 
 export function isProxyPoolSelectable(
@@ -450,6 +556,10 @@ async function load(): Promise<ProxyPoolsConfigSnapshot> {
   return parseConfigSnapshot(yamlContent);
 }
 
+async function loadStatusSnapshot(): Promise<ProxyPoolStatusSnapshot> {
+  return normalizeProxyPoolStatusSnapshot(await apiClient.get('/proxy-pools'));
+}
+
 async function save(pools: ProxyPoolEntry[]): Promise<ProxyPoolsConfigSnapshot> {
   const latestYaml = await configFileApi.fetchConfigYaml();
   const doc = parseDocument(latestYaml);
@@ -559,7 +669,8 @@ export function redactProxyURL(raw: string): string {
 export const proxyPoolsApi = {
   load,
   save,
-  loadStatus: async () => normalizeStatusResponse(await apiClient.get('/proxy-pools')),
+  loadStatusSnapshot,
+  loadStatus: async () => (await loadStatusSnapshot()).pools,
   checkAll: async () => normalizeStatusResponse(await apiClient.post('/proxy-pools/check')),
   checkOne: async (id: string) => {
     const payload = await apiClient.post(`/proxy-pools/${encodeURIComponent(id)}/check`);
@@ -569,12 +680,22 @@ export const proxyPoolsApi = {
     }
     return normalizeStatusResponse(payload);
   },
-  assign: async (id: string, authIds: string[]) =>
-    normalizeStatusResponse(
-      await apiClient.post(`/proxy-pools/${encodeURIComponent(id)}/assign`, {
-        auth_ids: authIds,
-      })
-    ),
+  assign: async (id: string, resourceIds: string[], revision: string) => {
+    try {
+      return normalizeProxyPoolAssignmentResult(
+        await apiClient.post(`/proxy-pools/${encodeURIComponent(id)}/assign`, {
+          resource_ids: resourceIds,
+          revision,
+        })
+      );
+    } catch (error: unknown) {
+      const apiError = error as ApiError;
+      if (isRecord(apiError.data) && typeof apiError.data.status === 'string') {
+        return normalizeProxyPoolAssignmentResult(apiError.data);
+      }
+      throw error;
+    }
+  },
   autoAssign: async (authIds: string[]) =>
     normalizeStatusResponse(
       await apiClient.post('/proxy-pools/auto-assign', {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bot, FileKey2, KeyRound, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -17,6 +18,7 @@ import {
 import { getPluginTitle, PLUGIN_RESOURCES_REFRESH_EVENT } from '@/features/plugins/pluginResources';
 import { usePageActivityRefresh } from '@/hooks/usePageActivityRefresh';
 import { invalidateProviderRecentRequests } from '@/services/providerRecentRequests';
+import { buildCredentialGroupRelayPath } from '@/features/providers/credentialGroupFilter';
 import { useAuthInventoryStore, useConfigStore, useNotificationStore } from '@/stores';
 import type {
   ApiError,
@@ -925,17 +927,28 @@ export function CredentialGroupsPage() {
                     const usage = usageByGroup.get(groupKey(name)) ?? emptyUsage();
                     const selected = groupKey(name) === groupKey(resolvedActiveGroup);
                     return (
-                      <button
-                        type="button"
+                      <div
                         className={`${styles.groupRow} ${selected ? styles.groupRowActive : ''}`}
                         key={name}
-                        onClick={() => setActiveGroup(name)}
                       >
-                        <span className={styles.groupName}>{name}</span>
+                        <button
+                          type="button"
+                          className={styles.groupRowSelect}
+                          onClick={() => setActiveGroup(name)}
+                          aria-label={t('credential_groups_page.select_group', { name })}
+                          aria-pressed={selected}
+                        />
+                        <Link
+                          className={styles.groupName}
+                          to={buildCredentialGroupRelayPath(name)}
+                          title={t('credential_groups_page.open_provider_relay', { name })}
+                        >
+                          {name}
+                        </Link>
                         <span className={styles.groupUsage}>
                           {usage.authFiles + usage.providers + usage.apiKeys}
                         </span>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>

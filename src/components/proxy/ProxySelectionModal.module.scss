@@ -158,6 +158,12 @@
 }
 
 @media (max-width: 640px) {
+  .footer {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
   .inspectionHeader {
     align-items: flex-start;
     flex-direction: column;

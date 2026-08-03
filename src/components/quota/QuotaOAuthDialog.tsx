@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProxySelectionControl } from '@/components/proxy/ProxySelectionControl';
+import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -8,7 +9,9 @@ import { getStatusBadgeClass } from '@/components/ui/statusStyles';
 import { supportsOAuthCallback, type OAuthProviderState } from '@/hooks/useOAuthProviderFlow';
 import { IconExternalLink } from '@/components/ui/icons';
 import { isProxyPoolSmartAssignable, proxyPoolsApi } from '@/services/api';
+import type { OAuthStartOptions } from '@/services/api/oauth';
 import type { ProxyPoolStatusEntry, ProxySelection } from '@/types';
+import { parseOptionalMaxConcurrency } from '@/utils/maxConcurrency';
 import styles from './QuotaOAuthDialog.module.scss';
 
 interface QuotaOAuthDialogProps {
@@ -18,7 +21,7 @@ interface QuotaOAuthDialogProps {
   pluginProvider?: boolean;
   state: OAuthProviderState;
   onClose: () => void;
-  onStart: (selection?: ProxySelection) => void;
+  onStart: (options: OAuthStartOptions) => void;
   onCopyLink: (url?: string) => void;
   onSubmitCallback: () => void;
   onCallbackUrlChange: (value: string) => void;
@@ -40,6 +43,9 @@ export function QuotaOAuthDialog({
   const [proxySelection, setProxySelection] = useState<ProxySelection>({ mode: 'smart' });
   const [proxyPools, setProxyPools] = useState<ProxyPoolStatusEntry[]>([]);
   const [proxyPoolsLoading, setProxyPoolsLoading] = useState(false);
+  const [concurrencyMode, setConcurrencyMode] = useState<'inherit' | 'independent'>('inherit');
+  const [maxConcurrencyInput, setMaxConcurrencyInput] = useState('0');
+  const parsedMaxConcurrency = parseOptionalMaxConcurrency(maxConcurrencyInput);
   const title = t('quota_management.oauth_login', { provider: providerLabel });
   const getProviderText = (suffix: string) => {
     if (pluginProvider) return t(`auth_login.plugin_${suffix}`, { name: providerLabel });
@@ -69,7 +75,10 @@ export function QuotaOAuthDialog({
             ? `${getProviderText('oauth_status_error')} ${state.error || ''}`
             : getProviderText('oauth_status_waiting')
       : '';
-  const startDisabled = Boolean(state.url) || (!pluginProvider && proxyPoolsLoading);
+  const startDisabled =
+    Boolean(state.url) ||
+    (!pluginProvider && proxyPoolsLoading) ||
+    (concurrencyMode === 'independent' && !parsedMaxConcurrency.valid);
 
   const loadProxyPools = useCallback(async () => {
     if (pluginProvider) return;
@@ -91,6 +100,8 @@ export function QuotaOAuthDialog({
   useEffect(() => {
     if (!open) return;
     setProxySelection({ mode: 'smart' });
+    setConcurrencyMode('inherit');
+    setMaxConcurrencyInput('0');
     void loadProxyPools();
   }, [loadProxyPools, open]);
 
@@ -106,7 +117,14 @@ export function QuotaOAuthDialog({
             {t('common.close')}
           </Button>
           <Button
-            onClick={() => onStart(pluginProvider ? undefined : proxySelection)}
+            onClick={() =>
+              onStart({
+                proxySelection: pluginProvider ? undefined : proxySelection,
+                concurrencyMode,
+                maxConcurrency:
+                  concurrencyMode === 'independent' ? parsedMaxConcurrency.value : undefined,
+              })
+            }
             loading={state.polling}
             disabled={startDisabled}
           >
@@ -130,6 +148,23 @@ export function QuotaOAuthDialog({
             disabled={state.polling}
             onChange={setProxySelection}
             onRefresh={() => void loadProxyPools()}
+          />
+        ) : null}
+
+        {!state.url ? (
+          <ConcurrencySettingField
+            id="oauth-credential-concurrency"
+            label={t('auth_files.max_concurrency_label')}
+            mode={concurrencyMode}
+            maxConcurrency={maxConcurrencyInput}
+            error={
+              concurrencyMode === 'independent' && !parsedMaxConcurrency.valid
+                ? t('auth_files.max_concurrency_invalid')
+                : undefined
+            }
+            disabled={state.polling}
+            onModeChange={setConcurrencyMode}
+            onMaxConcurrencyChange={setMaxConcurrencyInput}
           />
         ) : null}
 

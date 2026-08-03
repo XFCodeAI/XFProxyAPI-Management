@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   IconAlertTriangle,
@@ -8,27 +7,24 @@ import {
   IconRefreshCw,
 } from '@/components/ui/icons';
 import { TooltipIconButton } from '@/components/ui/TooltipControls';
-import {
-  supplierBillingProbeApi,
-  type SupplierBillingProbeEntry,
-} from '@/services/api/supplierBillingProbe';
+import type { SupplierBillingProbeEntry } from '@/services/api/supplierBillingProbe';
 import { maskApiKey } from '@/utils/format';
 import type { ApiKeyEntry } from '@/types';
 import styles from './forms/sharedForm.module.scss';
 
 interface SupplierBillingProbeSectionProps {
-  providerName: string;
-  apiKeyEntries: ApiKeyEntry[];
+  entries: readonly SupplierBillingProbeEntry[];
+  apiKeyEntries: readonly ApiKeyEntry[];
+  matchEntriesByPosition?: boolean;
+  onRefresh: (targetId: string) => Promise<void>;
 }
 
-const emptyProbeEntry = (apiKeyIndex: number, alias?: string): SupplierBillingProbeEntry => ({
-  provider_name: '',
-  api_key_index: apiKeyIndex,
-  alias,
-  status: 'not_checked',
-});
-
 const formatRate = (value?: string) => (value ? `${value}x` : '--');
+
+const formatBalance = (value: number | undefined, unit: string | undefined): string | null => {
+  if (value === undefined) return null;
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${unit?.trim() || 'USD'}`;
+};
 
 function formatAttemptTime(value?: string): string | null {
   if (!value) return null;
@@ -38,68 +34,21 @@ function formatAttemptTime(value?: string): string | null {
 }
 
 export function SupplierBillingProbeSection({
-  providerName,
+  entries,
   apiKeyEntries,
+  matchEntriesByPosition = false,
+  onRefresh,
 }: SupplierBillingProbeSectionProps) {
   const { t } = useTranslation();
-  const [probeEntries, setProbeEntries] = useState<Record<number, SupplierBillingProbeEntry>>({});
-  const [probing, setProbing] = useState<Set<number>>(() => new Set());
-  const scopeKey = useMemo(
-    () => `${providerName}\u0000${apiKeyEntries.map((entry) => entry.apiKey).join('\u0000')}`,
-    [apiKeyEntries, providerName]
-  );
+  const entriesByIndex = new Map(entries.map((entry) => [entry.api_key_index, entry]));
 
-  useEffect(() => {
-    let disposed = false;
-    setProbeEntries({});
-    setProbing(new Set());
-    if (!providerName.trim() || apiKeyEntries.length === 0) return undefined;
-
-    void supplierBillingProbeApi
-      .list(providerName)
-      .then((response) => {
-        if (disposed) return;
-        const next: Record<number, SupplierBillingProbeEntry> = {};
-        response.entries.forEach((entry) => {
-          next[entry.api_key_index] = entry;
-        });
-        setProbeEntries((current) => ({ ...next, ...current }));
-      })
-      .catch(() => {});
-
-    return () => {
-      disposed = true;
-    };
-  }, [apiKeyEntries.length, providerName, scopeKey]);
-
-  const probe = useCallback(
-    async (apiKeyIndex: number, alias?: string) => {
-      setProbing((current) => new Set(current).add(apiKeyIndex));
-      try {
-        const result = await supplierBillingProbeApi.probe(providerName, apiKeyIndex);
-        setProbeEntries((current) => ({ ...current, [apiKeyIndex]: result }));
-      } catch {
-        setProbeEntries((current) => ({
-          ...current,
-          [apiKeyIndex]: {
-            ...emptyProbeEntry(apiKeyIndex, alias),
-            status: 'failed',
-            last_error: 'request_failed',
-          },
-        }));
-      } finally {
-        setProbing((current) => {
-          const next = new Set(current);
-          next.delete(apiKeyIndex);
-          return next;
-        });
-      }
-    },
-    [providerName]
-  );
-
-  const renderStatusIcon = (entry: SupplierBillingProbeEntry, isProbing: boolean) => {
-    if (isProbing) {
+  const renderStatusIcon = (
+    status: SupplierBillingProbeEntry['status'] | undefined,
+    probing: boolean,
+    stale: boolean,
+    valid = true
+  ) => {
+    if (probing) {
       return (
         <IconLoader2
           className={`${styles.billingProbeIcon} ${styles.statusIconLoading}`}
@@ -107,7 +56,7 @@ export function SupplierBillingProbeSection({
         />
       );
     }
-    if (entry.status === 'ok') {
+    if (status === 'ok' && !stale && valid) {
       return (
         <IconCheckCircle2
           className={`${styles.billingProbeIcon} ${styles.statusIconSuccess}`}
@@ -115,7 +64,7 @@ export function SupplierBillingProbeSection({
         />
       );
     }
-    if (entry.status === 'not_checked') {
+    if (!status || status === 'not_checked') {
       return <IconInfo className={styles.billingProbeIcon} size={14} />;
     }
     return (
@@ -139,80 +88,150 @@ export function SupplierBillingProbeSection({
       </div>
       <div className={styles.billingProbeList}>
         {apiKeyEntries.map((apiKeyEntry, apiKeyIndex) => {
-          const entry =
-            probeEntries[apiKeyIndex] ?? emptyProbeEntry(apiKeyIndex, apiKeyEntry.name?.trim());
-          const isProbing = probing.has(apiKeyIndex);
-          const multiplier = entry.multiplier;
-          const attemptTime = formatAttemptTime(entry.received_at ?? entry.last_attempt_at);
-          const statusText = isProbing
+          const entry = matchEntriesByPosition
+            ? entries[apiKeyIndex]
+            : entriesByIndex.get(apiKeyIndex);
+          const displayAlias = apiKeyEntry.name?.trim() || entry?.alias?.trim();
+          const multiplier = entry?.multiplier;
+          const attemptTime = formatAttemptTime(entry?.received_at ?? entry?.last_attempt_at);
+          const status = entry?.status ?? 'not_checked';
+          const statusText = entry?.probing
             ? t('providersPage.billingProbe.probing')
-            : t(`providersPage.billingProbe.status.${entry.status}`);
-          const detail =
-            entry.status === 'ok' && multiplier
-              ? [
-                  t('providersPage.billingProbe.groupRate', {
-                    value: formatRate(multiplier.group_rate_multiplier_text),
-                  }),
-                  multiplier.user_rate_multiplier_text
-                    ? t('providersPage.billingProbe.userRate', {
-                        value: formatRate(multiplier.user_rate_multiplier_text),
-                      })
-                    : null,
-                  t('providersPage.billingProbe.resolvedRate', {
-                    value: formatRate(multiplier.resolved_rate_multiplier_text),
-                  }),
-                  multiplier.applied_peak_multiplier_text
-                    ? t('providersPage.billingProbe.peakRate', {
-                        value: formatRate(multiplier.applied_peak_multiplier_text),
-                      })
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')
-              : entry.last_error
+            : entry?.stale && status === 'ok'
+              ? t('providersPage.billingProbe.stale')
+              : t(`providersPage.billingProbe.status.${status}`);
+          const detail = multiplier
+            ? [
+                t('providersPage.billingProbe.groupRate', {
+                  value: formatRate(multiplier.group_rate_multiplier_text),
+                }),
+                multiplier.user_rate_multiplier_text
+                  ? t('providersPage.billingProbe.userRate', {
+                      value: formatRate(multiplier.user_rate_multiplier_text),
+                    })
+                  : null,
+                t('providersPage.billingProbe.resolvedRate', {
+                  value: formatRate(multiplier.resolved_rate_multiplier_text),
+                }),
+                multiplier.applied_peak_multiplier_text
+                  ? t('providersPage.billingProbe.peakRate', {
+                      value: formatRate(multiplier.applied_peak_multiplier_text),
+                    })
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : entry?.last_error
+              ? t('providersPage.billingProbe.error', {
+                  reason: entry.last_error,
+                  status: entry.http_status || '--',
+                })
+              : null;
+          const usage = entry?.usage;
+          const usageStatus = usage?.status ?? 'not_checked';
+          const usageAttemptTime = formatAttemptTime(usage?.received_at ?? usage?.last_attempt_at);
+          const usageStatusText = entry?.probing
+            ? t('providersPage.billingProbe.probing')
+            : usage?.stale && usageStatus === 'ok'
+              ? t('providersPage.billingProbe.stale')
+              : usageStatus === 'ok' && usage?.is_valid === false
+                ? t('providersPage.billingProbe.usageInvalid')
+                : usageStatus === 'ok'
+                  ? t('providersPage.billingProbe.usageValid')
+                  : t(`providersPage.billingProbe.status.${usageStatus}`);
+          const balance = formatBalance(usage?.remaining, usage?.unit);
+          const usageDetail = balance
+            ? null
+            : usageStatus === 'ok'
+              ? t('providersPage.billingProbe.balanceUnavailable')
+              : usage?.last_error
                 ? t('providersPage.billingProbe.error', {
-                    reason: entry.last_error,
-                    status: entry.http_status || '--',
+                    reason: usage.last_error,
+                    status: usage.http_status || '--',
                   })
                 : null;
 
           return (
-            <div key={`${apiKeyEntry.apiKey}-${apiKeyIndex}`} className={styles.billingProbeItem}>
+            <div
+              key={entry?.target_id ?? `billing-entry-${apiKeyIndex}`}
+              className={styles.billingProbeItem}
+            >
               <div className={styles.billingProbeIdentity}>
                 <span className={styles.billingProbeIndex}>{apiKeyIndex + 1}</span>
                 <div className={styles.billingProbeKeyText}>
-                  {apiKeyEntry.name?.trim() ? (
-                    <span className={styles.billingProbeAlias}>{apiKeyEntry.name.trim()}</span>
+                  {displayAlias ? (
+                    <span className={styles.billingProbeAlias}>{displayAlias}</span>
                   ) : null}
                   <span className={styles.apiKeyEntryKey}>{maskApiKey(apiKeyEntry.apiKey)}</span>
                 </div>
               </div>
               <div className={styles.billingProbeResult}>
-                <span className={styles.billingProbeStatus}>
-                  {renderStatusIcon(entry, isProbing)}
-                  {statusText}
-                </span>
-                {entry.status === 'ok' && multiplier ? (
-                  <strong className={styles.billingProbeEffectiveRate}>
-                    {formatRate(multiplier.effective_rate_multiplier_text)}
-                  </strong>
-                ) : null}
-                {detail ? <span className={styles.billingProbeMeta}>{detail}</span> : null}
-                {attemptTime ? (
-                  <span className={styles.billingProbeMeta}>
-                    {t('providersPage.billingProbe.updatedAt', { time: attemptTime })}
+                <div className={styles.billingProbeMetric}>
+                  <span className={styles.billingProbeMetricLabel}>
+                    {t('providersPage.billingProbe.metricMultiplier')}
                   </span>
-                ) : null}
+                  <span className={styles.billingProbeStatus}>
+                    {renderStatusIcon(
+                      entry?.status,
+                      Boolean(entry?.probing),
+                      Boolean(entry?.stale)
+                    )}
+                    {statusText}
+                  </span>
+                  {multiplier ? (
+                    <strong className={styles.billingProbeEffectiveRate}>
+                      {formatRate(multiplier.effective_rate_multiplier_text)}
+                    </strong>
+                  ) : null}
+                  {detail ? <span className={styles.billingProbeMeta}>{detail}</span> : null}
+                  {attemptTime ? (
+                    <span className={styles.billingProbeMeta}>
+                      {t('providersPage.billingProbe.updatedAt', { time: attemptTime })}
+                    </span>
+                  ) : null}
+                </div>
+                <div className={styles.billingProbeMetric}>
+                  <span className={styles.billingProbeMetricLabel}>
+                    {t('providersPage.billingProbe.metricBalance')}
+                  </span>
+                  <span className={styles.billingProbeStatus}>
+                    {renderStatusIcon(
+                      usage?.status,
+                      Boolean(entry?.probing),
+                      Boolean(usage?.stale),
+                      usage?.is_valid !== false
+                    )}
+                    {usageStatusText}
+                  </span>
+                  {balance ? (
+                    <strong
+                      className={`${styles.billingProbeEffectiveRate} ${
+                        usage?.is_valid === false ? styles.billingProbeInvalidBalance : ''
+                      }`}
+                    >
+                      {balance}
+                    </strong>
+                  ) : null}
+                  {usageDetail ? (
+                    <span className={styles.billingProbeMeta}>{usageDetail}</span>
+                  ) : null}
+                  {usageAttemptTime ? (
+                    <span className={styles.billingProbeMeta}>
+                      {t('providersPage.billingProbe.updatedAt', { time: usageAttemptTime })}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <TooltipIconButton
                 className={styles.billingProbeRefresh}
                 label={t('providersPage.billingProbe.refresh')}
-                disabled={isProbing}
+                disabled={!entry?.eligible || entry.probing}
                 onClick={() => {
-                  void probe(apiKeyIndex, apiKeyEntry.name?.trim());
+                  if (!entry) return;
+                  void onRefresh(entry.target_id).catch(() => undefined);
                 }}
               >
-                {isProbing ? (
+                {entry?.probing ? (
                   <IconLoader2 className={styles.statusIconLoading} size={15} />
                 ) : (
                   <IconRefreshCw size={15} />
