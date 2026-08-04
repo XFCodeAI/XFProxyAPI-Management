@@ -81,6 +81,7 @@ const installMockAPI = async (page: Page) => {
     revision: observationRevision,
     observed_at: '2026-08-03T12:00:00Z',
     admission_scope: 'process-local',
+    availability_scope: 'process-local',
     resources: [
       {
         id: 'supplier-shared',
@@ -93,6 +94,11 @@ const installMockAPI = async (page: Page) => {
         success: 100,
         failed: 20,
         recent_requests: [{ success: 10, failed: 2 }],
+        availability_state: 'usage_wait',
+        availability_model: 'gpt-5.6-sol',
+        availability_deadline: '2026-08-03T12:15:00Z',
+        availability_updated_at: '2026-08-03T12:00:00Z',
+        availability_counts: { ready: 1, usage_wait: 1 },
       },
       {
         id: 'credential-shared',
@@ -108,6 +114,11 @@ const installMockAPI = async (page: Page) => {
         success: 11,
         failed: 3,
         recent_requests: [{ success: 4, failed: 1 }],
+        availability_state: 'usage_wait',
+        availability_model: 'gpt-5.6-sol',
+        availability_deadline: '2026-08-03T12:15:00Z',
+        availability_updated_at: '2026-08-03T12:00:00Z',
+        availability_counts: { usage_wait: 1 },
       },
       {
         id: 'credential-oauth',
@@ -122,6 +133,11 @@ const installMockAPI = async (page: Page) => {
         success: 7,
         failed: 2,
         recent_requests: [{ success: 3, failed: 1 }],
+        availability_state: 'transient_throttled',
+        availability_model: 'gpt-5.6',
+        availability_deadline: '2026-08-03T12:02:00Z',
+        availability_updated_at: '2026-08-03T12:00:00Z',
+        availability_counts: { transient_throttled: 1 },
       },
     ],
     queue: { waiting: supplierQueued, maximum: 128, closed: false },
@@ -237,6 +253,7 @@ const installMockAPI = async (page: Page) => {
 const login = async (page: Page) => {
   await page.goto('/#/login');
   await page.locator('input[name="cpa-management-key"]').fill('e2e-management-key');
+  await page.getByRole('checkbox', { name: /记住密码|Remember password/i }).check();
   await page.locator('form').getByRole('button').last().click();
   await expect(page).not.toHaveURL(/#\/login$/);
 };
@@ -265,6 +282,15 @@ test('live concurrency overlays preserve diagnostics and editor state', async ({
   await expect.poll(runtime.defaultMaxConcurrency).toBe(10);
   await expect(page.getByLabel(/并发占用 3 \/ 8|3 of 8 concurrent requests/i)).toBeVisible();
   await expect(page.getByTitle(/2 个请求排队中|2 requests queued/i)).toBeVisible();
+  const providerAvailability = page.locator('[data-availability-state="usage_wait"]').first();
+  await expect(providerAvailability).toBeVisible();
+  await expect(providerAvailability).toHaveAccessibleName(
+    /额度等待.*模型：gpt-5\.6-sol.*状态计数：可调度 1 · 额度等待 1|Usage wait.*Model: gpt-5\.6-sol.*Availability counts: Ready 1 · Usage wait 1/i
+  );
+  await page.screenshot({
+    path: testInfo.outputPath(`runtime-availability-provider-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
 
   await page
     .getByRole('button', { name: /^(编辑|Edit)$/ })
@@ -303,9 +329,7 @@ test('live concurrency overlays preserve diagnostics and editor state', async ({
     .getByRole('button', { name: /分组 Key #2|Grouped key #2/i })
     .first()
     .click();
-  const claudeLimit = sponsorDialog.locator(
-    'input[id$="-group-1-supplier-concurrency-value"]'
-  );
+  const claudeLimit = sponsorDialog.locator('input[id$="-group-1-supplier-concurrency-value"]');
   await expect(claudeLimit).toHaveValue('7');
   await claudeLimit.fill('8');
   await page.screenshot({
@@ -338,6 +362,11 @@ test('live concurrency overlays preserve diagnostics and editor state', async ({
   });
   await expect(page.getByText('codex-user@example.com.json', { exact: true })).toBeVisible();
   await expect(page.getByText('upstream quota exhausted', { exact: true })).toBeVisible();
+  const credentialAvailability = page.locator('[data-availability-state="transient_throttled"]');
+  await expect(credentialAvailability).toBeVisible();
+  await expect(credentialAvailability).toHaveAccessibleName(
+    /瞬时限流.*模型：gpt-5\.6.*下次尝试|Transient throttling.*Model: gpt-5\.6.*Next attempt/i
+  );
   await expect(page.locator('[data-auth-id="credential-oauth"]')).toHaveAttribute(
     'data-runtime-id',
     'credential-oauth'
@@ -366,6 +395,16 @@ test('live concurrency overlays preserve diagnostics and editor state', async ({
   await expect(page.getByLabel(/并发占用 1 \/ 10|1 of 10 concurrent requests/i)).toBeVisible();
   await expect(page.getByText('upstream quota exhausted', { exact: true })).toBeVisible();
   await expect(page.getByTitle(/请求排队中|requests queued/i)).toHaveCount(0);
+
+  await page.goto('/#/auth-files');
+  await expect(page.getByText('codex-user@example.com.json', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-availability-state="transient_throttled"]')).toBeVisible();
+  await expect(page.locator('.page-transition:not(.page-transition--animating)')).toBeVisible();
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  await page.screenshot({
+    path: testInfo.outputPath(`runtime-availability-dark-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true

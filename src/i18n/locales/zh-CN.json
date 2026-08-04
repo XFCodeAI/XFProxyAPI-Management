@@ -2409,7 +2409,20 @@
     "limit_title": "有效并发上限：{{maximum}}",
     "queued_title": "{{count}} 个请求排队中",
     "unlimited": "不限",
-    "protocol_limits": "协议与密钥并发"
+    "protocol_limits": "协议与密钥并发",
+    "availability": {
+      "ready": "可调度",
+      "transient_throttled": "瞬时限流",
+      "usage_wait": "额度等待",
+      "probing": "额度探测中",
+      "half_open": "半开验证",
+      "auth_invalid": "认证失效",
+      "disabled": "已禁用"
+    },
+    "availability_model": "模型：{{model}}",
+    "availability_deadline": "下次尝试：{{time}}",
+    "availability_updated": "状态更新：{{time}}",
+    "availability_counts": "状态计数：{{counts}}"
   },
   "concurrency": {
     "mode_label": "并发限制模式",

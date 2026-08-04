@@ -21,6 +21,7 @@ import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { TooltipIconButton as ActionTooltipButton } from '@/components/ui/TooltipControls';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import { RuntimeCapacityBadge } from '@/components/runtime/RuntimeCapacityBadge';
+import { RuntimeAvailabilityBadge } from '@/components/runtime/RuntimeAvailabilityBadge';
 import type { ProviderRecentUsageMap } from '@/components/providers/utils';
 import { useAuthInventoryStore, useRuntimeObservationStore } from '@/stores';
 import { statusBarDataFromRecentRequests } from '@/utils/recentRequests';
@@ -126,6 +127,7 @@ export function ProviderResourceTable({
           maxConcurrency={resource.maxConcurrency}
           aggregate={resource.concurrencyMode === null}
         />
+        <RuntimeAvailabilityBadge resource={runtimeResource ?? undefined} />
       </>
     );
   };

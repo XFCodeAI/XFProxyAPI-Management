@@ -2377,7 +2377,20 @@
     "limit_title": "Effective concurrency limit: {{maximum}}",
     "queued_title": "{{count}} requests queued",
     "unlimited": "Unlimited",
-    "protocol_limits": "Protocol and key concurrency"
+    "protocol_limits": "Protocol and key concurrency",
+    "availability": {
+      "ready": "Ready",
+      "transient_throttled": "Rate limited",
+      "usage_wait": "Usage wait",
+      "probing": "Probing",
+      "half_open": "Half-open",
+      "auth_invalid": "Authentication invalid",
+      "disabled": "Disabled"
+    },
+    "availability_model": "Model: {{model}}",
+    "availability_deadline": "Retry at {{time}}",
+    "availability_updated": "Updated {{time}}",
+    "availability_counts": "States: {{counts}}"
   },
   "concurrency": {
     "mode_label": "Concurrency limit mode",

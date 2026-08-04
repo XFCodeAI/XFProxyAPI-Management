@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/icons';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import { RuntimeCapacityBadge } from '@/components/runtime/RuntimeCapacityBadge';
+import { RuntimeAvailabilityBadge } from '@/components/runtime/RuntimeAvailabilityBadge';
 import type { AuthFileItem } from '@/types';
 import type { RuntimeObservationResource } from '@/types/runtimeObservation';
 import { resolveAuthProvider } from '@/utils/quota';
@@ -229,6 +230,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
                   {typeLabel}
                 </span>
                 <span className={`${styles.stateBadge} ${stateBadgeClass}`}>{stateLabel}</span>
+                <RuntimeAvailabilityBadge resource={runtimeResource} />
               </div>
               <span className={styles.fileName} title={file.name}>
                 {file.name}

@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from 'react';
 import type { TFunction } from 'i18next';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import { RuntimeCapacityBadge } from '@/components/runtime/RuntimeCapacityBadge';
+import { RuntimeAvailabilityBadge } from '@/components/runtime/RuntimeAvailabilityBadge';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { TooltipButton } from '@/components/ui/TooltipControls';
@@ -263,6 +264,7 @@ export function QuotaCard<TState extends QuotaStatusState>({
                   {typeLabel}
                 </span>
                 <span className={`${authStyles.stateBadge} ${stateBadgeClass}`}>{stateLabel}</span>
+                <RuntimeAvailabilityBadge resource={runtimeResource} />
                 {item.fallback === true && (
                   <span className={authStyles.fallbackBadge}>{t('auth_files.fallback_badge')}</span>
                 )}

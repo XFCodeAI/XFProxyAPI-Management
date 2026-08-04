@@ -1,6 +1,9 @@
 import type {
   RuntimeObservationEvent,
   RuntimeObservationAdmissionScope,
+  RuntimeObservationAvailabilityScope,
+  RuntimeAvailabilityCounts,
+  RuntimeAvailabilityState,
   RuntimeObservationResource,
   RuntimeObservationScope,
   RuntimeObservationSnapshot,
@@ -37,6 +40,46 @@ const normalizeAdmissionScope = (value: unknown): RuntimeObservationAdmissionSco
   return 'unknown';
 };
 
+const normalizeAvailabilityScope = (value: unknown): RuntimeObservationAvailabilityScope => {
+  if (value === 'process-local' || value === 'home-remote' || value === 'unavailable') {
+    return value;
+  }
+  return 'unknown';
+};
+
+const normalizeAvailabilityState = (value: unknown): RuntimeAvailabilityState => {
+  switch (value) {
+    case 'ready':
+    case 'transient_throttled':
+    case 'usage_wait':
+    case 'probing':
+    case 'half_open':
+    case 'auth_invalid':
+    case 'disabled':
+      return value;
+    default:
+      return 'unknown';
+  }
+};
+
+const normalizeAvailabilityCounts = (value: unknown): RuntimeAvailabilityCounts => {
+  const counts =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return {
+    ready: normalizeNonNegativeInteger(counts.ready),
+    transientThrottled: normalizeNonNegativeInteger(
+      counts.transient_throttled ?? counts.transientThrottled
+    ),
+    usageWait: normalizeNonNegativeInteger(counts.usage_wait ?? counts.usageWait),
+    probing: normalizeNonNegativeInteger(counts.probing),
+    halfOpen: normalizeNonNegativeInteger(counts.half_open ?? counts.halfOpen),
+    authInvalid: normalizeNonNegativeInteger(counts.auth_invalid ?? counts.authInvalid),
+    disabled: normalizeNonNegativeInteger(counts.disabled),
+  };
+};
+
 export const normalizeRuntimeObservationResource = (
   value: unknown
 ): RuntimeObservationResource | null => {
@@ -59,6 +102,19 @@ export const normalizeRuntimeObservationResource = (
     success: normalizeUsageTotal(record.success),
     failed: normalizeUsageTotal(record.failed),
     recentRequests: normalizeRecentRequestBuckets(record.recent_requests ?? record.recentRequests),
+    availabilityState: normalizeAvailabilityState(
+      record.availability_state ?? record.availabilityState
+    ),
+    availabilityModel: String(record.availability_model ?? record.availabilityModel ?? '').trim(),
+    availabilityDeadline: String(
+      record.availability_deadline ?? record.availabilityDeadline ?? ''
+    ).trim(),
+    availabilityUpdatedAt: String(
+      record.availability_updated_at ?? record.availabilityUpdatedAt ?? ''
+    ).trim(),
+    availabilityCounts: normalizeAvailabilityCounts(
+      record.availability_counts ?? record.availabilityCounts
+    ),
   };
 };
 
@@ -81,6 +137,9 @@ export const normalizeRuntimeObservationSnapshot = (value: unknown): RuntimeObse
     revision: normalizeNonNegativeInteger(record.revision),
     observedAt: String(record.observed_at ?? record.observedAt ?? '').trim(),
     admissionScope: normalizeAdmissionScope(record.admission_scope ?? record.admissionScope),
+    availabilityScope: normalizeAvailabilityScope(
+      record.availability_scope ?? record.availabilityScope
+    ),
     resources,
     queue: {
       waiting: normalizeNonNegativeInteger(queue.waiting),

@@ -36,6 +36,7 @@ try {
     revision: '4',
     observed_at: '2026-08-03T00:00:00Z',
     admission_scope: 'process-local',
+    availability_scope: 'process-local',
     resources: [
       {
         id: 'shared-id',
@@ -50,6 +51,14 @@ try {
         success: '9',
         failed: 2,
         recent_requests: [{ success: '3', failed: 1 }],
+        availability_state: 'transient_throttled',
+        availability_model: 'gpt-5.6-sol',
+        availability_deadline: '2026-08-03T00:05:00Z',
+        availability_updated_at: '2026-08-03T00:00:30Z',
+        availability_counts: {
+          transient_throttled: '1',
+          usage_wait: 0,
+        },
       },
       {
         id: 'shared-id',
@@ -60,6 +69,9 @@ try {
         queued: 2,
         success: 99,
         failed: 88,
+        availability_state: 'usage_wait',
+        availability_deadline: '2026-08-03T00:10:00Z',
+        availability_counts: { transient_throttled: 1, usage_wait: 1 },
       },
       { id: 'ignored', scope: 'unknown' },
     ],
@@ -69,8 +81,22 @@ try {
   });
   assert.equal(snapshot.resources.length, 2);
   assert.equal(snapshot.resources[0].authIndex, 'auth-index-one');
+  assert.equal(snapshot.resources[0].availabilityState, 'transient_throttled');
+  assert.equal(snapshot.resources[0].availabilityModel, 'gpt-5.6-sol');
+  assert.equal(snapshot.resources[0].availabilityDeadline, '2026-08-03T00:05:00Z');
+  assert.deepEqual(snapshot.resources[0].availabilityCounts, {
+    ready: 0,
+    transientThrottled: 1,
+    usageWait: 0,
+    probing: 0,
+    halfOpen: 0,
+    authInvalid: 0,
+    disabled: 0,
+  });
+  assert.equal(snapshot.resources[1].availabilityState, 'usage_wait');
   assert.equal(snapshot.revision, 4);
   assert.equal(snapshot.admissionScope, 'process-local');
+  assert.equal(snapshot.availabilityScope, 'process-local');
   assert.deepEqual(snapshot.queue, { waiting: 2, maximum: 64, closed: false });
 
   const indexed = storeModule.indexRuntimeObservationResources(snapshot.resources);
@@ -109,6 +135,9 @@ try {
   assert.equal(providerObservation.queued, 2);
   assert.equal(providerObservation.success, 9);
   assert.equal(providerObservation.failed, 2);
+  assert.equal(providerObservation.availabilityState, 'usage_wait');
+  assert.equal(providerObservation.availabilityCounts.transientThrottled, 1);
+  assert.equal(providerObservation.availabilityCounts.usageWait, 1);
   const fallbackProviderObservation = selectorModule.getProviderRuntimeObservation(
     provider,
     authFiles,

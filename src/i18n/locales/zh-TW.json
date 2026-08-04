@@ -2404,7 +2404,20 @@
     "limit_title": "有效併發上限：{{maximum}}",
     "queued_title": "{{count}} 個請求正在排隊",
     "unlimited": "不限",
-    "protocol_limits": "協定與金鑰併發數"
+    "protocol_limits": "協定與金鑰併發數",
+    "availability": {
+      "ready": "可調度",
+      "transient_throttled": "瞬時限流",
+      "usage_wait": "額度等待",
+      "probing": "額度探測中",
+      "half_open": "半開驗證",
+      "auth_invalid": "認證失效",
+      "disabled": "已停用"
+    },
+    "availability_model": "模型：{{model}}",
+    "availability_deadline": "下次嘗試：{{time}}",
+    "availability_updated": "狀態更新：{{time}}",
+    "availability_counts": "狀態計數：{{counts}}"
   },
   "concurrency": {
     "mode_label": "併發限制模式",

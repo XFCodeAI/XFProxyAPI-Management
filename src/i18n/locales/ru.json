@@ -2367,7 +2367,20 @@
     "limit_title": "Эффективный лимит конкурентности: {{maximum}}",
     "queued_title": "Запросов в очереди: {{count}}",
     "unlimited": "Без ограничений",
-    "protocol_limits": "Конкурентность протоколов и ключей"
+    "protocol_limits": "Конкурентность протоколов и ключей",
+    "availability": {
+      "ready": "Готов",
+      "transient_throttled": "Ограничение частоты",
+      "usage_wait": "Ожидание квоты",
+      "probing": "Проверка",
+      "half_open": "Пробный доступ",
+      "auth_invalid": "Ошибка авторизации",
+      "disabled": "Отключён"
+    },
+    "availability_model": "Модель: {{model}}",
+    "availability_deadline": "Повтор в {{time}}",
+    "availability_updated": "Обновлено {{time}}",
+    "availability_counts": "Состояния: {{counts}}"
   },
   "concurrency": {
     "mode_label": "Режим ограничения конкурентности",
