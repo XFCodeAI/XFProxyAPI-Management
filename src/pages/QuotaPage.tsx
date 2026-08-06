@@ -188,6 +188,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
   const runtimeResources = useRuntimeObservationStore((state) => state.resourcesByKey);
+  const refreshRuntimeObservation = useRuntimeObservationStore((state) => state.refresh);
 
   const {
     files,
@@ -247,6 +248,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const [authSettingsOpen, setAuthSettingsOpen] = useState(false);
   const [legacyRepairOpen, setLegacyRepairOpen] = useState(false);
   const [identityAuditOpen, setIdentityAuditOpen] = useState(false);
+  const [availabilityReprobePending, setAvailabilityReprobePending] = useState(false);
   const [visibleQuotaCredentials, setVisibleQuotaCredentials] = useState<{
     providerId: string;
     files: AuthFileItem[];
@@ -474,6 +476,33 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const handleHeaderRefresh = useCallback(async () => {
     await refreshQuotaPage();
   }, [refreshQuotaPage]);
+
+  const handleAvailabilityReprobe = useCallback(async () => {
+    if (disableControls || availabilityReprobePending) return;
+    setAvailabilityReprobePending(true);
+    try {
+      const result = await authFilesApi.reprobeAvailability();
+      const skipped = Object.values(result.skipped).reduce((total, count) => total + count, 0);
+      if (result.queued === 0 && result.alreadyProbing === 0) {
+        showNotification(t('auth_files.availability_reprobe_empty', { skipped }), 'info');
+      } else {
+        showNotification(
+          t('auth_files.availability_reprobe_queued', {
+            queued: result.queued,
+            already: result.alreadyProbing,
+            skipped,
+          }),
+          skipped > 0 ? 'warning' : 'success'
+        );
+      }
+      await refreshRuntimeObservation().catch(() => undefined);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : t('common.unknown_error');
+      showNotification(t('auth_files.availability_reprobe_failed', { message }), 'error');
+    } finally {
+      setAvailabilityReprobePending(false);
+    }
+  }, [availabilityReprobePending, disableControls, refreshRuntimeObservation, showNotification, t]);
 
   useHeaderRefresh(handleHeaderRefresh);
 
@@ -719,6 +748,20 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
             );
           })}
         </div>
+        <TooltipButton
+          variant="secondary"
+          size="sm"
+          className={styles.availabilityReprobeButton}
+          onClick={() => void handleAvailabilityReprobe()}
+          disabled={disableControls || availabilityReprobePending}
+          loading={availabilityReprobePending}
+          label={t('auth_files.availability_reprobe_button')}
+        >
+          {!availabilityReprobePending && <IconRefreshCw size={16} />}
+          <span className={styles.availabilityReprobeText}>
+            {t('auth_files.availability_reprobe_button')}
+          </span>
+        </TooltipButton>
         <Button
           variant="secondary"
           size="sm"

@@ -138,6 +138,26 @@
   }
 }
 
+.availabilityReprobeButton {
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-md);
+
+  > span:last-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+}
+
+.availabilityReprobeText {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .legacyRepairButton {
   height: 42px;
   flex: 0 0 auto;
@@ -1339,6 +1359,7 @@
   }
 
   .uploadButton,
+  .availabilityReprobeButton,
   .legacyRepairButton,
   .identityAuditButton,
   .authSettingsButton {
@@ -1412,6 +1433,14 @@
   }
 
   .legacyRepairButton {
+    padding-inline: 0;
+
+    > span:last-child {
+      display: none;
+    }
+  }
+
+  .availabilityReprobeButton {
     padding-inline: 0;
 
     > span:last-child {

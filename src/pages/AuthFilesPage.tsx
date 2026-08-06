@@ -23,7 +23,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { IconFilterAll, IconRefreshCw, IconSearch } from '@/components/ui/icons';
+import { IconFilterAll, IconSearch } from '@/components/ui/icons';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { AuthFilesStatusFilterCard } from '@/features/authFiles/components/AuthFilesStatusFilterCard';
@@ -55,7 +55,6 @@ import { useAuthFilesModels } from '@/features/authFiles/hooks/useAuthFilesModel
 import { useAuthFilesOauth } from '@/features/authFiles/hooks/useAuthFilesOauth';
 import { useAuthFilesPrefixProxyEditor } from '@/features/authFiles/hooks/useAuthFilesPrefixProxyEditor';
 import { useAuthFilesStatusBarCache } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
-import { authFilesApi } from '@/services/api';
 import {
   isAuthFilesStatusFilterMode,
   isAuthFilesSortMode,
@@ -114,7 +113,6 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const resolvedTheme: ResolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const runtimeResources = useRuntimeObservationStore((state) => state.resourcesByKey);
-  const refreshRuntimeObservation = useRuntimeObservationStore((state) => state.refresh);
   const pageTransitionLayer = usePageTransitionLayer();
   const isCurrentLayer = pageTransitionLayer ? pageTransitionLayer.status === 'current' : true;
   const navigate = useNavigate();
@@ -131,7 +129,6 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
   const [pageSizeInput, setPageSizeInput] = useState('9');
   const [viewMode, setViewMode] = useState<'diagram' | 'list'>('list');
   const [sortMode, setSortMode] = useState<AuthFilesSortMode>('default');
-  const [availabilityReprobePending, setAvailabilityReprobePending] = useState(false);
   const [batchActionBarVisible, setBatchActionBarVisible] = useState(false);
   const [uiStateHydrated, setUiStateHydrated] = useState(false);
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
@@ -396,39 +393,6 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
   const handleHeaderRefresh = useCallback(async () => {
     await Promise.all([loadFiles(), loadExcluded(), loadModelAlias()]);
   }, [loadFiles, loadExcluded, loadModelAlias]);
-
-  const handleAvailabilityReprobe = useCallback(async () => {
-    if (disableControls || availabilityReprobePending) return;
-    setAvailabilityReprobePending(true);
-    try {
-      const result = await authFilesApi.reprobeAvailability();
-      const skipped = Object.values(result.skipped).reduce((total, count) => total + count, 0);
-      if (result.queued === 0 && result.alreadyProbing === 0) {
-        showNotification(t('auth_files.availability_reprobe_empty', { skipped }), 'info');
-      } else {
-        showNotification(
-          t('auth_files.availability_reprobe_queued', {
-            queued: result.queued,
-            already: result.alreadyProbing,
-            skipped,
-          }),
-          skipped > 0 ? 'warning' : 'success'
-        );
-      }
-      await refreshRuntimeObservation().catch(() => undefined);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : t('common.unknown_error');
-      showNotification(t('auth_files.availability_reprobe_failed', { message }), 'error');
-    } finally {
-      setAvailabilityReprobePending(false);
-    }
-  }, [
-    availabilityReprobePending,
-    disableControls,
-    refreshRuntimeObservation,
-    showNotification,
-    t,
-  ]);
 
   useHeaderRefresh(handleHeaderRefresh);
 
@@ -764,16 +728,6 @@ export function AuthFilesPage({ embedded = false }: AuthFilesPageProps) {
         title={titleNode}
         extra={
           <div className={styles.headerActions}>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void handleAvailabilityReprobe()}
-              disabled={disableControls || availabilityReprobePending}
-              loading={availabilityReprobePending}
-            >
-              {!availabilityReprobePending && <IconRefreshCw size={16} />}
-              {t('auth_files.availability_reprobe_button')}
-            </Button>
             <Button variant="secondary" size="sm" onClick={handleHeaderRefresh} disabled={loading}>
               {t('common.refresh')}
             </Button>
