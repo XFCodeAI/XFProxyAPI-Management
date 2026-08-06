@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import {
   supplierBillingProbeApi,
   type SupplierBillingProbeEntry,
 } from '@/services/api/supplierBillingProbe';
+import { useSupplierBillingProbeStore } from '@/stores/useSupplierBillingProbeStore';
 import type { ProviderResource } from './types';
 
-const SUPPLIER_BILLING_POLL_INTERVAL_MS = 1_000;
-const SUPPLIER_BILLING_DUPLICATE_READ_WINDOW_MS = 250;
-const SUPPLIER_BILLING_MAX_TIMER_MS = 2_147_000_000;
+export { mergeSupplierBillingProbeReadEntries } from '@/stores/useSupplierBillingProbeStore';
 
 export type SupplierBillingProbeEntriesByResource = Readonly<
   Record<string, readonly SupplierBillingProbeEntry[]>
@@ -92,42 +91,6 @@ export function mapSupplierBillingProbeEntriesToResources(
   return mapped;
 }
 
-export const shouldPollSupplierBillingProbes = (
-  entries: readonly SupplierBillingProbeEntry[]
-): boolean =>
-  entries.some(
-    (entry) =>
-      entry.eligible &&
-      (entry.probing || entry.status === 'not_checked' || entry.usage?.status === 'not_checked')
-  );
-
-const parseProbeTime = (value?: string): number | null => {
-  if (!value) return null;
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : null;
-};
-
-export function supplierBillingProbeRefreshDelay(
-  entries: readonly SupplierBillingProbeEntry[],
-  now = Date.now()
-): number | null {
-  if (shouldPollSupplierBillingProbes(entries)) return SUPPLIER_BILLING_POLL_INTERVAL_MS;
-
-  let nearest = Number.POSITIVE_INFINITY;
-  entries.forEach((entry) => {
-    if (!entry.eligible) return;
-    [entry.next_probe_at, entry.usage?.next_probe_at].forEach((value) => {
-      const timestamp = parseProbeTime(value);
-      if (timestamp !== null && timestamp < nearest) nearest = timestamp;
-    });
-  });
-  if (!Number.isFinite(nearest)) return null;
-  return Math.min(
-    SUPPLIER_BILLING_MAX_TIMER_MS,
-    Math.max(SUPPLIER_BILLING_POLL_INTERVAL_MS, nearest - now)
-  );
-}
-
 export async function loadSupplierBillingProbeEntries(
   resourceKeys: ReadonlySet<string>
 ): Promise<SupplierBillingProbeEntry[]> {
@@ -153,132 +116,34 @@ export function useSupplierBillingProbes({
   enabled,
   resources,
 }: UseSupplierBillingProbesOptions): UseSupplierBillingProbesResult {
+  const entries = useSupplierBillingProbeStore((state) => state.entries);
+  const isFetching = useSupplierBillingProbeStore((state) => state.loading);
+  const refetch = useSupplierBillingProbeStore((state) => state.refresh);
+  const refreshTarget = useSupplierBillingProbeStore((state) => state.refreshTarget);
   const resourceKeyList = Array.from(
     new Set(resources.flatMap((resource) => supplierBillingSourceKeys(resource)))
   ).sort();
   const scopeKey = resourceKeyList.join('\u0000');
   const resourceKeys = useMemo(() => new Set(scopeKey ? scopeKey.split('\u0000') : []), [scopeKey]);
-  const [entries, setEntries] = useState<SupplierBillingProbeEntry[]>([]);
-  const [pendingRequests, setPendingRequests] = useState(0);
-  const [pageVisible, setPageVisible] = useState(
-    () => typeof document === 'undefined' || document.visibilityState === 'visible'
-  );
-  const resultGenerationRef = useRef(0);
-  const activeReadRef = useRef<{
-    scopeKey: string;
-    request: Promise<SupplierBillingProbeEntry[]>;
-  } | null>(null);
-  const lastReadRef = useRef<{
-    scopeKey: string;
-    completedAt: number;
-    entries: SupplierBillingProbeEntry[];
-  } | null>(null);
 
-  const refetch = useCallback(async () => {
-    if (!enabled || resourceKeys.size === 0) {
-      setEntries([]);
-      return;
-    }
-    if (!pageVisible) return;
-    const resultGeneration = ++resultGenerationRef.current;
-    setPendingRequests((count) => count + 1);
-    try {
-      const activeRead = activeReadRef.current;
-      let nextEntries: SupplierBillingProbeEntry[];
-      if (activeRead?.scopeKey === scopeKey) {
-        nextEntries = await activeRead.request;
-      } else {
-        const lastRead = lastReadRef.current;
-        if (
-          lastRead?.scopeKey === scopeKey &&
-          Date.now() - lastRead.completedAt < SUPPLIER_BILLING_DUPLICATE_READ_WINDOW_MS
-        ) {
-          nextEntries = lastRead.entries;
-        } else {
-          const request = loadSupplierBillingProbeEntries(resourceKeys);
-          activeReadRef.current = { scopeKey, request };
-          try {
-            nextEntries = await request;
-            lastReadRef.current = {
-              scopeKey,
-              completedAt: Date.now(),
-              entries: nextEntries,
-            };
-          } finally {
-            if (activeReadRef.current?.request === request) {
-              activeReadRef.current = null;
-            }
-          }
-        }
-      }
-      if (resultGeneration === resultGenerationRef.current) {
-        setEntries(nextEntries);
-      }
-    } finally {
-      setPendingRequests((count) => Math.max(0, count - 1));
-    }
-  }, [enabled, pageVisible, resourceKeys, scopeKey]);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return undefined;
-    const handleVisibilityChange = () => {
-      setPageVisible(document.visibilityState === 'visible');
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
-
-  useEffect(() => {
-    resultGenerationRef.current += 1;
-    setEntries([]);
-  }, [enabled, scopeKey]);
-
-  useEffect(() => {
-    if (!enabled || !pageVisible || resourceKeys.size === 0) return;
-    void refetch().catch(() => undefined);
-  }, [enabled, pageVisible, refetch, resourceKeys.size, scopeKey]);
-
-  const refreshDelay = useMemo(() => supplierBillingProbeRefreshDelay(entries), [entries]);
-  useEffect(() => {
-    if (!enabled || !pageVisible || refreshDelay === null) return undefined;
-    const timer = window.setTimeout(() => {
-      void refetch().catch(() => undefined);
-    }, refreshDelay);
-    return () => window.clearTimeout(timer);
-  }, [enabled, pageVisible, refetch, refreshDelay]);
-
-  const refreshTarget = useCallback(async (targetId: string) => {
-    const resultGeneration = ++resultGenerationRef.current;
-    setEntries((current) =>
-      current.map((entry) => (entry.target_id === targetId ? { ...entry, probing: true } : entry))
-    );
-    try {
-      const result = await supplierBillingProbeApi.probe(targetId);
-      if (resultGeneration === resultGenerationRef.current) {
-        setEntries((current) =>
-          current.map((entry) => (entry.target_id === targetId ? result : entry))
-        );
-      }
-    } catch (error) {
-      if (resultGeneration === resultGenerationRef.current) {
-        setEntries((current) =>
-          current.map((entry) =>
-            entry.target_id === targetId ? { ...entry, probing: false } : entry
+  const visibleEntries = useMemo(
+    () =>
+      enabled
+        ? entries.filter((entry) =>
+            resourceKeys.has(supplierBillingResourceKey(entry.provider_brand, entry.provider_index))
           )
-        );
-      }
-      throw error;
-    }
-  }, []);
+        : [],
+    [enabled, entries, resourceKeys]
+  );
 
   const entriesByResource = useMemo(
-    () => mapSupplierBillingProbeEntriesToResources(entries, resources),
-    [entries, resources]
+    () => mapSupplierBillingProbeEntriesToResources(visibleEntries, resources),
+    [resources, visibleEntries]
   );
 
   return {
     entriesByResource,
-    isFetching: pendingRequests > 0,
+    isFetching,
     refetch,
     refreshTarget,
   };

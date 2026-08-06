@@ -11,6 +11,7 @@ import {
   useCredentialConcurrencyStore,
   useLanguageStore,
   useRuntimeObservationStore,
+  useSupplierBillingProbeStore,
   useThemeStore,
 } from '@/stores';
 
@@ -37,6 +38,8 @@ function RootShell() {
   const refreshInventory = useAuthInventoryStore((state) => state.refresh);
   const startRuntimeObservation = useRuntimeObservationStore((state) => state.start);
   const stopRuntimeObservation = useRuntimeObservationStore((state) => state.stop);
+  const startSupplierBillingProbes = useSupplierBillingProbeStore((state) => state.start);
+  const stopSupplierBillingProbes = useSupplierBillingProbeStore((state) => state.stop);
   const loadCredentialConcurrency = useCredentialConcurrencyStore((state) => state.load);
   const resetCredentialConcurrency = useCredentialConcurrencyStore((state) => state.reset);
 
@@ -44,15 +47,18 @@ function RootShell() {
     if (!isAuthenticated || connectionStatus !== 'connected') {
       stopInventory(true);
       stopRuntimeObservation(true);
+      stopSupplierBillingProbes(true);
       resetCredentialConcurrency();
       return;
     }
     startInventory();
     startRuntimeObservation();
+    startSupplierBillingProbes();
     void loadCredentialConcurrency(true).catch(() => undefined);
     return () => {
       stopInventory(false);
       stopRuntimeObservation(false);
+      stopSupplierBillingProbes(false);
     };
   }, [
     connectionStatus,
@@ -61,6 +67,8 @@ function RootShell() {
     resetCredentialConcurrency,
     startInventory,
     startRuntimeObservation,
+    startSupplierBillingProbes,
+    stopSupplierBillingProbes,
     stopInventory,
     stopRuntimeObservation,
   ]);

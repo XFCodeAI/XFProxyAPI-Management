@@ -24,3 +24,12 @@ export {
   runtimeObservationShouldBeActive,
   useRuntimeObservationStore,
 } from './useRuntimeObservationStore';
+export {
+  applySupplierBillingProbeSnapshot,
+  indexSupplierBillingProbeEntries,
+  mergeSupplierBillingProbeReadEntries,
+  nextSupplierBillingProbeRetryDelay,
+  supplierBillingProbeReadHasConflict,
+  supplierBillingProbeShouldBeActive,
+  useSupplierBillingProbeStore,
+} from './useSupplierBillingProbeStore';

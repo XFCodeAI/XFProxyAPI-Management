@@ -10,8 +10,9 @@ const server = await createServer({
 });
 
 try {
-  const { initializeI18n } = await server.ssrLoadModule('/src/i18n/index.ts');
+  const { changeI18nLanguage, initializeI18n } = await server.ssrLoadModule('/src/i18n/index.ts');
   await initializeI18n();
+  await changeI18nLanguage('en');
   const { TooltipProvider } = await server.ssrLoadModule('/src/components/ui/Tooltip.tsx');
   const { supplierBillingProbeApi } = await server.ssrLoadModule(
     '/src/services/api/supplierBillingProbe.ts'
@@ -172,38 +173,54 @@ try {
     grouped['openaiCompatibility:2'].map((entry) => entry.alias),
     ['primary', 'backup']
   );
-  assert.equal(
-    billing.shouldPollSupplierBillingProbes([
-      probeEntry({ status: 'not_checked', probing: false }),
+  const protectedCurrent = [
+    probeEntry({
+      target_id: 'supplier:manual',
+      probing: true,
+      multiplier: multiplier('0.8'),
+      usage: usage(25),
+    }),
+    probeEntry({
+      target_id: 'supplier:other',
+      multiplier: multiplier('0.9'),
+      usage: usage(40),
+    }),
+  ];
+  const protectedRead = billing.mergeSupplierBillingProbeReadEntries(
+    protectedCurrent,
+    [
+      probeEntry({
+        target_id: 'supplier:manual',
+        probing: true,
+        multiplier: multiplier('0.1'),
+        usage: usage(1),
+      }),
+      probeEntry({
+        target_id: 'supplier:other',
+        multiplier: multiplier('1.1'),
+        usage: usage(41),
+      }),
+    ],
+    new Map([
+      ['supplier:manual', 0],
+      ['supplier:other', 0],
     ]),
-    true
+    new Map([
+      ['supplier:manual', 1],
+      ['supplier:other', 0],
+    ])
   );
   assert.equal(
-    billing.shouldPollSupplierBillingProbes([
-      probeEntry({ status: 'unsupported', probing: false }),
-    ]),
-    false
+    protectedRead.find((entry) => entry.target_id === 'supplier:manual').multiplier
+      .effective_rate_multiplier_text,
+    '0.8',
+    'a list response started before a manual refresh must not overwrite that target'
   );
   assert.equal(
-    billing.shouldPollSupplierBillingProbes([
-      probeEntry({ usage: usage(undefined, { status: 'not_checked' }) }),
-    ]),
-    true,
-    'initial usage state must use one-second completion polling'
-  );
-  const scheduleNow = Date.parse('2026-08-02T10:00:00Z');
-  assert.equal(
-    billing.supplierBillingProbeRefreshDelay(
-      [
-        probeEntry({
-          next_probe_at: '2026-08-02T10:30:00Z',
-          usage: usage(25, { next_probe_at: '2026-08-02T10:01:00Z' }),
-        }),
-      ],
-      scheduleNow
-    ),
-    60_000,
-    'nearest independent usage due time must drive the next batch read'
+    protectedRead.find((entry) => entry.target_id === 'supplier:other').multiplier
+      .effective_rate_multiplier_text,
+    '1.1',
+    'unrelated targets must still accept the list response'
   );
 
   const codexRaw = {

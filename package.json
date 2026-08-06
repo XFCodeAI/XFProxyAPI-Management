@@ -1,7 +1,7 @@
 {
   "name": "xfproxyapi-management",
   "private": true,
-  "version": "0.1.41",
+  "version": "0.1.42",
   "type": "module",
   "packageManager": "pnpm@10.17.1",
   "scripts": {
@@ -37,6 +37,7 @@
     "test:provider-recent-requests": "node tests/providerRecentRequestsIsolation.test.mjs",
     "test:provider-failures": "node tests/providerFailureDiagnostics.test.mjs",
     "test:provider-billing": "node --experimental-strip-types tests/providerBillingProbe.test.mjs",
+    "test:supplier-billing-live": "node tests/supplierBillingLiveStore.test.mjs",
     "test:credential-cooling": "node --experimental-strip-types tests/credentialCoolingControl.test.mjs",
     "test:visual-config-correctness": "node tests/visualConfigCorrectness.test.mjs",
     "build": "tsc --noEmit && vite build",

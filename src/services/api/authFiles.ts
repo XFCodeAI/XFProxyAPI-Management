@@ -44,6 +44,15 @@ export type AuthFileFieldsPatch = {
 };
 type AuthFileBatchFailure = { name: string; error: string };
 export type AuthFileDeleteItem = { name: string; status: string; error?: string };
+export type AuthFileAvailabilityReprobeResult = {
+  status: string;
+  requested: number;
+  eligible: number;
+  queued: number;
+  alreadyProbing: number;
+  skipped: Record<string, number>;
+  maximumParallel: number;
+};
 type AuthFileBatchUploadResponse = {
   status?: string;
   uploaded?: number;
@@ -315,6 +324,31 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const normalizeCount = (value: unknown): number => {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+};
+
+export const normalizeAuthFileAvailabilityReprobeResult = (
+  payload: unknown
+): AuthFileAvailabilityReprobeResult => {
+  const record = asRecord(payload);
+  const rawSkipped = asRecord(record.skipped);
+  const skipped = Object.entries(rawSkipped).reduce<Record<string, number>>(
+    (result, [reason, value]) => {
+      const normalizedReason = reason.trim();
+      const count = normalizeCount(value);
+      if (normalizedReason && count > 0) result[normalizedReason] = count;
+      return result;
+    },
+    {}
+  );
+  return {
+    status: String(record.status ?? '').trim(),
+    requested: normalizeCount(record.requested),
+    eligible: normalizeCount(record.eligible),
+    queued: normalizeCount(record.queued),
+    alreadyProbing: normalizeCount(record.already_probing ?? record.alreadyProbing),
+    skipped,
+    maximumParallel: normalizeCount(record.maximum_parallel ?? record.maximumParallel),
+  };
 };
 
 const normalizeReconciliationCounts = (value: unknown): AuthFileReconciliationCounts => {
@@ -668,6 +702,11 @@ export const authFilesApi = {
       name,
       expired: buildManualRefreshExpiredAt(),
     }),
+
+  reprobeAvailability: async (): Promise<AuthFileAvailabilityReprobeResult> =>
+    normalizeAuthFileAvailabilityReprobeResult(
+      await apiClient.post('/auth-files/availability/reprobe')
+    ),
 
   uploadFiles: async (
     files: File[],

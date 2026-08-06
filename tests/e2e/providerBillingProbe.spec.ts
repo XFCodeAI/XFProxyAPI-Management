@@ -1,7 +1,17 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
-const routeJSON = (route: Route, body: unknown, status = 200) =>
-  route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+const routeJSON = (
+  route: Route,
+  body: unknown,
+  status = 200,
+  headers: Record<string, string> = {}
+) =>
+  route.fulfill({
+    status,
+    contentType: 'application/json',
+    headers,
+    body: JSON.stringify(body),
+  });
 
 const config = {
   'gemini-api-key': [],
@@ -198,26 +208,134 @@ const installMockAPI = async (page: Page) => {
     listResourceScopes: [] as string[],
     probe: 0,
     probeTargets: [] as string[],
+    eventNetwork: 0,
   };
+  const snapshotId = 'supplier-snapshot-e2e';
+  let snapshotRevision = 1;
+  let snapshotEntries = entries.map((entry) => ({ ...entry }));
+  const snapshotHeaders = () => ({
+    ETag: `W/"supplier-billing-${snapshotId}-${snapshotRevision}"`,
+    'X-Supplier-Billing-Snapshot-ID': snapshotId,
+    'X-Supplier-Billing-Revision': String(snapshotRevision),
+  });
+  await page.addInitScript(() => {
+    const eventState = {
+      connections: 0,
+      requests: [] as Array<{ since: string; lastEventId: string }>,
+      controller: null as ReadableStreamDefaultController<Uint8Array> | null,
+      emit: (events: Array<{ revision: number; target_ids?: string[] }>) => {
+        const controller = eventState.controller;
+        if (!controller) return;
+        const body = events
+          .map(
+            (event) =>
+              `id: ${event.revision}\nevent: supplier-billing-probe\ndata: ${JSON.stringify({
+                snapshot_id: 'supplier-snapshot-e2e',
+                revision: event.revision,
+                server_time: '2026-08-06T00:00:00Z',
+                target_ids: event.target_ids ?? [],
+              })}\n\n`
+          )
+          .join('');
+        try {
+          controller.enqueue(new TextEncoder().encode(body));
+        } catch {
+          eventState.controller = null;
+        }
+      },
+      disconnect: () => {
+        const controller = eventState.controller;
+        eventState.controller = null;
+        try {
+          controller?.error(new Error('supplier billing stream disconnected'));
+        } catch {
+          // The stream may already be closed by an abort.
+        }
+      },
+    };
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const request = input instanceof Request ? input : null;
+      const requestURL = new URL(request?.url ?? String(input), window.location.href);
+      if (!requestURL.pathname.endsWith('/v0/management/supplier-billing-probes/events')) {
+        return originalFetch(input, init);
+      }
+      const headers = new Headers(init?.headers ?? request?.headers);
+      eventState.connections += 1;
+      eventState.requests.push({
+        since: requestURL.searchParams.get('since') ?? '',
+        lastEventId: headers.get('Last-Event-ID') ?? '',
+      });
+      const signal = init?.signal ?? request?.signal;
+      const response = new Response(
+        new ReadableStream({
+          start(controller) {
+            eventState.controller = controller;
+            const close = () => {
+              if (eventState.controller !== controller) return;
+              eventState.controller = null;
+              try {
+                controller.close();
+              } catch {
+                // The stream may already be closed.
+              }
+            };
+            if (signal?.aborted) {
+              close();
+            } else {
+              signal?.addEventListener('abort', close, { once: true });
+            }
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } }
+      );
+      return response;
+    };
+    (
+      window as Window & { __supplierBillingEventState?: typeof eventState }
+    ).__supplierBillingEventState = eventState;
+  });
   await page.route('**/v0/management/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname.replace(/^\/v0\/management/, '');
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204 });
     if (path === '/config') return routeJSON(route, config);
+    if (path === '/supplier-billing-probes/events') {
+      calls.eventNetwork += 1;
+      return routeJSON(
+        route,
+        { error: 'event stream should be handled by the browser harness' },
+        500
+      );
+    }
     if (path === '/supplier-billing-probes') {
       if (request.method() === 'POST') {
         calls.probe += 1;
         const targetId = (request.postDataJSON() as { target_id: string }).target_id;
         calls.probeTargets.push(targetId);
-        return routeJSON(
-          route,
-          entries.find((entry) => entry.target_id === targetId)
-        );
+        const entry = snapshotEntries.find((candidate) => candidate.target_id === targetId);
+        if (!entry) return routeJSON(route, { error: 'target not found' }, 404);
+        return routeJSON(route, { ...entry, queued: true }, 202, snapshotHeaders());
       }
       calls.list += 1;
       calls.listResourceScopes.push(url.searchParams.get('resource_keys') ?? '');
-      return routeJSON(route, { provider_name: '', entries });
+      const headers = snapshotHeaders();
+      if (request.headers()['if-none-match'] === headers.ETag) {
+        return route.fulfill({ status: 304, headers });
+      }
+      return routeJSON(
+        route,
+        {
+          provider_name: '',
+          snapshot_id: snapshotId,
+          revision: snapshotRevision,
+          server_time: '2026-08-06T00:00:00Z',
+          entries: snapshotEntries,
+        },
+        200,
+        headers
+      );
     }
     if (path === '/api-key-usage') {
       return routeJSON(route, {
@@ -259,7 +377,47 @@ const installMockAPI = async (page: Page) => {
     }
     return routeJSON(route, {});
   });
-  return calls;
+  return {
+    calls,
+    setSnapshot: (nextEntries: typeof entries, revision = snapshotRevision + 1) => {
+      snapshotEntries = nextEntries.map((entry) => ({ ...entry }));
+      snapshotRevision = revision;
+    },
+    emitEvents: async (events: Array<{ revision: number; target_ids?: string[] }>) => {
+      await page.evaluate((nextEvents) => {
+        const state = (
+          window as Window & {
+            __supplierBillingEventState?: {
+              emit: (events: Array<{ revision: number; target_ids?: string[] }>) => void;
+            };
+          }
+        ).__supplierBillingEventState;
+        state?.emit(nextEvents);
+      }, events);
+    },
+    disconnectStream: async () => {
+      await page.evaluate(() => {
+        const state = (
+          window as Window & {
+            __supplierBillingEventState?: { disconnect: () => void };
+          }
+        ).__supplierBillingEventState;
+        state?.disconnect();
+      });
+    },
+    streamState: async () =>
+      page.evaluate(() => {
+        const state = (
+          window as Window & {
+            __supplierBillingEventState?: {
+              connections: number;
+              requests: Array<{ since: string; lastEventId: string }>;
+            };
+          }
+        ).__supplierBillingEventState;
+        return { connections: state?.connections ?? 0, requests: state?.requests ?? [] };
+      }),
+  };
 };
 
 const login = async (page: Page) => {
@@ -272,7 +430,8 @@ const login = async (page: Page) => {
 test('provider list shows independent shared billing rates without automatic POST fan-out', async ({
   page,
 }, testInfo) => {
-  const calls = await installMockAPI(page);
+  const mock = await installMockAPI(page);
+  const { calls } = mock;
   await login(page);
   await page.evaluate(() => {
     window.localStorage.setItem(
@@ -308,8 +467,10 @@ test('provider list shows independent shared billing rates without automatic POS
     expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   }
   expect(calls.list).toBe(1);
-  expect(calls.listResourceScopes[0]).toBe('openaiCompatibility:0');
+  expect(calls.listResourceScopes[0]).toBe('');
   expect(calls.probe).toBe(0);
+  expect(calls.eventNetwork).toBe(0);
+  expect((await mock.streamState()).connections).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   );
@@ -326,19 +487,102 @@ test('provider list shows independent shared billing rates without automatic POS
   await expect(page.getByText('intruder', { exact: true })).toHaveCount(0);
   await expect(page.getByText('9x', { exact: true })).toHaveCount(0);
   expect(calls.probe).toBe(0);
-  expect(calls.list).toBeGreaterThanOrEqual(4);
+  expect(calls.list).toBe(1);
+  expect((await mock.streamState()).connections).toBe(1);
 
   const refreshButtons = page.getByRole('button', {
     name: /刷新倍率与额度|Refresh multiplier and balance/,
   });
   await refreshButtons.nth(0).click();
   await expect.poll(() => calls.probe).toBe(1);
+  await expect(refreshButtons.nth(0)).toBeDisabled();
   await refreshButtons.nth(1).click();
   await expect.poll(() => calls.probe).toBe(2);
   expect(calls.probeTargets).toEqual(['supplier:kimi-openai', 'supplier:kimi-claude']);
+  mock.setSnapshot(entries, 2);
+  await mock.emitEvents([
+    { revision: 2, target_ids: ['supplier:kimi-openai', 'supplier:kimi-claude'] },
+  ]);
+  await expect.poll(() => calls.list).toBe(2);
+  await expect(refreshButtons.nth(0)).toBeEnabled();
+  await expect(refreshButtons.nth(1)).toBeEnabled();
+  expect((await mock.streamState()).connections).toBe(1);
 
   await page.screenshot({
     path: testInfo.outputPath('provider-billing-list.png'),
     fullPage: true,
   });
+});
+
+test('slow manual billing refresh keeps its terminal result after an intermediate probing read', async ({
+  page,
+}) => {
+  const refreshedEntry = {
+    ...entries[1],
+    multiplier: multiplier('1.5'),
+    usage: usage(99),
+  };
+  const mock = await installMockAPI(page);
+  const { calls } = mock;
+  await login(page);
+  await page.evaluate(() => {
+    window.localStorage.setItem(
+      'providersPage.uiState',
+      JSON.stringify({ activeBrand: 'openaiCompatibility', filtersByBrand: {} })
+    );
+    window.location.hash = '/ai-providers';
+  });
+
+  await expect(page.getByText('1.25x', { exact: true })).toBeVisible();
+  const refreshButtons = page.getByRole('button', {
+    name: /刷新倍率与额度|Refresh multiplier and balance/,
+  });
+  await refreshButtons.nth(0).click();
+  await expect.poll(() => calls.probe).toBe(1);
+  await expect(page.getByText('1.25x', { exact: true })).toBeVisible();
+  expect(calls.list).toBe(1);
+  mock.setSnapshot([refreshedEntry, ...entries.slice(2)], 2);
+  await mock.emitEvents([{ revision: 2, target_ids: [refreshedEntry.target_id] }]);
+  await expect(page.getByText('1.5x', { exact: true })).toBeVisible({ timeout: 7_000 });
+  await expect(page.getByText('99 USD', { exact: true })).toBeVisible();
+  await expect(page.getByText(/正在探测|Probing/)).toHaveCount(0);
+  expect(calls.list).toBe(2);
+  expect((await mock.streamState()).connections).toBe(1);
+});
+
+test('billing burst events coalesce and stream disconnect falls back before reconnecting', async ({
+  page,
+}) => {
+  const terminalEntries = entries.map((entry) =>
+    entry === entries[1] ? { ...entry, multiplier: multiplier('1.6'), usage: usage(88) } : entry
+  );
+  const mock = await installMockAPI(page);
+  const { calls } = mock;
+  await login(page);
+  await page.evaluate(() => {
+    window.localStorage.setItem(
+      'providersPage.uiState',
+      JSON.stringify({ activeBrand: 'openaiCompatibility', filtersByBrand: {} })
+    );
+    window.location.hash = '/ai-providers';
+  });
+
+  mock.setSnapshot(terminalEntries, 3);
+  await mock.emitEvents([
+    { revision: 2, target_ids: [entries[1].target_id] },
+    { revision: 3, target_ids: [entries[1].target_id] },
+  ]);
+  await expect(page.getByText('1.6x', { exact: true })).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByText('88 USD', { exact: true })).toBeVisible();
+  expect(calls.list).toBe(2);
+  await mock.disconnectStream();
+  await expect.poll(() => calls.list).toBe(3);
+  await expect
+    .poll(async () => (await mock.streamState()).connections)
+    .toBe(2, {
+      timeout: 7_000,
+    });
+  const streamState = await mock.streamState();
+  expect(streamState.requests.at(-1)).toEqual({ since: '3', lastEventId: '3' });
+  expect(calls.eventNetwork).toBe(0);
 });

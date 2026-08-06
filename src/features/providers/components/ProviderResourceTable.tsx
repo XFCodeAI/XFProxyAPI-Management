@@ -249,6 +249,7 @@ export function ProviderResourceTable({
 
   const billingStatusText = (entry: SupplierBillingProbeEntry): string => {
     if (entry.probing) return t('providersPage.billingProbe.probing');
+    if (entry.queued) return t('providersPage.billingProbe.queued');
     if (entry.stale && entry.status === 'ok') return t('providersPage.billingProbe.stale');
     return t(`providersPage.billingProbe.status.${entry.status}`);
   };
@@ -256,6 +257,7 @@ export function ProviderResourceTable({
   const usageStatusText = (entry: SupplierBillingProbeEntry): string => {
     const usage = entry.usage;
     if (entry.probing) return t('providersPage.billingProbe.probing');
+    if (entry.queued) return t('providersPage.billingProbe.queued');
     if (!usage) return t('providersPage.billingProbe.status.not_checked');
     if (usage.stale && usage.status === 'ok') return t('providersPage.billingProbe.stale');
     if (usage.status === 'ok' && usage.is_valid === false) {
@@ -268,7 +270,7 @@ export function ProviderResourceTable({
   };
 
   const renderBillingStatusIcon = (entry: SupplierBillingProbeEntry) => {
-    if (entry.probing) {
+    if (entry.probing || entry.queued) {
       return <IconLoader2 className={styles.rateLoading} size={13} />;
     }
     if (entry.status === 'ok' && !entry.stale) {
@@ -296,6 +298,7 @@ export function ProviderResourceTable({
     return (
       <div className={styles.rateList}>
         {entries.map((entry) => {
+          const busy = entry.probing || entry.queued;
           const statusText = billingStatusText(entry);
           const rate = entry.multiplier?.effective_rate_multiplier_text;
           const usage = entry.usage;
@@ -342,7 +345,7 @@ export function ProviderResourceTable({
                   <ActionTooltipButton
                     className={styles.rateRefresh}
                     label={t('providersPage.billingProbe.refresh')}
-                    disabled={entry.probing}
+                    disabled={busy}
                     onClick={(event) => {
                       event.stopPropagation();
                       void onRefreshBillingProbe(entry.target_id).catch(() => undefined);

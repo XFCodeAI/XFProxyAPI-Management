@@ -21,6 +21,61 @@ try {
     assert.equal(authFiles.buildManualRefreshExpiredAt(nowMs), '2026-07-26T12:33:56.789Z');
   });
 
+  await test('normalizes bounded credential availability reprobe results', () => {
+    assert.deepEqual(
+      authFiles.normalizeAuthFileAvailabilityReprobeResult({
+        status: 'accepted',
+        requested: '9',
+        eligible: 4,
+        queued: '3',
+        already_probing: 1,
+        maximum_parallel: '4',
+        skipped: {
+          auth_invalid: 2,
+          excluded: '1',
+          empty: 0,
+          malformed: 'not-a-number',
+        },
+      }),
+      {
+        status: 'accepted',
+        requested: 9,
+        eligible: 4,
+        queued: 3,
+        alreadyProbing: 1,
+        maximumParallel: 4,
+        skipped: { auth_invalid: 2, excluded: 1 },
+      }
+    );
+  });
+
+  await test('queues credential availability reprobes through the dedicated endpoint', async () => {
+    const originalPost = apiClientModule.apiClient.post;
+    const calls = [];
+    apiClientModule.apiClient.post = async (url, data) => {
+      calls.push({ url, data });
+      return {
+        status: 'accepted',
+        requested: 2,
+        eligible: 1,
+        queued: 1,
+        already_probing: 0,
+        maximum_parallel: 4,
+        skipped: { auth_invalid: 1 },
+      };
+    };
+    try {
+      const result = await authFiles.authFilesApi.reprobeAvailability();
+      assert.equal(result.queued, 1);
+      assert.deepEqual(result.skipped, { auth_invalid: 1 });
+    } finally {
+      apiClientModule.apiClient.post = originalPost;
+    }
+    assert.deepEqual(calls, [
+      { url: '/auth-files/availability/reprobe', data: undefined },
+    ]);
+  });
+
   await test('patches expired for only the requested credential name', async () => {
     const originalPatch = apiClientModule.apiClient.patch;
     const originalDateNow = Date.now;

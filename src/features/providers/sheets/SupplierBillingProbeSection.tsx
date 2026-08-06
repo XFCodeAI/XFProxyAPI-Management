@@ -44,11 +44,11 @@ export function SupplierBillingProbeSection({
 
   const renderStatusIcon = (
     status: SupplierBillingProbeEntry['status'] | undefined,
-    probing: boolean,
+    busy: boolean,
     stale: boolean,
     valid = true
   ) => {
-    if (probing) {
+    if (busy) {
       return (
         <IconLoader2
           className={`${styles.billingProbeIcon} ${styles.statusIconLoading}`}
@@ -93,13 +93,16 @@ export function SupplierBillingProbeSection({
             : entriesByIndex.get(apiKeyIndex);
           const displayAlias = apiKeyEntry.name?.trim() || entry?.alias?.trim();
           const multiplier = entry?.multiplier;
+          const busy = Boolean(entry?.probing || entry?.queued);
           const attemptTime = formatAttemptTime(entry?.received_at ?? entry?.last_attempt_at);
           const status = entry?.status ?? 'not_checked';
           const statusText = entry?.probing
             ? t('providersPage.billingProbe.probing')
-            : entry?.stale && status === 'ok'
-              ? t('providersPage.billingProbe.stale')
-              : t(`providersPage.billingProbe.status.${status}`);
+            : entry?.queued
+              ? t('providersPage.billingProbe.queued')
+              : entry?.stale && status === 'ok'
+                ? t('providersPage.billingProbe.stale')
+                : t(`providersPage.billingProbe.status.${status}`);
           const detail = multiplier
             ? [
                 t('providersPage.billingProbe.groupRate', {
@@ -132,13 +135,15 @@ export function SupplierBillingProbeSection({
           const usageAttemptTime = formatAttemptTime(usage?.received_at ?? usage?.last_attempt_at);
           const usageStatusText = entry?.probing
             ? t('providersPage.billingProbe.probing')
-            : usage?.stale && usageStatus === 'ok'
-              ? t('providersPage.billingProbe.stale')
-              : usageStatus === 'ok' && usage?.is_valid === false
-                ? t('providersPage.billingProbe.usageInvalid')
-                : usageStatus === 'ok'
-                  ? t('providersPage.billingProbe.usageValid')
-                  : t(`providersPage.billingProbe.status.${usageStatus}`);
+            : entry?.queued
+              ? t('providersPage.billingProbe.queued')
+              : usage?.stale && usageStatus === 'ok'
+                ? t('providersPage.billingProbe.stale')
+                : usageStatus === 'ok' && usage?.is_valid === false
+                  ? t('providersPage.billingProbe.usageInvalid')
+                  : usageStatus === 'ok'
+                    ? t('providersPage.billingProbe.usageValid')
+                    : t(`providersPage.billingProbe.status.${usageStatus}`);
           const balance = formatBalance(usage?.remaining, usage?.unit);
           const usageDetail = balance
             ? null
@@ -171,11 +176,7 @@ export function SupplierBillingProbeSection({
                     {t('providersPage.billingProbe.metricMultiplier')}
                   </span>
                   <span className={styles.billingProbeStatus}>
-                    {renderStatusIcon(
-                      entry?.status,
-                      Boolean(entry?.probing),
-                      Boolean(entry?.stale)
-                    )}
+                    {renderStatusIcon(entry?.status, busy, Boolean(entry?.stale))}
                     {statusText}
                   </span>
                   {multiplier ? (
@@ -197,7 +198,7 @@ export function SupplierBillingProbeSection({
                   <span className={styles.billingProbeStatus}>
                     {renderStatusIcon(
                       usage?.status,
-                      Boolean(entry?.probing),
+                      busy,
                       Boolean(usage?.stale),
                       usage?.is_valid !== false
                     )}
@@ -225,13 +226,13 @@ export function SupplierBillingProbeSection({
               <TooltipIconButton
                 className={styles.billingProbeRefresh}
                 label={t('providersPage.billingProbe.refresh')}
-                disabled={!entry?.eligible || entry.probing}
+                disabled={!entry?.eligible || busy}
                 onClick={() => {
                   if (!entry) return;
                   void onRefresh(entry.target_id).catch(() => undefined);
                 }}
               >
-                {entry?.probing ? (
+                {busy ? (
                   <IconLoader2 className={styles.statusIconLoading} size={15} />
                 ) : (
                   <IconRefreshCw size={15} />
