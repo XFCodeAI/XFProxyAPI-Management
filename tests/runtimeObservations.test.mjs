@@ -91,6 +91,7 @@ try {
     probing: 0,
     halfOpen: 0,
     authInvalid: 0,
+    excluded: 0,
     disabled: 0,
   });
   assert.equal(snapshot.resources[1].availabilityState, 'usage_wait');
@@ -98,6 +99,22 @@ try {
   assert.equal(snapshot.admissionScope, 'process-local');
   assert.equal(snapshot.availabilityScope, 'process-local');
   assert.deepEqual(snapshot.queue, { waiting: 2, maximum: 64, closed: false });
+
+  const excludedResource = apiModule.normalizeRuntimeObservationResource({
+    id: 'excluded-supplier',
+    scope: 'supplier',
+    availability_state: 'excluded',
+    availability_counts: { excluded: 1 },
+    health_failure_streak: 11,
+    health_excluded: true,
+    health_exclusion_code: 'deactivated_workspace',
+    health_excluded_at: '2026-08-03T00:02:00Z',
+  });
+  assert.equal(excludedResource.availabilityState, 'excluded');
+  assert.equal(excludedResource.availabilityCounts.excluded, 1);
+  assert.equal(excludedResource.healthFailureStreak, 11);
+  assert.equal(excludedResource.healthExcluded, true);
+  assert.equal(excludedResource.healthExclusionCode, 'deactivated_workspace');
 
   const indexed = storeModule.indexRuntimeObservationResources(snapshot.resources);
   const credentialsByAuthIndex = storeModule.indexRuntimeObservationCredentialsByAuthIndex(

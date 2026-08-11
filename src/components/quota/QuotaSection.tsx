@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -11,6 +12,7 @@ import {
   commitIfQuotaCacheCurrent,
   getQuotaCredentialCacheKey,
   runtimeObservationResourceKey,
+  useAuthInventoryStore,
   useNotificationStore,
   useQuotaStore,
   useRuntimeObservationStore,
@@ -22,8 +24,13 @@ import { resolveCodexPlanType } from '@/utils/quota/resolvers';
 import { hasAuthFileStatusMessage } from '@/features/authFiles/constants';
 import { QuotaCard } from './QuotaCard';
 import type { QuotaStatusState } from './QuotaCard';
-import { useQuotaLoader } from './useQuotaLoader';
+import {
+  fetchQuotaWithIdentityRecovery,
+  isQuotaCredentialCurrent,
+  useQuotaLoader,
+} from './useQuotaLoader';
 import type { QuotaConfig } from './quotaConfigs';
+import { isCodexQuotaContextChangedError } from '@/services/api/codexQuota';
 import { useGridColumns } from './useGridColumns';
 import { IconRefreshCw } from '@/components/ui/icons';
 import styles from '@/pages/QuotaPage.module.scss';
@@ -32,20 +39,23 @@ type QuotaUpdater<T> = T | ((prev: T) => T);
 
 type QuotaSetter<T> = (updater: QuotaUpdater<T>) => void;
 
-type ViewMode = 'paged' | 'all';
-type StatusFilterMode = 'all' | 'enabled' | 'disabled' | 'problem';
-type PlanAwareQuotaState = QuotaStatusState & { planType?: string | null };
+export type QuotaStatusFilterMode = 'all' | 'enabled' | 'disabled' | 'problem';
+type PlanAwareQuotaState = QuotaStatusState & {
+  planType?: string | null;
+  account?: {
+    upstreamPlanType?: string | null;
+    credentialPlanType?: string | null;
+  } | null;
+};
 
 const MAX_ITEMS_PER_PAGE = 25;
-const ALL_VIEW_MIN_CHUNK_SIZE = 12;
-const QUOTA_REFRESH_BATCH_SIZE = 6;
 const PLAN_FILTER_ALL = 'all';
 const PLAN_FILTER_UNVERIFIED = '__unverified__';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const matchesQuotaCredentialStatus = (
   file: Pick<AuthFileItem, 'disabled'>,
-  mode: StatusFilterMode,
+  mode: QuotaStatusFilterMode,
   hasProblem: boolean
 ): boolean => {
   if (mode === 'enabled') return file.disabled !== true;
@@ -56,14 +66,25 @@ export const matchesQuotaCredentialStatus = (
 
 const resolveQuotaPlanType = (state: QuotaStatusState | undefined): string | null => {
   if (!state) return null;
-  return normalizePlanType((state as PlanAwareQuotaState).planType);
+  const planState = state as PlanAwareQuotaState;
+  return normalizePlanType(
+    planState.planType ??
+      planState.account?.upstreamPlanType ??
+      planState.account?.credentialPlanType
+  );
 };
 
 const resolveFilePlanType = (file: AuthFileItem): string | null =>
   normalizePlanType(resolveCodexPlanType(file));
 
+// eslint-disable-next-line react-refresh/only-export-components
+export const resolveQuotaCredentialPlan = (
+  file: AuthFileItem,
+  state: QuotaStatusState | undefined
+): string | null => resolveQuotaPlanType(state) ?? resolveFilePlanType(file);
+
 const resolvePlanFilterValue = (file: AuthFileItem, state: QuotaStatusState | undefined): string =>
-  resolveQuotaPlanType(state) ?? resolveFilePlanType(file) ?? PLAN_FILTER_UNVERIFIED;
+  resolveQuotaCredentialPlan(file, state) ?? PLAN_FILTER_UNVERIFIED;
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const matchesQuotaCredentialPlan = (
@@ -72,7 +93,29 @@ export const matchesQuotaCredentialPlan = (
   planFilter: string
 ): boolean => planFilter === PLAN_FILTER_ALL || resolvePlanFilterValue(file, state) === planFilter;
 
-const formatPlanFilterLabel = (plan: string): string => {
+// eslint-disable-next-line react-refresh/only-export-components
+export const stablePartitionEnabledCredentials = <T extends Pick<AuthFileItem, 'disabled'>>(
+  files: readonly T[]
+): T[] => {
+  const enabled: T[] = [];
+  const disabled: T[] = [];
+  files.forEach((file) => (file.disabled === true ? disabled : enabled).push(file));
+  return [...enabled, ...disabled];
+};
+
+const CODEX_PLAN_LABEL_KEYS: Record<string, string> = {
+  free: 'codex_quota.plan_free',
+  plus: 'codex_quota.plan_plus',
+  team: 'codex_quota.plan_team',
+  pro: 'codex_quota.plan_pro',
+  prolite: 'codex_quota.plan_prolite',
+  'pro-lite': 'codex_quota.plan_prolite',
+  pro_lite: 'codex_quota.plan_prolite',
+};
+
+const formatPlanFilterLabel = (plan: string, t: TFunction): string => {
+  const translationKey = CODEX_PLAN_LABEL_KEYS[plan];
+  if (translationKey) return t(translationKey);
   return plan
     .split(/([_\-\s]+)/)
     .map((part) => {
@@ -158,10 +201,18 @@ interface QuotaSectionProps<TState extends QuotaStatusState, TData> {
   onDownloadCredential?: (name: string) => void;
   onShowCredentialModels?: (item: AuthFileItem) => void;
   onOpenCredentialSettings?: (item: AuthFileItem) => void;
-  onDeleteCredential?: (name: string) => void;
+  onDeleteCredential?: (item: AuthFileItem) => void;
   onToggleCredentialStatus?: (item: AuthFileItem, enabled: boolean) => void;
   onToggleCredentialSelect?: (name: string) => void;
   onVisibleCredentialsChange?: (items: AuthFileItem[]) => void;
+  inventoryTotal?: number;
+  inventoryPage?: number;
+  inventoryHasNext?: boolean;
+  inventoryHasPrevious?: boolean;
+  onInventoryNext?: () => void;
+  onInventoryPrevious?: () => void;
+  onInventoryPageSizeChange?: (size: number) => void;
+  onInventoryStatusChange?: (status: QuotaStatusFilterMode) => void;
   headerActionAfterRefresh?: ReactNode;
 }
 
@@ -181,22 +232,28 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
   onToggleCredentialStatus,
   onToggleCredentialSelect,
   onVisibleCredentialsChange,
+  inventoryTotal = files.length,
+  inventoryPage = 1,
+  inventoryHasNext = false,
+  inventoryHasPrevious = false,
+  onInventoryNext,
+  onInventoryPrevious,
+  onInventoryPageSizeChange,
+  onInventoryStatusChange,
   headerActionAfterRefresh,
 }: QuotaSectionProps<TState, TData>) {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
+  const refreshAuthInventory = useAuthInventoryStore((state) => state.refresh);
   const runtimeResources = useRuntimeObservationStore((state) => state.resourcesByKey);
   const setQuota = useQuotaStore((state) => state[config.storeSetter]) as QuotaSetter<
     Record<string, TState>
   >;
   const [columns, gridRef] = useGridColumns(380);
-  const [viewMode, setViewMode] = useState<ViewMode>('paged');
-  const [statusFilterMode, setStatusFilterMode] = useState<StatusFilterMode>('all');
+  const [statusFilterMode, setStatusFilterMode] = useState<QuotaStatusFilterMode>('all');
   const [planFilter, setPlanFilter] = useState(PLAN_FILTER_ALL);
-  const [visibleAllCount, setVisibleAllCount] = useState(0);
   const [resettingQuotaKey, setResettingQuotaKey] = useState<string | null>(null);
-  const lazyLoadRef = useRef<HTMLDivElement | null>(null);
 
   const providerFiles = useMemo(
     () => files.filter((file) => config.filterFn(file)),
@@ -247,7 +304,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
         label:
           plan === PLAN_FILTER_UNVERIFIED
             ? `${t('auth_files.plan_filter_unverified')} (${counts.get(plan) ?? 0})`
-            : `${formatPlanFilterLabel(plan)} (${counts.get(plan) ?? 0})`,
+            : `${formatPlanFilterLabel(plan, t)} (${counts.get(plan) ?? 0})`,
       })),
     ];
   }, [planFilter, quota, showPlanFilter, statusFilteredFiles, t]);
@@ -258,9 +315,10 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
       matchesQuotaCredentialPlan(file, quota[getQuotaCredentialCacheKey(file)], planFilter)
     );
   }, [planFilter, quota, showPlanFilter, statusFilteredFiles]);
-  const effectiveViewMode: ViewMode = viewMode;
-  const allViewChunkSize = Math.max(ALL_VIEW_MIN_CHUNK_SIZE, columns * 3);
-
+  const orderedFiles = useMemo(
+    () => stablePartitionEnabledCredentials(filteredFiles),
+    [filteredFiles]
+  );
   const {
     pageSize,
     totalPages,
@@ -271,40 +329,28 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     goToNext,
     loading: sectionLoading,
     setLoading,
-  } = useQuotaPagination(filteredFiles);
+  } = useQuotaPagination(orderedFiles);
 
   useEffect(() => {
-    setPageSize(Math.min(columns * 3, MAX_ITEMS_PER_PAGE));
-  }, [columns, setPageSize]);
+    const nextPageSize = Math.min(columns * 3, MAX_ITEMS_PER_PAGE);
+    setPageSize(nextPageSize);
+    onInventoryPageSizeChange?.(nextPageSize);
+  }, [columns, onInventoryPageSizeChange, setPageSize]);
 
   useEffect(() => {
-    if (effectiveViewMode !== 'all') {
-      setVisibleAllCount(0);
-      return;
-    }
-    setVisibleAllCount(Math.min(filteredFiles.length, allViewChunkSize));
-  }, [allViewChunkSize, effectiveViewMode, filteredFiles.length, planFilter, statusFilterMode]);
+    onInventoryStatusChange?.(statusFilterMode);
+  }, [onInventoryStatusChange, statusFilterMode]);
 
-  const visibleAllItems = useMemo(
-    () => filteredFiles.slice(0, visibleAllCount),
-    [filteredFiles, visibleAllCount]
-  );
-  const visibleItems = effectiveViewMode === 'all' ? visibleAllItems : pageItems;
+  const visibleItems = pageItems;
 
   useEffect(() => {
     onVisibleCredentialsChange?.(visibleItems);
   }, [onVisibleCredentialsChange, visibleItems]);
 
-  const canLoadMoreAll = effectiveViewMode === 'all' && visibleAllCount < filteredFiles.length;
-  const loadMoreAll = useCallback(() => {
-    setVisibleAllCount((current) =>
-      Math.min(filteredFiles.length, Math.max(current, 0) + allViewChunkSize)
-    );
-  }, [allViewChunkSize, filteredFiles.length]);
-  const refreshTargets = useMemo(() => {
-    const targets = effectiveViewMode === 'all' ? filteredFiles : pageItems;
-    return targets.filter((file) => file.disabled !== true);
-  }, [effectiveViewMode, filteredFiles, pageItems]);
+  const refreshTargets = useMemo(
+    () => pageItems.filter((file) => file.disabled !== true),
+    [pageItems]
+  );
   const statusFilterOptions = useMemo(
     () =>
       [
@@ -312,7 +358,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
         { value: 'enabled', label: t('auth_files.problem_filter_enabled') },
         { value: 'disabled', label: t('auth_files.problem_filter_disabled') },
         { value: 'problem', label: t('auth_files.problem_filter_problem') },
-      ] satisfies Array<{ value: StatusFilterMode; label: string }>,
+      ] satisfies Array<{ value: QuotaStatusFilterMode; label: string }>,
     [t]
   );
 
@@ -333,15 +379,9 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     if (!wasLoading) return;
 
     pendingQuotaRefreshRef.current = false;
-    const scope = effectiveViewMode === 'all' ? 'all' : 'page';
     if (refreshTargets.length === 0) return;
-    loadQuota(
-      refreshTargets,
-      scope,
-      setLoading,
-      effectiveViewMode === 'all' ? QUOTA_REFRESH_BATCH_SIZE : refreshTargets.length
-    );
-  }, [loading, effectiveViewMode, refreshTargets, loadQuota, setLoading]);
+    loadQuota(refreshTargets, 'page', setLoading, refreshTargets.length);
+  }, [loading, refreshTargets, loadQuota, setLoading]);
 
   useEffect(() => {
     if (loading) return;
@@ -362,47 +402,48 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     });
   }, [providerFiles, loading, setQuota]);
 
-  useEffect(() => {
-    if (!canLoadMoreAll) return;
-    if (typeof IntersectionObserver === 'undefined') return;
-    const target = lazyLoadRef.current;
-    if (!target) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          loadMoreAll();
-        }
-      },
-      { rootMargin: '360px' }
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [canLoadMoreAll, loadMoreAll]);
-
   const refreshQuotaForFile = useCallback(
     async (file: AuthFileItem) => {
       if (disabled || file.disabled) return;
       const credentialCacheKey = getQuotaCredentialCacheKey(file);
       if (quota[credentialCacheKey]?.status === 'loading') return;
       const cacheGeneration = captureQuotaCacheGeneration();
+      const previousState = quota[credentialCacheKey];
 
       setQuota((prev) => ({
         ...prev,
-        [credentialCacheKey]: config.buildLoadingState(),
+        [credentialCacheKey]: config.buildLoadingState(file, previousState),
       }));
 
       try {
-        const data = await config.fetchQuota(file, t);
+        const resolved = await fetchQuotaWithIdentityRecovery({
+          file,
+          previousState,
+          t,
+          fetchQuota: config.fetchQuota,
+          refreshInventory: async () => {
+            await refreshAuthInventory(true);
+          },
+          getCurrentFiles: () => useAuthInventoryStore.getState().files,
+        });
+        const resolvedCacheKey = getQuotaCredentialCacheKey(resolved.file);
         commitIfQuotaCacheCurrent(
           cacheGeneration,
           () => {
-            setQuota((prev) => ({
-              ...prev,
-              [credentialCacheKey]: config.buildSuccessState(data),
-            }));
+            setQuota((prev) => {
+              const next = { ...prev };
+              if (resolvedCacheKey !== credentialCacheKey) {
+                delete next[credentialCacheKey];
+              }
+              next[resolvedCacheKey] = config.buildSuccessState(resolved.data, resolved.file);
+              return next;
+            });
             showNotification(t('auth_files.quota_refresh_success', { name: file.name }), 'success');
           },
-          () => currentCredentialKeysRef.current.has(credentialCacheKey)
+          () =>
+            (currentCredentialKeysRef.current.has(credentialCacheKey) ||
+              currentCredentialKeysRef.current.has(resolvedCacheKey)) &&
+            isQuotaCredentialCurrent(useAuthInventoryStore.getState().files, resolved.file)
         );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : t('common.unknown_error');
@@ -412,7 +453,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
           () => {
             setQuota((prev) => ({
               ...prev,
-              [credentialCacheKey]: config.buildErrorState(message, status),
+              [credentialCacheKey]: config.buildErrorState(message, status, file, previousState),
             }));
             showNotification(
               t('auth_files.quota_refresh_failed', { name: file.name, message }),
@@ -423,7 +464,7 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
         );
       }
     },
-    [config, disabled, quota, setQuota, showNotification, t]
+    [config, disabled, quota, refreshAuthInventory, setQuota, showNotification, t]
   );
 
   const resetQuotaForFile = useCallback(
@@ -443,21 +484,25 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
         onConfirm: async () => {
           if (!currentCredentialKeysRef.current.has(credentialCacheKey)) return;
           const cacheGeneration = captureQuotaCacheGeneration();
+          const previousState = quota[credentialCacheKey];
           setResettingQuotaKey(credentialCacheKey);
           try {
-            const data = await resetQuota(file, t);
+            const data = await resetQuota(file, t, previousState);
             commitIfQuotaCacheCurrent(
               cacheGeneration,
               () => {
                 setQuota((prev) => ({
                   ...prev,
-                  [credentialCacheKey]: config.buildSuccessState(data),
+                  [credentialCacheKey]: config.buildSuccessState(data, file),
                 }));
                 showNotification(t('codex_quota.reset_success', { name: file.name }), 'success');
               },
               () => currentCredentialKeysRef.current.has(credentialCacheKey)
             );
           } catch (err: unknown) {
+            if (isCodexQuotaContextChangedError(err)) {
+              await refreshAuthInventory(true).catch(() => undefined);
+            }
             const message = err instanceof Error ? err.message : t('common.unknown_error');
             commitIfQuotaCacheCurrent(
               cacheGeneration,
@@ -475,15 +520,23 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
         },
       });
     },
-    [config, disabled, quota, resettingQuotaKey, setQuota, showConfirmation, showNotification, t]
+    [
+      config,
+      disabled,
+      quota,
+      refreshAuthInventory,
+      resettingQuotaKey,
+      setQuota,
+      showConfirmation,
+      showNotification,
+      t,
+    ]
   );
 
   const titleNode = (
     <div className={styles.titleWrapper}>
       <span>{t(`${config.i18nPrefix}.title`)}</span>
-      {filteredFiles.length > 0 && (
-        <span className={styles.countBadge}>{filteredFiles.length}</span>
-      )}
+      {inventoryTotal > 0 && <span className={styles.countBadge}>{inventoryTotal}</span>}
     </div>
   );
 
@@ -494,32 +547,6 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
       title={titleNode}
       extra={
         <div className={styles.headerActions}>
-          <div
-            className={styles.viewModeToggle}
-            role="group"
-            aria-label={t('auth_files.view_mode_label')}
-          >
-            <button
-              type="button"
-              className={`${styles.viewModeButton} ${
-                effectiveViewMode === 'paged' ? styles.viewModeButtonActive : ''
-              }`}
-              onClick={() => setViewMode('paged')}
-              aria-pressed={effectiveViewMode === 'paged'}
-            >
-              {t('auth_files.view_mode_paged')}
-            </button>
-            <button
-              type="button"
-              className={`${styles.viewModeButton} ${
-                effectiveViewMode === 'all' ? styles.viewModeButtonActive : ''
-              }`}
-              onClick={() => setViewMode('all')}
-              aria-pressed={effectiveViewMode === 'all'}
-            >
-              {t('auth_files.view_mode_all')}
-            </button>
-          </div>
           <div
             className={styles.viewModeToggle}
             role="group"
@@ -605,6 +632,17 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
                 ? runtimeResources[runtimeObservationResourceKey('credential', credentialID)]
                 : undefined;
               const itemQuota = quota[credentialCacheKey];
+              const credentialPlanType = showPlanFilter
+                ? resolveQuotaCredentialPlan(item, itemQuota)
+                : null;
+              const credentialPlan = showPlanFilter
+                ? {
+                    type: credentialPlanType,
+                    label: credentialPlanType
+                      ? formatPlanFilterLabel(credentialPlanType, t)
+                      : t('auth_files.plan_filter_unverified'),
+                  }
+                : undefined;
               const isResettingQuota = resettingQuotaKey === credentialCacheKey;
               const canUseQuotaAction =
                 !disabled && !item.disabled && itemQuota?.status !== 'loading';
@@ -650,12 +688,13 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
                   onToggleStatus={onToggleCredentialStatus}
                   onToggleSelect={onToggleCredentialSelect}
                   resetQuotaAction={resetQuotaAction}
+                  credentialPlan={credentialPlan}
                   renderQuotaItems={config.renderQuotaItems}
                 />
               );
             })}
           </div>
-          {filteredFiles.length > pageSize && effectiveViewMode === 'paged' && (
+          {filteredFiles.length > pageSize && (
             <div className={styles.pagination}>
               <Button variant="secondary" size="sm" onClick={goToPrev} disabled={currentPage <= 1}>
                 {t('auth_files.pagination_prev')}
@@ -677,17 +716,30 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
               </Button>
             </div>
           )}
-          {effectiveViewMode === 'all' && filteredFiles.length > visibleItems.length && (
-            <div ref={lazyLoadRef} className={styles.pagination}>
+          {(inventoryHasPrevious || inventoryHasNext) && (
+            <div className={styles.pagination}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onInventoryPrevious}
+                disabled={!inventoryHasPrevious || loading}
+              >
+                {t('auth_files.pagination_prev')}
+              </Button>
               <div className={styles.pageInfo}>
-                {t('auth_files.lazy_loaded_info', {
-                  defaultValue: '已显示 {{current}} / {{total}} 个凭证',
-                  current: visibleItems.length,
-                  total: filteredFiles.length,
+                {t('auth_files.pagination_info', {
+                  current: inventoryPage,
+                  total: Math.max(1, Math.ceil(inventoryTotal / Math.max(1, pageSize))),
+                  count: inventoryTotal,
                 })}
               </div>
-              <Button variant="secondary" size="sm" onClick={loadMoreAll}>
-                {t('auth_files.load_more', { defaultValue: '加载更多' })}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onInventoryNext}
+                disabled={!inventoryHasNext || loading}
+              >
+                {t('auth_files.pagination_next')}
               </Button>
             </div>
           )}

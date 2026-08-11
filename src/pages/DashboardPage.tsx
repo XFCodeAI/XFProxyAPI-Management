@@ -94,9 +94,15 @@ export function DashboardPage() {
   const modelsLoading = useModelsStore((state) => state.loading);
   const modelsError = useModelsStore((state) => state.error);
   const fetchModelsFromStore = useModelsStore((state) => state.fetchModels);
-  const authFiles = useAuthInventoryStore((state) => state.files);
+  const authFilesTotal = useAuthInventoryStore((state) => state.total);
+  const authFileProviderTotals = useAuthInventoryStore((state) => state.providerTotals);
   const authFilesLoading = useAuthInventoryStore((state) => state.loading);
-  const authFilesCount = connectionStatus === 'connected' ? authFiles.length : null;
+  const authFilesCount =
+    connectionStatus === 'connected'
+      ? Object.keys(authFileProviderTotals).length > 0
+        ? Object.values(authFileProviderTotals).reduce((sum, count) => sum + count, 0)
+        : authFilesTotal
+      : null;
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(getTimeOfDay);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);

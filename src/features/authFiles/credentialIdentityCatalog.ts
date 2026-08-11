@@ -23,7 +23,8 @@ const currentCredential = (file: AuthFileItem): ReconciledCredentialIdentity | n
 
 export const reconcileCredentialIdentityCatalog = (
   catalog: CredentialIdentityCatalogEntry[],
-  files: AuthFileItem[]
+  files: AuthFileItem[],
+  inventoryComplete = true
 ): ReconciledCredentialIdentity[] => {
   const currentByID = new Map<string, ReconciledCredentialIdentity>();
   files.forEach((file) => {
@@ -37,14 +38,15 @@ export const reconcileCredentialIdentityCatalog = (
     const recordedId = entry.recordedId.trim();
     if (!recordedId || seen.has(recordedId)) return;
     const current = currentByID.get(recordedId);
-    if (!current && !entry.hasUsage) return;
+    const remainsCurrent = Boolean(current || (!inventoryComplete && entry.current));
+    if (!remainsCurrent && !entry.hasUsage) return;
     reconciled.push({
       ...entry,
       recordedId,
       displayName: entry.displayName.trim() || current?.displayName || recordedId,
       provider: entry.provider.trim() || current?.provider || '',
-      currentId: current ? recordedId : '',
-      current: Boolean(current),
+      currentId: current ? recordedId : remainsCurrent ? entry.currentId || recordedId : '',
+      current: remainsCurrent,
       groups: current?.groups ?? [],
     });
     seen.add(recordedId);

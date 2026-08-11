@@ -29,7 +29,10 @@ interface ProviderResourcePanelProps {
   disableMutations?: boolean;
   usageByProvider?: ProviderRecentUsageMap;
   billingProbeEntriesByResource?: SupplierBillingProbeEntriesByResource;
+  imageRouteResources?: readonly ProviderResource[];
   onRefreshBillingProbe?: (targetId: string) => Promise<void>;
+  recoveringSupplierIds?: ReadonlySet<string>;
+  onRecoverSuppliers?: (supplierIds: readonly string[]) => Promise<void>;
   toolbarControls?: ProviderPanelControls;
   emptyText?: string;
   showEmptyAction?: boolean;
@@ -50,7 +53,10 @@ export function ProviderResourcePanel({
   disableMutations,
   usageByProvider,
   billingProbeEntriesByResource,
+  imageRouteResources,
   onRefreshBillingProbe,
+  recoveringSupplierIds,
+  onRecoverSuppliers,
   toolbarControls,
   emptyText: emptyTextOverride,
   showEmptyAction = true,
@@ -146,7 +152,10 @@ export function ProviderResourcePanel({
           disableMutations={disableMutations}
           usageByProvider={usageByProvider}
           billingProbeEntriesByResource={billingProbeEntriesByResource}
+          imageRouteResources={imageRouteResources}
           onRefreshBillingProbe={onRefreshBillingProbe}
+          recoveringSupplierIds={recoveringSupplierIds}
+          onRecoverSuppliers={onRecoverSuppliers}
           onView={onView}
           onViewFailures={onViewFailures}
           onEdit={onEdit}

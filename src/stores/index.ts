@@ -14,7 +14,7 @@ export {
   getQuotaCredentialCacheKey,
   useQuotaStore,
 } from './useQuotaStore';
-export { useAuthInventoryStore } from './useAuthInventoryStore';
+export { authInventoryPageIsComplete, useAuthInventoryStore } from './useAuthInventoryStore';
 export { useCredentialConcurrencyStore } from './useCredentialConcurrencyStore';
 export {
   applyRuntimeObservationSnapshot,

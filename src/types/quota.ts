@@ -219,6 +219,10 @@ export interface CodexQuotaAccountEvidence {
 
 export interface CodexQuotaState {
   status: 'idle' | 'loading' | 'success' | 'error';
+  credentialId?: string | null;
+  authIndex?: string | null;
+  credentialGeneration?: number | null;
+  planType?: string | null;
   limits: CodexQuotaLimit[];
   account?: CodexQuotaAccountEvidence | null;
   observedAt?: string | null;

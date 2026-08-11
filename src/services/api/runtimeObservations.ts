@@ -55,6 +55,7 @@ const normalizeAvailabilityState = (value: unknown): RuntimeAvailabilityState =>
     case 'probing':
     case 'half_open':
     case 'auth_invalid':
+    case 'excluded':
     case 'disabled':
       return value;
     default:
@@ -76,6 +77,7 @@ const normalizeAvailabilityCounts = (value: unknown): RuntimeAvailabilityCounts 
     probing: normalizeNonNegativeInteger(counts.probing),
     halfOpen: normalizeNonNegativeInteger(counts.half_open ?? counts.halfOpen),
     authInvalid: normalizeNonNegativeInteger(counts.auth_invalid ?? counts.authInvalid),
+    excluded: normalizeNonNegativeInteger(counts.excluded),
     disabled: normalizeNonNegativeInteger(counts.disabled),
   };
 };
@@ -115,6 +117,14 @@ export const normalizeRuntimeObservationResource = (
     availabilityCounts: normalizeAvailabilityCounts(
       record.availability_counts ?? record.availabilityCounts
     ),
+    healthFailureStreak: normalizeNonNegativeInteger(
+      record.health_failure_streak ?? record.healthFailureStreak
+    ),
+    healthExcluded: record.health_excluded === true || record.healthExcluded === true,
+    healthExclusionCode: String(
+      record.health_exclusion_code ?? record.healthExclusionCode ?? ''
+    ).trim(),
+    healthExcludedAt: String(record.health_excluded_at ?? record.healthExcludedAt ?? '').trim(),
   };
 };
 

@@ -38,6 +38,7 @@ const normalizeGroupName = (value: string) => value.trim();
 const ACTIVE_GROUP_STORAGE_KEY = 'credential-groups:active';
 const ACTIVE_PROVIDER_STORAGE_KEY = 'credential-groups:active-provider';
 const ALL_PROVIDERS_KEY = 'all';
+const AUTH_FILES_PAGE_SIZE = 50;
 
 type ProviderBindingBrand = 'gemini' | 'codex' | 'claude' | 'vertex' | 'openaiCompatibility';
 type BindingFilter = 'all' | 'bound' | 'unbound';
@@ -309,7 +310,8 @@ const buildProviderFacets = (
   providerItems: ProviderBindingItem[],
   apiKeyEntries: ManagedApiKeyEntry[],
   plugins: PluginListEntry[],
-  catalog: ProviderCatalog
+  catalog: ProviderCatalog,
+  providerAuthTotals: Record<string, number>
 ): ProviderFacet[] => {
   const map = new Map<string, ProviderFacet>();
 
@@ -321,11 +323,20 @@ const buildProviderFacets = (
     getOrCreateProviderFacet(map, key, resolveProviderLabel(catalog, key));
   });
 
-  authFileItems.forEach((item) => {
-    const key = item.providerKey || normalizeProviderCatalogKey('unknown');
-    const facet = getOrCreateProviderFacet(map, key, item.providerLabel);
-    facet.authFiles += 1;
-  });
+  const providerTotalEntries = Object.entries(providerAuthTotals);
+  if (providerTotalEntries.length > 0) {
+    providerTotalEntries.forEach(([provider, count]) => {
+      const key = normalizeProviderCatalogKey(provider) || normalizeProviderCatalogKey('unknown');
+      const facet = getOrCreateProviderFacet(map, key, resolveProviderLabel(catalog, key));
+      facet.authFiles += count;
+    });
+  } else {
+    authFileItems.forEach((item) => {
+      const key = item.providerKey || normalizeProviderCatalogKey('unknown');
+      const facet = getOrCreateProviderFacet(map, key, item.providerLabel);
+      facet.authFiles += 1;
+    });
+  }
 
   providerItems.forEach((item) => {
     const key = item.providerKey || normalizeProviderCatalogKey(item.brand);
@@ -342,13 +353,17 @@ const buildProviderFacets = (
       return left.label.localeCompare(right.label);
     });
 
+  const authFileTotal =
+    providerTotalEntries.length > 0
+      ? providerTotalEntries.reduce((total, [, count]) => total + count, 0)
+      : authFileItems.length;
   const allFacet: ProviderFacet = {
     key: ALL_PROVIDERS_KEY,
     label: '全部',
-    authFiles: authFileItems.length,
+    authFiles: authFileTotal,
     providers: providerItems.length,
     apiKeys: apiKeyEntries.length,
-    total: authFileItems.length + providerItems.length + apiKeyEntries.length,
+    total: authFileTotal + providerItems.length + apiKeyEntries.length,
   };
 
   return [allFacet, ...providerFacets];
@@ -427,7 +442,18 @@ export function CredentialGroupsPage() {
   const [groups, setGroups] = useState<string[]>([]);
   const authFiles = useAuthInventoryStore((state) => state.files);
   const setAuthFiles = useAuthInventoryStore((state) => state.setFiles);
+  const commitAuthFileMutation = useAuthInventoryStore((state) => state.commitMutationVersion);
   const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
+  const setAuthFilesQuery = useAuthInventoryStore((state) => state.setQuery);
+  const nextAuthFilesPage = useAuthInventoryStore((state) => state.nextPage);
+  const previousAuthFilesPage = useAuthInventoryStore((state) => state.previousPage);
+  const authFilesTotal = useAuthInventoryStore((state) => state.total);
+  const authFilesPage = useAuthInventoryStore((state) => state.page);
+  const authFilesHasMore = useAuthInventoryStore((state) => state.hasMore);
+  const authFilesHasPrevious = useAuthInventoryStore((state) => state.cursorHistory.length > 0);
+  const authFilesLoading = useAuthInventoryStore((state) => state.loading);
+  const providerAuthTotals = useAuthInventoryStore((state) => state.providerTotals);
+  const groupAuthTotals = useAuthInventoryStore((state) => state.groupTotals);
   const loadSequence = useRef(0);
   const [apiKeyEntries, setApiKeyEntries] = useState<ManagedApiKeyEntry[]>([]);
   const [plugins, setPlugins] = useState<PluginListEntry[]>([]);
@@ -447,6 +473,7 @@ export function CredentialGroupsPage() {
     return window.localStorage.getItem(ACTIVE_PROVIDER_STORAGE_KEY)?.trim() || ALL_PROVIDERS_KEY;
   });
   const [query, setQuery] = useState('');
+  const [authFilesSearch, setAuthFilesSearch] = useState('');
   const [savingAuthFileName, setSavingAuthFileName] = useState<string | null>(null);
   const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
   const [savingApiKeyIndex, setSavingApiKeyIndex] = useState<number | null>(null);
@@ -470,8 +497,15 @@ export function CredentialGroupsPage() {
   );
   const providerFacets = useMemo(
     () =>
-      buildProviderFacets(authFileItems, providerItems, apiKeyEntries, plugins, providerCatalog),
-    [apiKeyEntries, authFileItems, plugins, providerCatalog, providerItems]
+      buildProviderFacets(
+        authFileItems,
+        providerItems,
+        apiKeyEntries,
+        plugins,
+        providerCatalog,
+        providerAuthTotals
+      ),
+    [apiKeyEntries, authFileItems, plugins, providerAuthTotals, providerCatalog, providerItems]
   );
   const activeProviderExists = useMemo(
     () => providerFacets.some((facet) => facet.key === activeProviderKey),
@@ -495,10 +529,8 @@ export function CredentialGroupsPage() {
       return created;
     };
 
-    authFileItems.forEach((item) => {
-      normalizeCredentialGroups(item.file.groups).forEach((group) => {
-        ensure(group).authFiles += 1;
-      });
+    Object.entries(groupAuthTotals).forEach(([group, count]) => {
+      ensure(group).authFiles += count;
     });
     providerItems.forEach((item) => {
       normalizeCredentialGroups(item.groups).forEach((group) => {
@@ -512,7 +544,7 @@ export function CredentialGroupsPage() {
     });
 
     return map;
-  }, [apiKeyEntries, authFileItems, providerItems]);
+  }, [apiKeyEntries, groupAuthTotals, providerItems]);
 
   const activeUsage = usageByGroup.get(groupKey(resolvedActiveGroup)) ?? emptyUsage();
   const activeUsageTotal = activeUsage.authFiles + activeUsage.providers + activeUsage.apiKeys;
@@ -552,6 +584,30 @@ export function CredentialGroupsPage() {
         ),
     [authFileItems, authFilesFilter, query, resolvedActiveGroup, resolvedActiveProviderKey]
   );
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setAuthFilesSearch(query.trim()), 250);
+    return () => window.clearTimeout(timeout);
+  }, [query]);
+
+  useEffect(() => {
+    const activeProvider =
+      resolvedActiveProviderKey === ALL_PROVIDERS_KEY ? undefined : resolvedActiveProviderKey;
+    const activeGroupFilter = resolvedActiveGroup || undefined;
+    void setAuthFilesQuery({
+      provider: activeProvider,
+      group: authFilesFilter === 'bound' ? activeGroupFilter : undefined,
+      withoutGroup: authFilesFilter === 'unbound' ? activeGroupFilter : undefined,
+      search: authFilesSearch || undefined,
+      limit: AUTH_FILES_PAGE_SIZE,
+    }).catch(() => undefined);
+  }, [
+    authFilesFilter,
+    authFilesSearch,
+    resolvedActiveGroup,
+    resolvedActiveProviderKey,
+    setAuthFilesQuery,
+  ]);
   const filteredProviderItems = useMemo(
     () =>
       providerItems
@@ -749,10 +805,16 @@ export function CredentialGroupsPage() {
       : withoutGroup(file.groups, resolvedActiveGroup);
     setSavingAuthFileName(file.name);
     try {
-      await authFilesApi.patchFields(file.name, { groups: nextGroups });
+      const response = await authFilesApi.patchFields(file.name, { groups: nextGroups });
       setAuthFiles((current) =>
         current.map((item) => (item.name === file.name ? { ...item, groups: nextGroups } : item))
       );
+      commitAuthFileMutation(
+        response.inventory_id ?? '',
+        response.revision ?? 0,
+        response.files ?? []
+      );
+      void refreshAuthFiles(true).catch(() => undefined);
     } catch (err: unknown) {
       showNotification(
         getErrorMessage(
@@ -1109,7 +1171,7 @@ export function CredentialGroupsPage() {
                         onChange={setAuthFilesFilter}
                         labels={bindingFilterLabels}
                       />
-                      <span className={styles.sectionCount}>{filteredAuthFiles.length}</span>
+                      <span className={styles.sectionCount}>{authFilesTotal}</span>
                     </div>
                   }
                 >
@@ -1161,6 +1223,35 @@ export function CredentialGroupsPage() {
                           );
                         })}
                   </div>
+                  {(authFilesHasPrevious || authFilesHasMore) && (
+                    <div className={styles.pagination}>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void previousAuthFilesPage()}
+                        disabled={!authFilesHasPrevious || authFilesLoading}
+                      >
+                        {t('auth_files.pagination_prev')}
+                      </Button>
+                      <span>
+                        {t('auth_files.pagination_info', {
+                          current: authFilesPage,
+                          total: Math.max(1, Math.ceil(authFilesTotal / AUTH_FILES_PAGE_SIZE)),
+                          count: authFilesTotal,
+                        })}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void nextAuthFilesPage()}
+                        disabled={!authFilesHasMore || authFilesLoading}
+                      >
+                        {t('auth_files.pagination_next')}
+                      </Button>
+                    </div>
+                  )}
                 </Card>
 
                 <Card

@@ -5,6 +5,30 @@ const SUPPLIER_BILLING_PROBE_TIMEOUT_MS = 20 * 1000;
 
 export type SupplierBillingProbeStatus = 'not_checked' | 'ok' | 'unsupported' | 'failed';
 
+export type SupplierRuntimeAvailabilityState =
+  | 'ready'
+  | 'transient_throttled'
+  | 'usage_wait'
+  | 'probing'
+  | 'half_open'
+  | 'auth_invalid'
+  | 'excluded'
+  | 'disabled'
+  | 'unknown';
+
+export interface SupplierRuntimeIdentity {
+  supplier_id: string;
+  entry_id: string;
+  auth_id: string;
+  auth_index?: string;
+  credential_generation: number;
+  availability_revision: number;
+  availability_state: SupplierRuntimeAvailabilityState;
+  availability_deadline?: string;
+  availability_reason?: string;
+  provider_code?: string;
+}
+
 export interface SupplierUsageProbeEntry {
   status: SupplierBillingProbeStatus;
   is_valid?: boolean;
@@ -15,6 +39,7 @@ export interface SupplierUsageProbeEntry {
   fresh_until?: string;
   last_attempt_at?: string;
   next_probe_at?: string;
+  reset_at?: string;
   failure_count?: number;
   http_status?: number;
   last_error?: string;
@@ -44,6 +69,8 @@ export interface SupplierBillingMultiplier {
 
 export interface SupplierBillingProbeEntry {
   target_id: string;
+  supplier_id: string;
+  entry_id: string;
   provider_brand: string;
   provider_name: string;
   provider_index: number;
@@ -63,6 +90,7 @@ export interface SupplierBillingProbeEntry {
   http_status?: number;
   last_error?: string;
   usage?: SupplierUsageProbeEntry;
+  runtime?: SupplierRuntimeIdentity;
 }
 
 export interface SupplierBillingProbeResponse {
@@ -99,6 +127,28 @@ export type SupplierBillingProbeEnqueueResult = {
   snapshotId: string;
   revision: number;
 };
+
+export type SupplierAvailabilityReprobeStatus = 'queued' | 'already_probing' | 'skipped';
+
+export interface SupplierAvailabilityReprobeEntry {
+  supplier_id: string;
+  entry_id: string;
+  status: SupplierAvailabilityReprobeStatus;
+  reason?: string;
+  runtime?: SupplierRuntimeIdentity;
+}
+
+export interface SupplierAvailabilityReprobeResponse {
+  status: string;
+  supplier_id: string;
+  requested: number;
+  eligible: number;
+  queued: number;
+  already_probing: number;
+  skipped: Record<string, number>;
+  maximum_parallel: number;
+  entries: SupplierAvailabilityReprobeEntry[];
+}
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -139,6 +189,67 @@ const normalizeStatus = (value: unknown): SupplierBillingProbeStatus => {
   }
 };
 
+const normalizeAvailabilityState = (value: unknown): SupplierRuntimeAvailabilityState => {
+  switch (value) {
+    case 'ready':
+    case 'transient_throttled':
+    case 'usage_wait':
+    case 'probing':
+    case 'half_open':
+    case 'auth_invalid':
+    case 'excluded':
+    case 'disabled':
+      return value;
+    default:
+      return 'unknown';
+  }
+};
+
+export const normalizeSupplierRuntimeIdentity = (
+  value: unknown
+): SupplierRuntimeIdentity | undefined => {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const supplierId = normalizeString(record.supplier_id ?? record.supplierId);
+  const entryId = normalizeString(record.entry_id ?? record.entryId);
+  const authId = normalizeString(record.auth_id ?? record.authId);
+  if (!supplierId || !entryId || !authId) return undefined;
+  return {
+    supplier_id: supplierId,
+    entry_id: entryId,
+    auth_id: authId,
+    ...(normalizeOptionalString(record.auth_index ?? record.authIndex)
+      ? { auth_index: normalizeString(record.auth_index ?? record.authIndex) }
+      : {}),
+    credential_generation: normalizeNonNegativeInteger(
+      record.credential_generation ?? record.credentialGeneration
+    ),
+    availability_revision: normalizeNonNegativeInteger(
+      record.availability_revision ?? record.availabilityRevision
+    ),
+    availability_state: normalizeAvailabilityState(
+      record.availability_state ?? record.availabilityState
+    ),
+    ...(normalizeOptionalString(record.availability_deadline ?? record.availabilityDeadline)
+      ? {
+          availability_deadline: normalizeString(
+            record.availability_deadline ?? record.availabilityDeadline
+          ),
+        }
+      : {}),
+    ...(normalizeOptionalString(record.availability_reason ?? record.availabilityReason)
+      ? {
+          availability_reason: normalizeString(
+            record.availability_reason ?? record.availabilityReason
+          ),
+        }
+      : {}),
+    ...(normalizeOptionalString(record.provider_code ?? record.providerCode)
+      ? { provider_code: normalizeString(record.provider_code ?? record.providerCode) }
+      : {}),
+  };
+};
+
 const normalizeStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.map((entry) => normalizeString(entry)).filter(Boolean) : [];
 
@@ -172,6 +283,9 @@ export const normalizeSupplierUsageProbeEntry = (
       : {}),
     ...(normalizeOptionalString(record.next_probe_at ?? record.nextProbeAt)
       ? { next_probe_at: normalizeString(record.next_probe_at ?? record.nextProbeAt) }
+      : {}),
+    ...(normalizeOptionalString(record.reset_at ?? record.resetAt)
+      ? { reset_at: normalizeString(record.reset_at ?? record.resetAt) }
       : {}),
     ...(normalizeOptionalNumber(record.failure_count ?? record.failureCount) === undefined
       ? {}
@@ -275,8 +389,11 @@ export const normalizeSupplierBillingProbeEntry = (
   if (!targetId) return null;
   const multiplier = normalizeSupplierBillingMultiplier(record.multiplier);
   const usage = normalizeSupplierUsageProbeEntry(record.usage);
+  const runtime = normalizeSupplierRuntimeIdentity(record.runtime);
   return {
     target_id: targetId,
+    supplier_id: normalizeString(record.supplier_id ?? record.supplierId),
+    entry_id: normalizeString(record.entry_id ?? record.entryId),
     provider_brand: normalizeString(record.provider_brand ?? record.providerBrand),
     provider_name: normalizeString(record.provider_name ?? record.providerName),
     provider_index: normalizeNonNegativeInteger(record.provider_index ?? record.providerIndex),
@@ -310,6 +427,60 @@ export const normalizeSupplierBillingProbeEntry = (
       ? { last_error: normalizeString(record.last_error ?? record.lastError) }
       : {}),
     ...(usage ? { usage } : {}),
+    ...(runtime ? { runtime } : {}),
+  };
+};
+
+const normalizeSupplierAvailabilityReprobeStatus = (
+  value: unknown
+): SupplierAvailabilityReprobeStatus => {
+  if (value === 'queued' || value === 'already_probing') return value;
+  return 'skipped';
+};
+
+export const normalizeSupplierAvailabilityReprobeResponse = (
+  value: unknown
+): SupplierAvailabilityReprobeResponse => {
+  const record = asRecord(value) ?? {};
+  const entries = Array.isArray(record.entries)
+    ? record.entries.flatMap((value) => {
+        const entry = asRecord(value);
+        if (!entry) return [];
+        const supplierId = normalizeString(entry.supplier_id ?? entry.supplierId);
+        const entryId = normalizeString(entry.entry_id ?? entry.entryId);
+        if (!supplierId || !entryId) return [];
+        const runtime = normalizeSupplierRuntimeIdentity(entry.runtime);
+        return [
+          {
+            supplier_id: supplierId,
+            entry_id: entryId,
+            status: normalizeSupplierAvailabilityReprobeStatus(entry.status),
+            ...(normalizeOptionalString(entry.reason)
+              ? { reason: normalizeString(entry.reason) }
+              : {}),
+            ...(runtime ? { runtime } : {}),
+          } satisfies SupplierAvailabilityReprobeEntry,
+        ];
+      })
+    : [];
+  const skippedRecord = asRecord(record.skipped) ?? {};
+  const skipped = Object.fromEntries(
+    Object.entries(skippedRecord)
+      .map(([reason, count]) => [reason.trim(), normalizeNonNegativeInteger(count)] as const)
+      .filter(([reason, count]) => Boolean(reason) && count > 0)
+  );
+  return {
+    status: normalizeString(record.status),
+    supplier_id: normalizeString(record.supplier_id ?? record.supplierId),
+    requested: normalizeNonNegativeInteger(record.requested),
+    eligible: normalizeNonNegativeInteger(record.eligible),
+    queued: normalizeNonNegativeInteger(record.queued),
+    already_probing: normalizeNonNegativeInteger(record.already_probing ?? record.alreadyProbing),
+    skipped,
+    maximum_parallel: normalizeNonNegativeInteger(
+      record.maximum_parallel ?? record.maximumParallel
+    ),
+    entries,
   };
 };
 
@@ -392,6 +563,18 @@ export const supplierBillingProbeApi = {
     const entry = normalizeSupplierBillingProbeEntry(response);
     if (!entry) throw new Error('Supplier billing probe returned an invalid target');
     return entry;
+  },
+
+  async recoverSupplier(
+    supplierId: string,
+    signal?: AbortSignal
+  ): Promise<SupplierAvailabilityReprobeResponse> {
+    const response = await apiClient.post<unknown>(
+      '/supplier-billing-probes/availability/reprobe',
+      { supplier_id: supplierId.trim() },
+      { timeout: SUPPLIER_BILLING_PROBE_TIMEOUT_MS, ...(signal ? { signal } : {}) }
+    );
+    return normalizeSupplierAvailabilityReprobeResponse(response);
   },
 
   async snapshot({

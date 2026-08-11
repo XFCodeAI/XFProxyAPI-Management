@@ -26,6 +26,7 @@ const countKeys: Array<[keyof RuntimeAvailabilityCounts, RuntimeAvailabilityStat
   ['probing', 'probing'],
   ['halfOpen', 'half_open'],
   ['authInvalid', 'auth_invalid'],
+  ['excluded', 'excluded'],
   ['disabled', 'disabled'],
 ];
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { authFilesApi } from '@/services/api';
+import { authFilesApi, type AuthFilesListQuery } from '@/services/api';
 import type { AuthFileItem, AuthFilesResponse } from '@/types/authFile';
 import { computeApiUrl } from '@/utils/connection';
 import { useAuthStore } from './useAuthStore';
@@ -14,21 +14,66 @@ type InventoryEvent = {
   files: AuthFileItem[];
 };
 
+export type AuthInventoryQuery = Omit<AuthFilesListQuery, 'cursor'>;
+
 type FilesUpdater = AuthFileItem[] | ((current: AuthFileItem[]) => AuthFileItem[]);
 
 type AuthInventoryState = {
   files: AuthFileItem[];
+  filesById: Record<string, AuthFileItem>;
   inventoryId: string;
   revision: number;
+  total: number;
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+  cursor: string;
+  cursorHistory: string[];
+  page: number;
+  query: AuthInventoryQuery;
+  providerTotals: Record<string, number>;
+  groupTotals: Record<string, number>;
   loading: boolean;
   error: string;
   streamConnected: boolean;
   refresh: (fresh?: boolean) => Promise<AuthFilesResponse>;
+  setQuery: (query: AuthInventoryQuery) => Promise<AuthFilesResponse>;
+  nextPage: () => Promise<AuthFilesResponse>;
+  previousPage: () => Promise<AuthFilesResponse>;
   setFiles: (updater: FilesUpdater) => void;
   commitMutationVersion: (inventoryId: string, revision: number, files?: AuthFileItem[]) => void;
   start: () => void;
   stop: (clear?: boolean) => void;
 };
+
+export const authInventoryPageIsComplete = (
+  state: Pick<
+    AuthInventoryState,
+    'files' | 'inventoryId' | 'total' | 'hasMore' | 'cursor' | 'cursorHistory' | 'query'
+  >
+): boolean => {
+  const query = normalizeQuery(state.query);
+  const hasFilter = Boolean(
+    query.provider ||
+    query.group ||
+    query.withoutGroup ||
+    query.status ||
+    query.search ||
+    query.name ||
+    query.authIndex
+  );
+  return Boolean(
+    state.inventoryId &&
+    !hasFilter &&
+    !state.cursor &&
+    state.cursorHistory.length === 0 &&
+    !state.hasMore &&
+    state.files.length >= state.total
+  );
+};
+
+const DEFAULT_PAGE_LIMIT = 25;
+const EMPTY_QUERY: AuthInventoryQuery = { limit: DEFAULT_PAGE_LIMIT };
 
 let streamAbort: AbortController | null = null;
 let streamTask: Promise<void> | null = null;
@@ -36,6 +81,7 @@ let streamGeneration = 0;
 let refreshGeneration = 0;
 let refreshPromise: Promise<AuthFilesResponse> | null = null;
 let refreshPromiseGeneration = -1;
+let refreshPromiseKey = '';
 let scheduledRefresh: ReturnType<typeof setTimeout> | null = null;
 let targetInventoryId = '';
 let targetRevision = 0;
@@ -46,11 +92,62 @@ const normalizeRevision = (value: unknown): number => {
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
 };
 
-const inventorySnapshot = (
-  state: Pick<AuthInventoryState, 'files' | 'inventoryId' | 'revision'>
-): AuthFilesResponse => ({
+const normalizePositiveInteger = (value: unknown, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const normalizeQuery = (query: AuthInventoryQuery = EMPTY_QUERY): AuthInventoryQuery => {
+  const normalizeText = (value: unknown): string | undefined => {
+    const normalized = String(value ?? '').trim();
+    return normalized || undefined;
+  };
+  return {
+    limit: Math.min(normalizePositiveInteger(query.limit, DEFAULT_PAGE_LIMIT), 200),
+    provider: normalizeText(query.provider),
+    group: normalizeText(query.group),
+    withoutGroup: normalizeText(query.withoutGroup),
+    status: normalizeText(query.status),
+    search: normalizeText(query.search),
+    name: normalizeText(query.name),
+    authIndex: normalizeText(query.authIndex),
+  };
+};
+
+const queryKey = (query: AuthInventoryQuery, cursor: string): string =>
+  JSON.stringify([normalizeQuery(query), cursor]);
+
+export const authFileStableID = (file: AuthFileItem): string =>
+  String(file.id ?? file.authIndex ?? file.auth_index ?? file.name ?? '').trim();
+
+const indexPageFiles = (files: AuthFileItem[]): Record<string, AuthFileItem> => {
+  const indexed: Record<string, AuthFileItem> = {};
+  files.forEach((file) => {
+    const id = authFileStableID(file);
+    if (id) indexed[id] = file;
+  });
+  return indexed;
+};
+
+const normalizeProviderTotals = (value: unknown): Record<string, number> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const totals: Record<string, number> = {};
+  Object.entries(value as Record<string, unknown>).forEach(([provider, count]) => {
+    const key = provider.trim().toLowerCase();
+    const normalized = Number(count);
+    if (key && Number.isSafeInteger(normalized) && normalized >= 0) totals[key] = normalized;
+  });
+  return totals;
+};
+
+const inventorySnapshot = (state: AuthInventoryState): AuthFilesResponse => ({
   files: state.files,
-  total: state.files.length,
+  total: state.total,
+  limit: state.limit,
+  next_cursor: state.nextCursor,
+  has_more: state.hasMore,
+  provider_totals: state.providerTotals,
+  group_totals: state.groupTotals,
   inventory_id: state.inventoryId,
   revision: state.revision,
 });
@@ -113,29 +210,33 @@ const scheduleInventoryRefresh = () => {
   }, 50);
 };
 
-const authFileIdentityKeys = (file: AuthFileItem): string[] =>
-  [file.id, file.name, file.authIndex, file.auth_index]
-    .map((value) => String(value ?? '').trim())
-    .filter(Boolean);
+const replacePageFiles = (files: AuthFileItem[]) => ({
+  files,
+  filesById: indexPageFiles(files),
+});
 
-const authFileMatchesIDs = (file: AuthFileItem, ids: Set<string>): boolean =>
-  authFileIdentityKeys(file).some((key) => ids.has(key));
-
-const upsertInventoryFiles = (
+const updatePageFiles = (
   current: AuthFileItem[],
-  incoming: AuthFileItem[]
+  incoming: AuthFileItem[],
+  appendUnknown: boolean
 ): AuthFileItem[] => {
   if (incoming.length === 0) return current;
   const next = [...current];
+  const positions = new Map<string, number>();
+  next.forEach((file, index) => {
+    const id = authFileStableID(file);
+    if (id) positions.set(id, index);
+  });
   incoming.forEach((file) => {
-    const keys = new Set(authFileIdentityKeys(file));
-    if (keys.size === 0) return;
-    const index = next.findIndex((candidate) =>
-      authFileIdentityKeys(candidate).some((key) => keys.has(key))
-    );
-    if (index >= 0) {
+    const id = authFileStableID(file);
+    if (!id) return;
+    const index = positions.get(id);
+    if (index !== undefined) {
       next[index] = file;
-    } else {
+      return;
+    }
+    if (appendUnknown) {
+      positions.set(id, next.length);
       next.push(file);
     }
   });
@@ -167,11 +268,26 @@ const commitInventoryRevision = (
   }
   targetInventoryId = inventoryId;
   targetRevision = revision;
-  useAuthInventoryStore.setState((current) => ({
-    files: upsertInventoryFiles(current.files, files),
-    inventoryId,
-    revision,
-  }));
+  const reconcilePage =
+    files.length === 0 ||
+    Boolean(
+      state.query.provider ||
+      state.query.group ||
+      state.query.withoutGroup ||
+      state.query.status ||
+      state.query.search ||
+      state.query.name ||
+      state.query.authIndex
+    );
+  useAuthInventoryStore.setState((current) => {
+    const nextFiles = updatePageFiles(current.files, files, false);
+    return {
+      ...replacePageFiles(nextFiles),
+      inventoryId,
+      revision,
+    };
+  });
+  if (reconcilePage) scheduleInventoryRefresh();
 };
 
 export const applyInventoryEvent = (event: InventoryEvent) => {
@@ -186,31 +302,46 @@ export const applyInventoryEvent = (event: InventoryEvent) => {
     requireInventoryRefresh(inventoryId, event.revision);
     return;
   }
-  const eventIDs = new Set(event.ids);
+
+  const pageIDs = new Set(state.files.map(authFileStableID));
   if (event.action === 'deleted') {
-    useAuthInventoryStore.setState((current) => ({
-      files: current.files.filter((file) => !authFileMatchesIDs(file, eventIDs)),
-      inventoryId,
-      revision: event.revision,
-    }));
+    const deleted = new Set(event.ids);
+    useAuthInventoryStore.setState((current) => {
+      const nextFiles = current.files.filter((file) => !deleted.has(authFileStableID(file)));
+      return {
+        ...replacePageFiles(nextFiles),
+        inventoryId,
+        revision: event.revision,
+      };
+    });
     targetInventoryId = inventoryId;
     targetRevision = event.revision;
+    scheduleInventoryRefresh();
     return;
   }
-  const covered = event.ids.every((id) =>
-    event.files.some((file) => authFileIdentityKeys(file).includes(id))
-  );
-  if (!covered) {
-    requireInventoryRefresh(inventoryId, event.revision);
+
+  const filesByID = new Map(event.files.map((file) => [authFileStableID(file), file]));
+  const covered = event.ids.every((id) => filesByID.has(id));
+  const allOnPage = event.ids.every((id) => pageIDs.has(id));
+  if (!covered || event.action === 'added' || !allOnPage) {
+    useAuthInventoryStore.setState({ inventoryId, revision: event.revision });
+    targetInventoryId = inventoryId;
+    targetRevision = event.revision;
+    scheduleInventoryRefresh();
     return;
   }
-  useAuthInventoryStore.setState((current) => ({
-    files: upsertInventoryFiles(current.files, event.files),
-    inventoryId,
-    revision: event.revision,
-  }));
+
+  useAuthInventoryStore.setState((current) => {
+    const nextFiles = updatePageFiles(current.files, event.files, false);
+    return {
+      ...replacePageFiles(nextFiles),
+      inventoryId,
+      revision: event.revision,
+    };
+  });
   targetInventoryId = inventoryId;
   targetRevision = event.revision;
+  scheduleInventoryRefresh();
 };
 
 const consumeInventoryStream = async (response: Response, signal: AbortSignal) => {
@@ -273,37 +404,56 @@ const runInventoryStream = async (generation: number, signal: AbortSignal) => {
   }
 };
 
-export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
-  files: [],
+const initialInventoryState = () => ({
+  files: [] as AuthFileItem[],
+  filesById: {} as Record<string, AuthFileItem>,
   inventoryId: '',
   revision: 0,
+  total: 0,
+  limit: DEFAULT_PAGE_LIMIT,
+  hasMore: false,
+  nextCursor: '',
+  cursor: '',
+  cursorHistory: [] as string[],
+  page: 1,
+  query: { ...EMPTY_QUERY },
+  providerTotals: {} as Record<string, number>,
+  groupTotals: {} as Record<string, number>,
   loading: false,
   error: '',
   streamConnected: false,
+});
+
+export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
+  ...initialInventoryState(),
 
   refresh: async (fresh = false) => {
     const generation = refreshGeneration;
+    const stateAtStart = get();
+    const requestQuery = normalizeQuery(stateAtStart.query);
+    const requestCursor = stateAtStart.cursor;
+    const requestKey = queryKey(requestQuery, requestCursor);
     const activeRefresh = refreshPromise;
-    if (activeRefresh && refreshPromiseGeneration === generation) {
+    if (
+      activeRefresh &&
+      refreshPromiseGeneration === generation &&
+      refreshPromiseKey === requestKey
+    ) {
       if (!fresh) return activeRefresh;
       await activeRefresh.catch(() => undefined);
-      if (generation !== refreshGeneration) {
-        return get().refresh(true);
-      }
-      if (
-        refreshPromise &&
-        refreshPromise !== activeRefresh &&
-        refreshPromiseGeneration === generation
-      ) {
-        return refreshPromise;
-      }
+      if (generation !== refreshGeneration) return get().refresh(true);
     }
 
     set({ loading: true });
     const request = authFilesApi
-      .list()
+      .list({ ...requestQuery, cursor: requestCursor || undefined })
       .then((response) => {
-        if (generation !== refreshGeneration) return inventorySnapshot(get());
+        if (
+          generation !== refreshGeneration ||
+          requestKey !== queryKey(get().query, get().cursor)
+        ) {
+          return inventorySnapshot(get());
+        }
         const revision = normalizeRevision(response.revision);
         const inventoryId = String(response.inventory_id ?? '').trim();
         const current = get();
@@ -314,14 +464,24 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
         const inventoryChanged = Boolean(
           inventoryId && current.inventoryId && inventoryId !== current.inventoryId
         );
-        set((state) => {
+        set((latest) => {
           const sameInventory =
-            !inventoryId || !state.inventoryId || inventoryId === state.inventoryId;
-          if (sameInventory && revision < state.revision) return { loading: false };
+            !inventoryId || !latest.inventoryId || inventoryId === latest.inventoryId;
+          if (sameInventory && revision < latest.revision) return { loading: false };
+          const files = response.files ?? [];
           return {
-            files: response.files ?? [],
-            inventoryId: inventoryId || state.inventoryId,
+            ...replacePageFiles(files),
+            inventoryId: inventoryId || latest.inventoryId,
             revision,
+            total: normalizePositiveInteger(response.total, files.length),
+            limit: normalizePositiveInteger(
+              response.limit,
+              requestQuery.limit ?? DEFAULT_PAGE_LIMIT
+            ),
+            hasMore: response.has_more === true,
+            nextCursor: String(response.next_cursor ?? '').trim(),
+            providerTotals: normalizeProviderTotals(response.provider_totals),
+            groupTotals: normalizeProviderTotals(response.group_totals),
             loading: false,
             error: '',
           };
@@ -349,6 +509,7 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
         if (refreshPromise === request) {
           refreshPromise = null;
           refreshPromiseGeneration = -1;
+          refreshPromiseKey = '';
         }
         if (generation !== refreshGeneration) return;
         const state = useAuthInventoryStore.getState();
@@ -361,13 +522,72 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
       });
     refreshPromise = request;
     refreshPromiseGeneration = generation;
+    refreshPromiseKey = requestKey;
     return request;
   },
 
+  setQuery: async (query) => {
+    const normalized = normalizeQuery(query);
+    const current = get();
+    if (queryKey(normalized, '') === queryKey(current.query, '') && !current.cursor) {
+      return current.refresh();
+    }
+    refreshGeneration++;
+    set({
+      query: normalized,
+      cursor: '',
+      cursorHistory: [],
+      page: 1,
+      nextCursor: '',
+      hasMore: false,
+    });
+    return get().refresh(true);
+  },
+
+  nextPage: async () => {
+    const current = get();
+    if (!current.hasMore || !current.nextCursor || current.loading)
+      return inventorySnapshot(current);
+    refreshGeneration++;
+    set({
+      cursorHistory: [...current.cursorHistory, current.cursor],
+      cursor: current.nextCursor,
+      page: current.page + 1,
+      nextCursor: '',
+      hasMore: false,
+    });
+    try {
+      return await get().refresh(true);
+    } catch (error) {
+      const status = Number((error as { status?: unknown })?.status);
+      if (status !== 409) throw error;
+      refreshGeneration++;
+      set({ cursor: '', cursorHistory: [], page: 1 });
+      return get().refresh(true);
+    }
+  },
+
+  previousPage: async () => {
+    const current = get();
+    if (current.cursorHistory.length === 0 || current.loading) return inventorySnapshot(current);
+    const history = [...current.cursorHistory];
+    const cursor = history.pop() ?? '';
+    refreshGeneration++;
+    set({
+      cursor,
+      cursorHistory: history,
+      page: Math.max(1, current.page - 1),
+      nextCursor: '',
+      hasMore: false,
+    });
+    return get().refresh(true);
+  },
+
   setFiles: (updater) => {
-    set((state) => ({
-      files: typeof updater === 'function' ? updater(state.files) : updater,
-    }));
+    set((state) => {
+      const files = typeof updater === 'function' ? updater(state.files) : updater;
+      return replacePageFiles(files);
+    });
   },
 
   commitMutationVersion: (inventoryId, revision, files = []) => {
@@ -384,9 +604,7 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
         await get().refresh();
         await runInventoryStream(generation, controller.signal);
       } catch {
-        if (!controller.signal.aborted) {
-          await runInventoryStream(generation, controller.signal);
-        }
+        if (!controller.signal.aborted) await runInventoryStream(generation, controller.signal);
       } finally {
         if (generation === streamGeneration) {
           streamTask = null;
@@ -411,14 +629,7 @@ export const useAuthInventoryStore = create<AuthInventoryState>((set, get) => ({
       targetInventoryId = '';
       targetRevision = 0;
       requiredInventoryId = '';
-      set({
-        files: [],
-        inventoryId: '',
-        revision: 0,
-        loading: false,
-        error: '',
-        streamConnected: false,
-      });
+      set(initialInventoryState());
     } else {
       set({ streamConnected: false });
     }

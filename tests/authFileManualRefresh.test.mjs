@@ -36,6 +36,20 @@ try {
           empty: 0,
           malformed: 'not-a-number',
         },
+        entries: [
+          {
+            credential_id: 'credential-1',
+            auth_index: 'codex:user',
+            status: 'queued',
+            reason: '',
+          },
+          {
+            credential_id: 'credential-2',
+            auth_index: 'codex:invalid',
+            status: 'skipped',
+            reason: 'auth_invalid',
+          },
+        ],
       }),
       {
         status: 'accepted',
@@ -45,6 +59,20 @@ try {
         alreadyProbing: 1,
         maximumParallel: 4,
         skipped: { auth_invalid: 2, excluded: 1 },
+        entries: [
+          {
+            credentialId: 'credential-1',
+            authIndex: 'codex:user',
+            status: 'queued',
+            reason: '',
+          },
+          {
+            credentialId: 'credential-2',
+            authIndex: 'codex:invalid',
+            status: 'skipped',
+            reason: 'auth_invalid',
+          },
+        ],
       }
     );
   });
@@ -68,12 +96,11 @@ try {
       const result = await authFiles.authFilesApi.reprobeAvailability();
       assert.equal(result.queued, 1);
       assert.deepEqual(result.skipped, { auth_invalid: 1 });
+      assert.deepEqual(result.entries, []);
     } finally {
       apiClientModule.apiClient.post = originalPost;
     }
-    assert.deepEqual(calls, [
-      { url: '/auth-files/availability/reprobe', data: undefined },
-    ]);
+    assert.deepEqual(calls, [{ url: '/auth-files/availability/reprobe', data: undefined }]);
   });
 
   await test('patches expired for only the requested credential name', async () => {

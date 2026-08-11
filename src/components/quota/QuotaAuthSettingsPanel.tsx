@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -24,8 +24,9 @@ export function QuotaAuthSettingsPanel({ onHeaderActionChange }: QuotaAuthSettin
   const { t } = useTranslation();
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
 
-  const files = useAuthInventoryStore((state) => state.files);
+  const providerTotals = useAuthInventoryStore((state) => state.providerTotals);
   const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
+  const providerKeys = useMemo(() => Object.keys(providerTotals), [providerTotals]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -46,7 +47,7 @@ export function QuotaAuthSettingsPanel({ onHeaderActionChange }: QuotaAuthSettin
     handleToggleFork,
     handleRenameAlias,
     handleDeleteAlias,
-  } = useAuthFilesOauth({ viewMode, files });
+  } = useAuthFilesOauth({ viewMode, providerKeys });
 
   const disableControls = connectionStatus !== 'connected';
 

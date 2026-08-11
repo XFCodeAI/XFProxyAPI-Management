@@ -3,6 +3,8 @@
     "login": "Войти",
     "logout": "Выйти",
     "back": "Назад",
+    "previous": "Предыдущая",
+    "next": "Следующая",
     "cancel": "Отмена",
     "confirm": "Подтвердить",
     "leave": "Уйти",
@@ -375,6 +377,25 @@
     "availability_reprobe_queued": "В очередь поставлено {{queued}} проверок квоты; {{already}} уже выполняются, пропущено {{skipped}}.",
     "availability_reprobe_empty": "В таблицах маршрутизации и обновления нет учётных данных для проверки; пропущено {{skipped}}.",
     "availability_reprobe_failed": "Не удалось поставить проверки квоты в очередь: {{message}}",
+    "availability_reprobe_results_title": "Результаты повторной проверки доступности",
+    "availability_reprobe_requested": "Запрошено",
+    "availability_reprobe_eligible": "Допущено",
+    "availability_reprobe_status_queued": "В очереди",
+    "availability_reprobe_status_already": "Уже проверяется",
+    "availability_reprobe_status_skipped": "Пропущено",
+    "availability_reprobe_parallel": "Макс. параллельно",
+    "availability_reprobe_credential_id": "ID учётных данных",
+    "availability_reprobe_auth_index": "Индекс авторизации",
+    "availability_reprobe_reason": "Причина",
+    "availability_reprobe_no_entries": "Результаты по отдельным учётным данным не получены.",
+    "availability_reprobe_page": "{{page}} / {{pages}}",
+    "identity_changed": "Учётные данные изменились. Загружен актуальный список; повторите действие.",
+    "delete_second_title": "Подтвердите окончательное удаление",
+    "delete_second_confirm": "Удалить «{{name}}» навсегда? Это действие нельзя отменить.",
+    "delete_many_second_title": "Подтвердите окончательное удаление",
+    "delete_many_second_confirm": "Безвозвратно удалить все учётные данные в «{{scope}}»? Это действие нельзя отменить.",
+    "batch_delete_second_confirm": "Безвозвратно удалить выбранные учётные данные ({{count}})? Это действие нельзя отменить.",
+    "delete_second_action": "Удалить навсегда",
     "websockets_label": "WebSockets (websockets)",
     "websockets_hint": "Включает websocket-транспорт Responses API для этих учётных данных.",
     "using_api_label": "Использовать официальный API (using_api)",
@@ -427,6 +448,7 @@
     "plan_filter_label": "Фильтр тарифа",
     "plan_filter_all": "Все",
     "plan_filter_unverified": "Не проверен",
+    "credential_plan_badge": "Тариф {{plan}}",
     "sort_default": "По умолчанию",
     "sort_az": "A-Z Имя",
     "sort_priority": "Приоритет",
@@ -1215,6 +1237,7 @@
       "context_at_least": "Не менее {{value}} входных токенов",
       "context_at_most": "Не более {{value}} входных токенов",
       "sources": {
+        "models.dev": "models.dev",
         "litellm": "LiteLLM",
         "openrouter": "OpenRouter"
       },
@@ -1380,6 +1403,30 @@
       "title": "Импорт записей мониторинга",
       "message": "Импортировать очищенные записи из {{name}}? Существующие записи будут пропущены по идентификатору."
     },
+    "import_progress": {
+      "title": "Ход импорта мониторинга",
+      "pause": "Приостановить",
+      "resume": "Продолжить",
+      "retry": "Повторить",
+      "cancel": "Отменить импорт",
+      "phases": {
+        "preparing": "Подготовка импорта",
+        "uploading": "Загрузка записей",
+        "processing": "Применение записей",
+        "paused": "Импорт приостановлен",
+        "completed": "Импорт завершён",
+        "failed": "Ошибка импорта",
+        "cancelled": "Импорт отменён"
+      },
+      "bytes": "Загружено {{uploaded}} из {{total}}",
+      "processing_hint": "Сервер применяет загруженные записи.",
+      "paused_hint": "Сохранённую сессию можно продолжить с последнего подтверждённого блока.",
+      "result": {
+        "added": "Добавлено",
+        "skipped": "Пропущено",
+        "failed": "Ошибок"
+      }
+    },
     "retention": {
       "title": "Хранение данных мониторинга",
       "days": "Срок хранения в днях",
@@ -1394,6 +1441,7 @@
     "notifications": {
       "exported": "Записи мониторинга экспортированы",
       "imported": "Импортировано {{added}}, пропущено {{skipped}}, ошибок {{failed}}",
+      "import_cancelled": "Импорт мониторинга отменён",
       "retention_saved": "Настройки хранения мониторинга сохранены",
       "retention_ran": "Удалено {{deleted}} записей; ещё {{remaining}} подлежат удалению"
     },
@@ -1407,6 +1455,7 @@
       "invalid_range": "Выберите допустимый период времени.",
       "export": "Не удалось экспортировать записи мониторинга",
       "import": "Не удалось импортировать записи мониторинга",
+      "import_cancel": "Не удалось отменить импорт мониторинга",
       "import_file": "Выберите файл JSONL размером не более 32 МБ.",
       "retention": "Не удалось обновить настройки хранения мониторинга"
     }
@@ -2379,6 +2428,7 @@
       "probing": "Проверка",
       "half_open": "Пробный доступ",
       "auth_invalid": "Ошибка авторизации",
+      "excluded": "Исключено",
       "disabled": "Отключён"
     },
     "availability_model": "Модель: {{model}}",
@@ -2549,6 +2599,34 @@
         "authIndex": "Auth Index",
         "excludedModels": "Исключённых моделей",
         "apiKeyEntries": "API-ключей"
+      }
+    },
+    "imageRoute": {
+      "title": "Маршрут изображений Codex",
+      "toggle": "Включить маршрут изображений Codex",
+      "hint": "Направлять связанные с ходом Codex запросы изображений выбранному поставщику.",
+      "targetSupplier": "Целевой поставщик",
+      "targetModel": "Целевая модель изображений",
+      "selectSupplier": "Выберите поставщика изображений",
+      "selectModel": "Выберите модель изображений",
+      "configuredSummary": "Маршрут: {{supplier}} / {{model}}",
+      "status": {
+        "disabled": "Отключено",
+        "configured": "Настроено",
+        "invalid": "Недействительно",
+        "unavailable": "Недоступно"
+      },
+      "issues": {
+        "targetSupplierRequired": "Выберите целевого поставщика.",
+        "targetModelRequired": "Выберите целевую модель изображений.",
+        "supplierMissing": "Целевой поставщик {{supplier}} больше не существует. Перед сохранением выберите другого.",
+        "supplierAmbiguous": "Имя целевого поставщика {{supplier}} дублируется и не может быть безопасно использовано.",
+        "modelMissing": "Модель изображений {{model}} больше не существует у {{supplier}}. Перед сохранением выберите другую.",
+        "modelAmbiguous": "Модель изображений {{model}} дублируется у {{supplier}} и не может быть безопасно использована.",
+        "modelNotImage": "Модель {{model}} у {{supplier}} не отмечена как поддерживающая изображения.",
+        "supplierDisabled": "Целевой поставщик {{supplier}} отключён.",
+        "supplierNoCredentials": "У целевого поставщика {{supplier}} нет доступных API-ключей.",
+        "supplierNotReady": "Целевой поставщик {{supplier}} сейчас недоступен для планирования."
       }
     },
     "failures": {
@@ -2756,6 +2834,33 @@
       "balanceUnavailable": "Баланс не возвращён",
       "updatedAt": "Обновлено {{time}}",
       "error": "{{reason}} (HTTP {{status}})"
+    },
+    "availabilityRecovery": {
+      "actions": {
+        "ready": "Повторно проверить доступность поставщика",
+        "recover": "Проверить и восстановить поставщика",
+        "probing": "Идет восстановление доступности поставщика",
+        "disabled": "Включите поставщика перед восстановлением",
+        "missing_runtime": "Для поставщика не зарегистрирован рабочий API-ключ",
+        "unsupported": "Поставщик не поддерживает проверку доступности"
+      },
+      "summary": "В очереди: {{queued}}, уже проверяются: {{alreadyProbing}}, пропущено: {{skipped}}.",
+      "partialEntry": "{{key}}: {{reason}}",
+      "failed": "Не удалось восстановить поставщика: {{reason}}",
+      "waitReason": "Ожидание квоты: {{reason}}",
+      "nextProbe": "Следующая проверка: {{time}}",
+      "reasons": {
+        "usage_exhausted": "Баланс исчерпан",
+        "probe_rate_limited": "Проверка ограничена по частоте",
+        "authentication_invalid": "Ошибка авторизации",
+        "probe_unknown": "Результат проверки недоступен",
+        "disabled": "Поставщик отключен",
+        "feature_disabled": "Восстановление доступности отключено в конфигурации",
+        "missing_runtime": "Рабочий API-ключ недоступен",
+        "queue_unavailable": "Очередь восстановления недоступна",
+        "unknown_state": "Текущее состояние нельзя восстановить",
+        "unsupported": "Проверка доступности не поддерживается"
+      }
     }
   },
   "proxy_pools": {

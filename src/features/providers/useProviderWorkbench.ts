@@ -241,6 +241,13 @@ const buildOpenAIConfig = (
     concurrencyMode: concurrency.mode,
     maxConcurrency: concurrency.maxConcurrency,
     testModel: input.testModel?.trim() || undefined,
+    codexImageRoute: input.codexImageRoute?.enabled
+      ? {
+          enabled: true,
+          targetSupplier: input.codexImageRoute.targetSupplier.trim(),
+          targetModel: input.codexImageRoute.targetModel.trim(),
+        }
+      : undefined,
   };
 };
 

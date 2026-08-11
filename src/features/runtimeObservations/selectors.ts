@@ -91,6 +91,7 @@ const availabilityRank: Record<RuntimeAvailabilityState, number> = {
   probing: 4,
   disabled: 5,
   auth_invalid: 6,
+  excluded: 7,
 };
 
 const aggregateAvailabilityCounts = (
@@ -104,6 +105,7 @@ const aggregateAvailabilityCounts = (
       probing: counts.probing + item.availabilityCounts.probing,
       halfOpen: counts.halfOpen + item.availabilityCounts.halfOpen,
       authInvalid: counts.authInvalid + item.availabilityCounts.authInvalid,
+      excluded: counts.excluded + item.availabilityCounts.excluded,
       disabled: counts.disabled + item.availabilityCounts.disabled,
     }),
     {
@@ -113,6 +115,7 @@ const aggregateAvailabilityCounts = (
       probing: 0,
       halfOpen: 0,
       authInvalid: 0,
+      excluded: 0,
       disabled: 0,
     }
   );
@@ -159,6 +162,7 @@ export const getProviderRuntimeObservation = (
   });
   const capacityResources = suppliers.size > 0 ? Array.from(suppliers.values()) : credentials;
   const availability = dominantAvailability(capacityResources);
+  const excludedHealth = capacityResources.find((item) => item.healthExcluded);
   return {
     id: resource.id,
     authIndex: '',
@@ -180,5 +184,12 @@ export const getProviderRuntimeObservation = (
     availabilityDeadline: availability?.availabilityDeadline ?? '',
     availabilityUpdatedAt: availability?.availabilityUpdatedAt ?? '',
     availabilityCounts: aggregateAvailabilityCounts(capacityResources),
+    healthFailureStreak: capacityResources.reduce(
+      (maximum, item) => Math.max(maximum, item.healthFailureStreak),
+      0
+    ),
+    healthExcluded: Boolean(excludedHealth),
+    healthExclusionCode: excludedHealth?.healthExclusionCode ?? '',
+    healthExcludedAt: excludedHealth?.healthExcludedAt ?? '',
   };
 };

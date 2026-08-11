@@ -7,6 +7,7 @@ import {
   IconCheck,
   IconExternalLink,
   IconLoader2,
+  IconNetwork,
   IconX,
 } from '@/components/ui/icons';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
@@ -22,6 +23,11 @@ import type { SupplierBillingProbeEntry } from '@/services/api/supplierBillingPr
 import { formatDateTimeValue, maskApiKey } from '@/utils/format';
 import { getErrorMessage } from '@/utils/helpers';
 import type { ProviderResource, SponsorProviderRaw } from '../types';
+import {
+  buildCodexImageRouteSupplierCatalog,
+  formatCodexImageRouteModel,
+  inspectCodexImageRoute,
+} from '../codexImageRoute';
 import {
   buildRuntimeCredentialIDByAuthIndex,
   getProviderRuntimeCredentials,
@@ -40,6 +46,7 @@ import { statusBarDataFromRecentRequests } from '@/utils/recentRequests';
 
 interface ResourceDetailViewProps {
   resource: ProviderResource;
+  imageRouteResources?: readonly ProviderResource[];
   usageByProvider?: ProviderRecentUsageMap;
   focusFailureHistory?: boolean;
   billingProbeEntries?: readonly SupplierBillingProbeEntry[];
@@ -64,6 +71,7 @@ const kimiBillingAPIKeyEntries = (raw: SponsorProviderRaw): ApiKeyEntry[] => [
 
 export function ResourceDetailView({
   resource,
+  imageRouteResources = [],
   usageByProvider,
   focusFailureHistory = false,
   billingProbeEntries = [],
@@ -129,6 +137,59 @@ export function ResourceDetailView({
     resource.brand === 'openaiCompatibility'
       ? ((resource.usageRaw ?? resource.raw) as OpenAIProviderConfig)
       : null;
+  const imageRouteSuppliers = useMemo(
+    () => buildCodexImageRouteSupplierCatalog(imageRouteResources),
+    [imageRouteResources]
+  );
+  const imageRouteInspection = useMemo(
+    () => inspectCodexImageRoute(openaiConfig?.codexImageRoute, imageRouteSuppliers),
+    [imageRouteSuppliers, openaiConfig?.codexImageRoute]
+  );
+  const imageRouteIssueMessage = (() => {
+    switch (imageRouteInspection.issue) {
+      case 'target_supplier_required':
+        return t('providersPage.imageRoute.issues.targetSupplierRequired');
+      case 'target_model_required':
+        return t('providersPage.imageRoute.issues.targetModelRequired');
+      case 'supplier_missing':
+        return t('providersPage.imageRoute.issues.supplierMissing', {
+          supplier: imageRouteInspection.targetSupplier,
+        });
+      case 'supplier_ambiguous':
+        return t('providersPage.imageRoute.issues.supplierAmbiguous', {
+          supplier: imageRouteInspection.targetSupplier,
+        });
+      case 'model_missing':
+        return t('providersPage.imageRoute.issues.modelMissing', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+          model: imageRouteInspection.targetModel,
+        });
+      case 'model_ambiguous':
+        return t('providersPage.imageRoute.issues.modelAmbiguous', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+          model: imageRouteInspection.targetModel,
+        });
+      case 'model_not_image':
+        return t('providersPage.imageRoute.issues.modelNotImage', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+          model: imageRouteInspection.targetModel,
+        });
+      case 'supplier_disabled':
+        return t('providersPage.imageRoute.issues.supplierDisabled', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+        });
+      case 'supplier_no_credentials':
+        return t('providersPage.imageRoute.issues.supplierNoCredentials', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+        });
+      case 'supplier_not_ready':
+        return t('providersPage.imageRoute.issues.supplierNotReady', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+        });
+      default:
+        return '';
+    }
+  })();
   const apiKeyEntries = openaiConfig?.apiKeyEntries ?? [];
   const billingApiKeyEntries: ApiKeyEntry[] = openaiConfig
     ? apiKeyEntries
@@ -254,6 +315,43 @@ export function ResourceDetailView({
           </div>
         ))}
       </dl>
+
+      {openaiConfig?.codexImageRoute ? (
+        <section className={styles.imageRouteDetailSection}>
+          <div className={styles.imageRouteDetailHeader}>
+            <div className={styles.apiKeyEntriesLabel}>{t('providersPage.imageRoute.title')}</div>
+            <span
+              className={`${styles.imageRouteBadge} ${styles[`imageRouteBadge_${imageRouteInspection.status}`]}`}
+            >
+              <IconNetwork size={13} />
+              {t(`providersPage.imageRoute.status.${imageRouteInspection.status}`)}
+            </span>
+          </div>
+          {imageRouteInspection.status !== 'disabled' ? (
+            <dl className={styles.imageRouteDetailGrid}>
+              <div>
+                <dt>{t('providersPage.imageRoute.targetSupplier')}</dt>
+                <dd>
+                  {imageRouteInspection.supplier?.name ||
+                    imageRouteInspection.targetSupplier ||
+                    t('providersPage.status.notSet')}
+                </dd>
+              </div>
+              <div>
+                <dt>{t('providersPage.imageRoute.targetModel')}</dt>
+                <dd>
+                  {imageRouteInspection.model
+                    ? formatCodexImageRouteModel(imageRouteInspection.model)
+                    : imageRouteInspection.targetModel || t('providersPage.status.notSet')}
+                </dd>
+              </div>
+            </dl>
+          ) : null}
+          {imageRouteIssueMessage ? (
+            <p className={styles.imageRouteDetailMessage}>{imageRouteIssueMessage}</p>
+          ) : null}
+        </section>
+      ) : null}
 
       {totalStats && recentStatus ? (
         <section className={styles.detailUsageSection}>

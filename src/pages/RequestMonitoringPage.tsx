@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { TooltipIconButton } from '@/components/ui/TooltipControls';
 import {
   isMonitoringCapabilityUnavailable,
+  isMonitoringImportSessionsUnavailable,
   buildMonitoringQuery,
   requestMonitoringApi,
   type MonitoringIdentity,
@@ -36,6 +37,18 @@ import {
   type MonitoringQueryInput,
   type MonitoringRetention,
 } from '@/services/api';
+import {
+  loadMonitoringTabSections,
+  type MonitoringTab,
+} from '@/features/requestMonitoring/loadMonitoringTabSections';
+import {
+  cancelMonitoringImportFile,
+  isMonitoringImportCancelledError,
+  isMonitoringImportPausedError,
+  uploadMonitoringImportFile,
+  type MonitoringImportProgress,
+} from '@/features/requestMonitoring/importSession';
+import { MonitoringImportProgressModal } from '@/features/requestMonitoring/MonitoringImportProgressModal';
 import {
   buildMonitoringRange,
   buildMonitoringRequestQuery,
@@ -55,12 +68,15 @@ import {
 } from '@/features/requestMonitoring/viewModel';
 import { reconcileCredentialIdentityCatalog } from '@/features/authFiles/credentialIdentityCatalog';
 import { useDebouncedValue, useLatestAsyncSection } from '@/hooks';
-import { useAuthInventoryStore, useAuthStore, useNotificationStore } from '@/stores';
+import {
+  authInventoryPageIsComplete,
+  useAuthInventoryStore,
+  useAuthStore,
+  useNotificationStore,
+} from '@/stores';
 import { downloadBlob } from '@/utils/download';
 import { getErrorMessage } from '@/utils/helpers';
 import styles from './RequestMonitoringPage.module.scss';
-
-type MonitoringTab = 'credentials' | 'api_keys' | 'requests';
 
 const TIME_RANGES: MonitoringTimeRange[] = ['1h', '24h', '7d', '30d', 'custom'];
 const AUTO_REFRESH_OPTIONS = ['0', '10000', '30000', '60000'];
@@ -147,7 +163,9 @@ export function RequestMonitoringPage() {
     parseMonitoringDrillQuery(`${location.pathname}${location.search}`)
   );
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
+  const apiBase = useAuthStore((state) => state.apiBase);
   const authFiles = useAuthInventoryStore((state) => state.files);
+  const authInventoryComplete = useAuthInventoryStore(authInventoryPageIsComplete);
   const credentialInventoryId = useAuthInventoryStore((state) => state.inventoryId);
   const credentialRevision = useAuthInventoryStore((state) => state.revision);
   const showNotification = useNotificationStore((state) => state.showNotification);
@@ -162,8 +180,9 @@ export function RequestMonitoringPage() {
     useLatestAsyncSection<Awaited<ReturnType<typeof requestMonitoringApi.getRequests>>>();
   const { run: runSummary } = summarySection;
   const { run: runFacets } = facetsSection;
-  const { run: runIdentities } = identitiesSection;
+  const { run: runIdentities, cancel: cancelIdentities } = identitiesSection;
   const { data: requestsSectionData, run: runRequests } = requestsSection;
+  const { cancel: cancelRequests } = requestsSection;
   const [rangeError, setRangeError] = useState('');
   const [activeTab, setActiveTab] = useState<MonitoringTab>('requests');
   const [timeRange, setTimeRange] = useState<MonitoringTimeRange>(
@@ -189,7 +208,13 @@ export function RequestMonitoringPage() {
   const [expandedRequestIDs, setExpandedRequestIDs] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importControlBusy, setImportControlBusy] = useState(false);
+  const [importProgressOpen, setImportProgressOpen] = useState(false);
+  const [importProgress, setImportProgress] = useState<MonitoringImportProgress | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const importFileRef = useRef<File | null>(null);
+  const importControllerRef = useRef<AbortController | null>(null);
+  const importRunRef = useRef(0);
   const activeQueryRef = useRef<MonitoringQueryInput | null>(null);
   const detailControllersRef = useRef(new Map<string, AbortController>());
   const [requestDetails, setRequestDetails] = useState<Record<string, MonitoringRequest>>({});
@@ -231,13 +256,26 @@ export function RequestMonitoringPage() {
     };
     activeQueryRef.current = query;
     const key = buildMonitoringQuery(query);
-    await Promise.all([
-      runSummary(key, (signal) => requestMonitoringApi.getSummary(query, signal)),
-      runFacets(key, (signal) => requestMonitoringApi.getFacets(query, signal)),
-      runIdentities(key, (signal) => requestMonitoringApi.getIdentities(query, signal)),
-      runRequests(key, (signal) => requestMonitoringApi.getRequests(query, signal)),
-    ]);
-  }, [debouncedCriteria, runFacets, runIdentities, runRequests, runSummary, t]);
+    if (activeTab === 'requests') cancelIdentities();
+    else cancelRequests();
+    await loadMonitoringTabSections(activeTab, {
+      summary: () => runSummary(key, (signal) => requestMonitoringApi.getSummary(query, signal)),
+      facets: () => runFacets(key, (signal) => requestMonitoringApi.getFacets(query, signal)),
+      identities: () =>
+        runIdentities(key, (signal) => requestMonitoringApi.getIdentities(query, signal)),
+      requests: () => runRequests(key, (signal) => requestMonitoringApi.getRequests(query, signal)),
+    });
+  }, [
+    activeTab,
+    cancelIdentities,
+    cancelRequests,
+    debouncedCriteria,
+    runFacets,
+    runIdentities,
+    runRequests,
+    runSummary,
+    t,
+  ]);
 
   const refreshMonitoring = loadMonitoring;
 
@@ -264,6 +302,8 @@ export function RequestMonitoringPage() {
   useEffect(
     () => () => {
       detailControllersRef.current.forEach((controller) => controller.abort());
+      importRunRef.current += 1;
+      importControllerRef.current?.abort();
     },
     []
   );
@@ -371,26 +411,145 @@ export function RequestMonitoringPage() {
     }
   };
 
+  const showImportResult = (result: { added: number; skipped: number; failed: number }) => {
+    showNotification(
+      t('request_monitoring.notifications.imported', {
+        added: result.added,
+        skipped: result.skipped,
+        failed: result.failed,
+      }),
+      result.failed > 0 ? 'warning' : 'success'
+    );
+  };
+
   const importFile = async (file: File) => {
+    const runID = ++importRunRef.current;
+    const controller = new AbortController();
+    importControllerRef.current = controller;
+    importFileRef.current = file;
     setImporting(true);
+    setImportProgressOpen(true);
+    let sessionStarted = false;
     try {
-      const result = await requestMonitoringApi.import(file);
-      showNotification(
-        t('request_monitoring.notifications.imported', {
-          added: result.added,
-          skipped: result.skipped,
-          failed: result.failed,
-        }),
-        result.failed > 0 ? 'warning' : 'success'
-      );
+      let result: Awaited<ReturnType<typeof requestMonitoringApi.import>>;
+      try {
+        result = await uploadMonitoringImportFile({
+          scope: apiBase,
+          file,
+          signal: controller.signal,
+          onProgress: (nextProgress) => {
+            if (nextProgress.sessionId) sessionStarted = true;
+            if (importRunRef.current === runID) setImportProgress(nextProgress);
+          },
+        });
+      } catch (error: unknown) {
+        if (!sessionStarted && isMonitoringImportSessionsUnavailable(error)) {
+          if (importRunRef.current === runID) {
+            setImportProgress(null);
+            setImportProgressOpen(false);
+          }
+          result = await requestMonitoringApi.import(file);
+        } else {
+          throw error;
+        }
+      }
+      if (importRunRef.current !== runID) return;
+      showImportResult(result);
       await refreshMonitoring();
+      if (importRunRef.current === runID) importFileRef.current = null;
     } catch (error: unknown) {
+      if (importRunRef.current !== runID) return;
+      if (isMonitoringImportPausedError(error) || isMonitoringImportCancelledError(error)) return;
       showNotification(
         `${t('request_monitoring.errors.import')}: ${getErrorMessage(error, t('common.unknown_error'))}`,
         'error'
       );
     } finally {
-      setImporting(false);
+      if (importRunRef.current === runID) {
+        setImporting(false);
+        if (importControllerRef.current === controller) importControllerRef.current = null;
+      }
+    }
+  };
+
+  const pauseImport = () => {
+    importControllerRef.current?.abort();
+  };
+
+  const resumeImport = () => {
+    const file = importFileRef.current;
+    if (!file || importing || importControlBusy) return;
+    void importFile(file);
+  };
+
+  const cancelImport = async () => {
+    const sessionID = importProgress?.sessionId;
+    if (!sessionID || importControlBusy) return;
+    const runID = ++importRunRef.current;
+    importControllerRef.current?.abort();
+    importControllerRef.current = null;
+    setImporting(false);
+    setImportControlBusy(true);
+    setImportProgress((current) =>
+      current ? { ...current, phase: 'paused', retryable: true } : current
+    );
+    try {
+      const session = await cancelMonitoringImportFile({
+        scope: apiBase,
+        sessionId: sessionID,
+        file: importFileRef.current ?? undefined,
+      });
+      if (importRunRef.current !== runID) return;
+      if (session?.status === 'completed' && session.result) {
+        setImportProgress({
+          sessionId: session.id,
+          filename: importProgress?.filename ?? session.filename,
+          phase: 'completed',
+          status: session.status,
+          uploadedBytes: session.receivedBytes,
+          totalBytes: session.sizeBytes,
+          percent: 100,
+          retryable: false,
+          result: session.result,
+        });
+        showImportResult(session.result);
+        await refreshMonitoring();
+      } else {
+        setImportProgress((current) =>
+          current
+            ? {
+                ...current,
+                phase: 'cancelled',
+                status: session?.status ?? 'cancelled',
+                retryable: false,
+                error: undefined,
+              }
+            : current
+        );
+        showNotification(t('request_monitoring.notifications.import_cancelled'), 'success');
+      }
+      importFileRef.current = null;
+    } catch (error: unknown) {
+      if (importRunRef.current !== runID) return;
+      showNotification(
+        `${t('request_monitoring.errors.import_cancel')}: ${getErrorMessage(error, t('common.unknown_error'))}`,
+        'error'
+      );
+    } finally {
+      if (importRunRef.current === runID) setImportControlBusy(false);
+    }
+  };
+
+  const closeImportProgress = () => {
+    if (importing || importControlBusy) return;
+    setImportProgressOpen(false);
+    if (
+      importProgress?.phase === 'completed' ||
+      importProgress?.phase === 'cancelled' ||
+      (importProgress?.phase === 'failed' && !importProgress.retryable)
+    ) {
+      setImportProgress(null);
+      importFileRef.current = null;
     }
   };
 
@@ -408,7 +567,7 @@ export function RequestMonitoringPage() {
       confirmText: t('request_monitoring.actions.import'),
       cancelText: t('common.cancel'),
       variant: 'primary',
-      onConfirm: () => importFile(file),
+      onConfirm: () => void importFile(file),
     });
   };
 
@@ -490,19 +649,16 @@ export function RequestMonitoringPage() {
   const loading =
     summarySection.loading ||
     facetsSection.loading ||
-    identitiesSection.loading ||
-    requestsSection.loading;
+    (activeTab === 'requests' ? requestsSection.loading : identitiesSection.loading);
   const sectionErrors = [
     summarySection.error,
     facetsSection.error,
-    identitiesSection.error,
-    requestsSection.error,
+    activeTab === 'requests' ? requestsSection.error : identitiesSection.error,
   ].filter((error): error is unknown => Boolean(error));
   const capabilityUnavailable =
     !summaryData &&
     !facetsData &&
-    !identitiesData &&
-    !requestsData &&
+    !(activeTab === 'requests' ? requestsData : identitiesData) &&
     sectionErrors.some(isMonitoringCapabilityUnavailable);
   const summaryError = summarySection.error
     ? getErrorMessage(summarySection.error, t('request_monitoring.errors.load_summary'))
@@ -548,8 +704,13 @@ export function RequestMonitoringPage() {
     [facetsData?.facets.requestedModels, i18n.language, t]
   );
   const credentialCatalog = useMemo(
-    () => reconcileCredentialIdentityCatalog(identitiesData?.credentialCatalog ?? [], authFiles),
-    [authFiles, identitiesData?.credentialCatalog]
+    () =>
+      reconcileCredentialIdentityCatalog(
+        identitiesData?.credentialCatalog ?? [],
+        authFiles,
+        authInventoryComplete
+      ),
+    [authFiles, authInventoryComplete, identitiesData?.credentialCatalog]
   );
   const credentialRows = useMemo(
     () =>
@@ -860,7 +1021,7 @@ export function RequestMonitoringPage() {
           <TooltipIconButton
             label={t('request_monitoring.actions.import')}
             onClick={() => importInputRef.current?.click()}
-            disabled={disabled || importing}
+            disabled={disabled || importing || importControlBusy}
           >
             <Upload size={16} />
           </TooltipIconButton>
@@ -1215,6 +1376,16 @@ export function RequestMonitoringPage() {
           </section>
         </>
       )}
+
+      <MonitoringImportProgressModal
+        open={importProgressOpen}
+        progress={importProgress}
+        busy={importControlBusy}
+        onPause={pauseImport}
+        onResume={resumeImport}
+        onCancel={() => void cancelImport()}
+        onClose={closeImportProgress}
+      />
 
       <Modal
         open={retentionOpen}

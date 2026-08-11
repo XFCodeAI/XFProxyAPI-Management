@@ -4,14 +4,12 @@ import { apiClient } from './client';
 
 export type DecimalString = string;
 export type ModelPriceCoverage = 'priced' | 'partial' | 'unpriced';
-export type ModelPriceSyncSource = 'litellm' | 'openrouter';
+export const MODEL_PRICE_SYNC_SOURCES = ['models.dev', 'litellm', 'openrouter'] as const;
+export type ModelPriceSyncSource = (typeof MODEL_PRICE_SYNC_SOURCES)[number];
+const isModelPriceSyncSource = (value: unknown): value is ModelPriceSyncSource =>
+  MODEL_PRICE_SYNC_SOURCES.some((source) => source === value);
 export type ModelPriceSyncCandidateStatus =
-  | 'ready'
-  | 'partial'
-  | 'ambiguous'
-  | 'unmatched'
-  | 'provider_incompatible'
-  | 'rejected';
+  'ready' | 'partial' | 'ambiguous' | 'unmatched' | 'provider_incompatible' | 'rejected';
 
 export interface ModelPriceDimensions {
   inputPerMillion: DecimalString | null;
@@ -265,7 +263,7 @@ const requireArray = (record: Record<string, unknown>, key: string, context: str
 };
 
 const normalizeSyncSource = (value: unknown, context: string): ModelPriceSyncSource => {
-  if (value === 'litellm' || value === 'openrouter') return value;
+  if (isModelPriceSyncSource(value)) return value;
   return invalidResponse(context);
 };
 
@@ -313,7 +311,7 @@ const normalizeMultipliers = (value: unknown, context: string): ModelPriceMultip
 const normalizeSource = (value: unknown, context: string): ModelPriceSource => {
   const record = requireRecord(value, context);
   const kind = requireString(record, 'kind', context);
-  if (kind !== 'manual' && kind !== 'litellm' && kind !== 'openrouter') {
+  if (kind !== 'manual' && !isModelPriceSyncSource(kind)) {
     return invalidResponse(`${context}.kind`);
   }
   return {

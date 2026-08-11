@@ -18,7 +18,6 @@ import {
   clearCredentialGroupFilterParams,
   credentialGroupKey,
   filterProviderGroupsByCredentialGroup,
-  hasExactCredentialGroup,
   readCredentialGroupFilter,
 } from './credentialGroupFilter';
 import type { ProviderPanelControls } from './components/ProviderResourcePanel';
@@ -90,10 +89,7 @@ export function ProvidersWorkbenchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const connectionStatus = useAuthStore((s) => s.connectionStatus);
   const { showNotification, showConfirmation } = useNotificationStore();
-  const authFiles = useAuthInventoryStore((state) => state.files);
-  const authInventoryId = useAuthInventoryStore((state) => state.inventoryId);
-  const authInventoryLoading = useAuthInventoryStore((state) => state.loading);
-  const refreshAuthInventory = useAuthInventoryStore((state) => state.refresh);
+  const authGroupTotals = useAuthInventoryStore((state) => state.groupTotals);
 
   const pageTransitionLayer = usePageTransitionLayer();
   const isCurrentLayer = pageTransitionLayer ? pageTransitionLayer.status === 'current' : true;
@@ -107,8 +103,8 @@ export function ProvidersWorkbenchPage() {
     resource: null,
   });
   const sheetRef = useRef<ProviderSheetHandle>(null);
-  const requestedAuthInventoryForGroupRef = useRef('');
   const appliedCredentialGroupFilterRef = useRef('');
+  const supplierRecoveryNotificationsRef = useRef(new Map<string, Promise<void>>());
 
   const connected = connectionStatus === 'connected';
   const credentialGroupFilter = useMemo(
@@ -127,24 +123,6 @@ export function ProvidersWorkbenchPage() {
     workbench.mutating ||
     workbench.isFetching ||
     workbench.isError;
-
-  useEffect(() => {
-    const filterKey = credentialGroupKey(credentialGroupFilter);
-    if (!filterKey) {
-      requestedAuthInventoryForGroupRef.current = '';
-      return;
-    }
-    if (!connected || authInventoryId || authInventoryLoading) return;
-    if (requestedAuthInventoryForGroupRef.current === filterKey) return;
-    requestedAuthInventoryForGroupRef.current = filterKey;
-    void refreshAuthInventory().catch(() => undefined);
-  }, [
-    authInventoryId,
-    authInventoryLoading,
-    connected,
-    credentialGroupFilter,
-    refreshAuthInventory,
-  ]);
 
   const persistUiState = useCallback(
     (updater: (prev: ProvidersWorkbenchUiState) => ProvidersWorkbenchUiState) => {
@@ -167,6 +145,10 @@ export function ProvidersWorkbenchPage() {
   );
 
   const allGroups = useMemo(() => workbench.snapshot?.groups ?? [], [workbench.snapshot]);
+  const imageRouteResources = useMemo(
+    () => allGroups.find((group) => group.id === 'openaiCompatibility')?.resources ?? [],
+    [allGroups]
+  );
   const groups = useMemo(
     () => filterProviderGroupsByCredentialGroup(allGroups, credentialGroupFilter),
     [allGroups, credentialGroupFilter]
@@ -280,6 +262,100 @@ export function ProvidersWorkbenchPage() {
     resources: visibleBillingResources,
   });
   const refetchBillingProbes = billingProbes.refetch;
+  const recoverSupplierAvailability = billingProbes.recoverSupplier;
+
+  const handleRecoverSuppliers = useCallback(
+    async (supplierIds: readonly string[]) => {
+      const normalizedSupplierIds = Array.from(
+        new Set(supplierIds.map((supplierId) => supplierId.trim()).filter(Boolean))
+      ).sort();
+      if (normalizedSupplierIds.length === 0) return;
+      const requestKey = normalizedSupplierIds.join('\u0000');
+      const existingRequest = supplierRecoveryNotificationsRef.current.get(requestKey);
+      if (existingRequest) {
+        await existingRequest;
+        return;
+      }
+      const request = (async () => {
+        const results = await Promise.allSettled(
+          normalizedSupplierIds.map((supplierId) => recoverSupplierAvailability(supplierId))
+        );
+        const accepted = results.flatMap((result) =>
+          result.status === 'fulfilled' ? [result.value] : []
+        );
+        const rejected = results.flatMap((result) =>
+          result.status === 'rejected' ? [result.reason] : []
+        );
+        if (accepted.length > 0) {
+          const queued = accepted.reduce((total, response) => total + response.queued, 0);
+          const alreadyProbing = accepted.reduce(
+            (total, response) => total + response.already_probing,
+            0
+          );
+          const skipped = accepted.reduce(
+            (total, response) =>
+              total + Object.values(response.skipped).reduce((sum, count) => sum + count, 0),
+            0
+          );
+          showNotification(
+            t('providersPage.availabilityRecovery.summary', {
+              queued,
+              alreadyProbing,
+              skipped,
+            }),
+            skipped > 0 ? 'warning' : queued > 0 ? 'success' : 'info'
+          );
+
+          const visibleEntries = Object.values(billingProbes.entriesByResource).flat();
+          const labelsByEntry = new Map(
+            visibleEntries.map((entry) => [
+              `${entry.supplier_id}\u0000${entry.entry_id}`,
+              entry.alias?.trim() || entry.entry_id,
+            ])
+          );
+          const partialFailures = accepted.flatMap((response) =>
+            response.entries.flatMap((entry) => {
+              if (entry.status !== 'skipped') return [];
+              const reason = entry.reason?.trim() || 'unknown_state';
+              const reasonText = t(`providersPage.availabilityRecovery.reasons.${reason}`, {
+                defaultValue: reason,
+              });
+              const label =
+                labelsByEntry.get(`${entry.supplier_id}\u0000${entry.entry_id}`) || entry.entry_id;
+              return [
+                t('providersPage.availabilityRecovery.partialEntry', {
+                  key: label,
+                  reason: reasonText,
+                }),
+              ];
+            })
+          );
+          if (partialFailures.length > 0) {
+            showNotification(partialFailures.join('; '), 'warning', 12_000);
+          }
+        }
+        if (rejected.length > 0) {
+          const reasons = rejected.map((reason) =>
+            reason instanceof Error ? reason.message : String(reason)
+          );
+          showNotification(
+            t('providersPage.availabilityRecovery.failed', { reason: reasons.join('; ') }),
+            'error',
+            12_000
+          );
+        }
+      })();
+      supplierRecoveryNotificationsRef.current.set(requestKey, request);
+      try {
+        await request;
+      } finally {
+        if (supplierRecoveryNotificationsRef.current.get(requestKey) === request) {
+          supplierRecoveryNotificationsRef.current.delete(requestKey);
+        }
+      }
+    },
+    [billingProbes.entriesByResource, recoverSupplierAvailability, showNotification, t]
+  );
 
   const handleRefresh = useCallback(async () => {
     await Promise.allSettled([
@@ -342,11 +418,8 @@ export function ProvidersWorkbenchPage() {
   );
   const matchingOAuthCount = useMemo(
     () =>
-      credentialGroupFilter
-        ? authFiles.filter((file) => hasExactCredentialGroup(file.groups, credentialGroupFilter))
-            .length
-        : 0,
-    [authFiles, credentialGroupFilter]
+      credentialGroupFilter ? (authGroupTotals[credentialGroupKey(credentialGroupFilter)] ?? 0) : 0,
+    [authGroupTotals, credentialGroupFilter]
   );
   const credentialGroupFilterState = classifyCredentialGroupFilterState({
     filter: credentialGroupFilter,
@@ -576,7 +649,10 @@ export function ProvidersWorkbenchPage() {
           disableMutations={disableMutations}
           usageByProvider={usageByProvider}
           billingProbeEntriesByResource={billingProbes.entriesByResource}
+          imageRouteResources={imageRouteResources}
           onRefreshBillingProbe={billingProbes.refreshTarget}
+          recoveringSupplierIds={billingProbes.recoveringSupplierIds}
+          onRecoverSuppliers={handleRecoverSuppliers}
           toolbarControls={toolbarControls}
           emptyText={
             credentialGroupFilter
@@ -608,6 +684,7 @@ export function ProvidersWorkbenchPage() {
         onCreated={handleCreated}
         onUpdated={handleUpdated}
         mutationDisabled={disableMutations}
+        imageRouteResources={imageRouteResources}
         usageByProvider={usageByProvider}
         billingProbeEntries={
           sheetState.resource

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { authFilesApi } from '@/services/api';
 import { useNotificationStore } from '@/stores';
-import type { AuthFileItem, OAuthModelAliasEntry } from '@/types';
+import type { OAuthModelAliasEntry } from '@/types';
 import type { AuthFileModelItem } from '@/features/authFiles/constants';
 import { normalizeProviderKey } from '@/features/authFiles/constants';
 
@@ -34,11 +34,11 @@ export type UseAuthFilesOauthResult = {
 
 export type UseAuthFilesOauthOptions = {
   viewMode: ViewMode;
-  files: AuthFileItem[];
+  providerKeys: string[];
 };
 
 export function useAuthFilesOauth(options: UseAuthFilesOauthOptions): UseAuthFilesOauthResult {
-  const { viewMode, files } = options;
+  const { viewMode, providerKeys } = options;
   const { t } = useTranslation();
   const { showNotification, showConfirmation } = useNotificationStore();
 
@@ -75,18 +75,12 @@ export function useAuthFilesOauth(options: UseAuthFilesOauthOptions): UseAuthFil
       if (key) providers.add(key);
     });
 
-    files.forEach((file) => {
-      if (typeof file.type === 'string') {
-        const key = file.type.trim().toLowerCase();
-        if (key) providers.add(key);
-      }
-      if (typeof file.provider === 'string') {
-        const key = file.provider.trim().toLowerCase();
-        if (key) providers.add(key);
-      }
+    providerKeys.forEach((provider) => {
+      const key = provider.trim().toLowerCase();
+      if (key) providers.add(key);
     });
     return Array.from(providers);
-  }, [files, modelAlias]);
+  }, [modelAlias, providerKeys]);
 
   useEffect(() => {
     if (viewMode !== 'diagram') return;

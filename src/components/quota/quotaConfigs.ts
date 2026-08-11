@@ -78,6 +78,7 @@ import {
   isXaiFile,
 } from '@/utils/quota';
 import { normalizeAuthIndex } from '@/utils/authIndex';
+import { readAuthFileCredentialIdentity } from '@/features/authFiles/credentialIdentity';
 import { formatDateTimeValue } from '@/utils/format';
 import type { QuotaRenderHelpers } from './QuotaCard';
 import styles from '@/pages/QuotaPage.module.scss';
@@ -93,6 +94,9 @@ type AntigravityQuotaData = {
 };
 
 type CodexQuotaData = {
+  credentialId: string;
+  authIndex: string;
+  credentialGeneration: number;
   account: CodexQuotaAccountEvidence;
   observedAt: string;
   observationStale: boolean;
@@ -127,14 +131,19 @@ export interface QuotaConfig<TState, TData> {
   i18nPrefix: string;
   cardIdleMessageKey?: string;
   filterFn: (file: AuthFileItem) => boolean;
-  fetchQuota: (file: AuthFileItem, t: TFunction) => Promise<TData>;
-  resetQuota?: (file: AuthFileItem, t: TFunction) => Promise<TData>;
+  fetchQuota: (file: AuthFileItem, t: TFunction, previousState?: TState) => Promise<TData>;
+  resetQuota?: (file: AuthFileItem, t: TFunction, previousState?: TState) => Promise<TData>;
   canResetQuota?: (quota: TState) => boolean;
   storeSelector: (state: QuotaStore) => Record<string, TState>;
   storeSetter: keyof QuotaStore;
-  buildLoadingState: () => TState;
-  buildSuccessState: (data: TData) => TState;
-  buildErrorState: (message: string, status?: number) => TState;
+  buildLoadingState: (file?: AuthFileItem, previousState?: TState) => TState;
+  buildSuccessState: (data: TData, file?: AuthFileItem) => TState;
+  buildErrorState: (
+    message: string,
+    status?: number,
+    file?: AuthFileItem,
+    previousState?: TState
+  ) => TState;
   cardClassName: string;
   controlsClassName: string;
   controlClassName: string;
@@ -545,14 +554,25 @@ const isCodexQuotaObservationStale = (observedAt: string, nowMs = Date.now()): b
   return observedMs > nowMs + 60_000 || nowMs - observedMs > CODEX_QUOTA_STALE_AFTER_MS;
 };
 
-const fetchCodexQuota = async (file: AuthFileItem, t: TFunction): Promise<CodexQuotaData> => {
-  const rawAuthIndex = file['auth_index'] ?? file.authIndex;
-  const authIndex = normalizeAuthIndex(rawAuthIndex);
-  if (!authIndex) {
-    throw new Error(t('codex_quota.missing_auth_index'));
-  }
+const buildCodexQuotaIdentityTarget = (file: AuthFileItem, previousState?: CodexQuotaState) => {
+  const identity = readAuthFileCredentialIdentity(file);
+  const authIndex = normalizeAuthIndex(identity.authIndex);
+  const previousMatches =
+    (!previousState?.credentialId || previousState.credentialId === identity.credentialId) &&
+    (!previousState?.authIndex || previousState.authIndex === authIndex);
+  return {
+    credentialId: identity.credentialId,
+    authIndex: authIndex ?? '',
+    credentialGeneration:
+      identity.credentialGeneration ??
+      (previousMatches ? previousState?.credentialGeneration : null),
+  };
+};
 
-  const snapshot = await codexQuotaApi.get(authIndex);
+const buildCodexQuotaData = (
+  snapshot: Awaited<ReturnType<typeof codexQuotaApi.get>>,
+  t: TFunction
+): CodexQuotaData => {
   const payload = snapshot.usage;
   if (!payload || typeof payload !== 'object') {
     throw new Error(t('codex_quota.empty_windows'));
@@ -564,6 +584,9 @@ const fetchCodexQuota = async (file: AuthFileItem, t: TFunction): Promise<CodexQ
     snapshot.resetCredits.availableCount ?? resetCreditsCountFromDetails;
   const observedAt = normalizeStringValue(snapshot.observedAt) ?? '';
   return {
+    credentialId: snapshot.credentialId,
+    authIndex: snapshot.authIndex,
+    credentialGeneration: snapshot.credentialGeneration,
     account: snapshot.account,
     observedAt,
     observationStale: isCodexQuotaObservationStale(observedAt),
@@ -575,22 +598,49 @@ const fetchCodexQuota = async (file: AuthFileItem, t: TFunction): Promise<CodexQ
   };
 };
 
-const consumeCodexRateLimitResetCredit = async (
+const fetchCodexQuota = async (
   file: AuthFileItem,
-  t: TFunction
-): Promise<void> => {
+  t: TFunction,
+  previousState?: CodexQuotaState
+): Promise<CodexQuotaData> => {
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;
   const authIndex = normalizeAuthIndex(rawAuthIndex);
   if (!authIndex) {
     throw new Error(t('codex_quota.missing_auth_index'));
   }
 
-  await codexQuotaApi.consumeResetCredit(authIndex);
+  return buildCodexQuotaData(
+    await codexQuotaApi.get(buildCodexQuotaIdentityTarget(file, previousState)),
+    t
+  );
 };
 
-const resetCodexQuota = async (file: AuthFileItem, t: TFunction): Promise<CodexQuotaData> => {
-  await consumeCodexRateLimitResetCredit(file, t);
-  return fetchCodexQuota(file, t);
+const consumeCodexRateLimitResetCredit = async (
+  file: AuthFileItem,
+  t: TFunction,
+  previousState?: CodexQuotaState
+) => {
+  const rawAuthIndex = file['auth_index'] ?? file.authIndex;
+  const authIndex = normalizeAuthIndex(rawAuthIndex);
+  if (!authIndex) {
+    throw new Error(t('codex_quota.missing_auth_index'));
+  }
+
+  return codexQuotaApi.consumeResetCredit(buildCodexQuotaIdentityTarget(file, previousState));
+};
+
+const resetCodexQuota = async (
+  file: AuthFileItem,
+  t: TFunction,
+  previousState?: CodexQuotaState
+): Promise<CodexQuotaData> => {
+  const reset = await consumeCodexRateLimitResetCredit(file, t, previousState);
+  const snapshot = await codexQuotaApi.get({
+    credentialId: reset.credentialId,
+    authIndex: reset.authIndex,
+    credentialGeneration: reset.credentialGeneration,
+  });
+  return buildCodexQuotaData(snapshot, t);
 };
 
 const formatAntigravityDuration = (t: TFunction, deltaMs: number): string => {
@@ -1369,17 +1419,28 @@ export const CODEX_CONFIG: QuotaConfig<CodexQuotaState, CodexQuotaData> = {
   canResetQuota: (quota) => (quota.rateLimitResetCreditsAvailableCount ?? 0) > 0,
   storeSelector: (state) => state.codexQuota,
   storeSetter: 'setCodexQuota',
-  buildLoadingState: () => ({
-    status: 'loading',
-    limits: [],
-    account: null,
-    observedAt: null,
-    observationStale: false,
-    rateLimitResetCredits: [],
-    rateLimitResetCreditsError: '',
-  }),
+  buildLoadingState: (file, previousState) => {
+    const identity = file ? buildCodexQuotaIdentityTarget(file, previousState) : null;
+    return {
+      status: 'loading',
+      credentialId: identity?.credentialId ?? null,
+      authIndex: identity?.authIndex ?? null,
+      credentialGeneration: identity?.credentialGeneration ?? null,
+      planType: null,
+      limits: [],
+      account: null,
+      observedAt: null,
+      observationStale: false,
+      rateLimitResetCredits: [],
+      rateLimitResetCreditsError: '',
+    };
+  },
   buildSuccessState: (data) => ({
     status: 'success',
+    credentialId: data.credentialId,
+    authIndex: data.authIndex,
+    credentialGeneration: data.credentialGeneration,
+    planType: data.account.upstreamPlanType ?? data.account.credentialPlanType,
     limits: data.limits,
     account: data.account,
     observedAt: data.observedAt,
@@ -1389,17 +1450,24 @@ export const CODEX_CONFIG: QuotaConfig<CodexQuotaState, CodexQuotaData> = {
     rateLimitResetCredits: data.rateLimitResetCredits,
     rateLimitResetCreditsError: data.rateLimitResetCreditsError,
   }),
-  buildErrorState: (message, status) => ({
-    status: 'error',
-    limits: [],
-    account: null,
-    observedAt: null,
-    observationStale: false,
-    rateLimitResetCredits: [],
-    rateLimitResetCreditsError: '',
-    error: message,
-    errorStatus: status,
-  }),
+  buildErrorState: (message, status, file, previousState) => {
+    const identity = file ? buildCodexQuotaIdentityTarget(file, previousState) : null;
+    return {
+      status: 'error',
+      credentialId: identity?.credentialId ?? null,
+      authIndex: identity?.authIndex ?? null,
+      credentialGeneration: identity?.credentialGeneration ?? null,
+      planType: null,
+      limits: [],
+      account: null,
+      observedAt: null,
+      observationStale: false,
+      rateLimitResetCredits: [],
+      rateLimitResetCreditsError: '',
+      error: message,
+      errorStatus: status,
+    };
+  },
   cardClassName: styles.codexCard,
   controlsClassName: styles.codexControls,
   controlClassName: styles.codexControl,

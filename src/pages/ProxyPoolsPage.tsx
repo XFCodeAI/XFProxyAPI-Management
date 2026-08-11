@@ -41,15 +41,9 @@ import {
   startStatusPolling,
   type StatusSnapshotCoordinator,
 } from '@/features/proxyPools/statusRefresh';
-import {
-  useAuthInventoryStore,
-  useAuthStore,
-  useConfigStore,
-  useNotificationStore,
-} from '@/stores';
+import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import type {
-  AuthFileItem,
   ProxyPoolAssignableResource,
   ProxyPoolEntry,
   ProxyPoolRebalancePreview,
@@ -246,10 +240,6 @@ function reconciliationFailureCount(counts: AuthFileReconciliationCounts): numbe
   );
 }
 
-function authFileSupportsProxy(file: AuthFileItem): boolean {
-  return (file.proxy_supported ?? file.proxySupported) !== false;
-}
-
 export function ProxyPoolsPage() {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
@@ -259,9 +249,6 @@ export function ProxyPoolsPage() {
   const [statusPools, setStatusPools] = useState<ProxyPoolStatusEntry[]>([]);
   const [globalProxyUrl, setGlobalProxyUrl] = useState('');
   const [configUsages, setConfigUsages] = useState<ProxyPoolUsage[]>([]);
-  const authFiles = useAuthInventoryStore((state) => state.files);
-  const authFilesError = useAuthInventoryStore((state) => state.error);
-  const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [statusFailed, setStatusFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -343,7 +330,6 @@ export function ProxyPoolsPage() {
   }, []);
 
   const disabled = connectionStatus !== 'connected';
-  const authFilesFailed = authFiles.length === 0 && Boolean(authFilesError);
   const enabledCount = pools.filter((pool) => pool.enabled).length;
   const usageRows = useMemo(
     () => configUsages.filter((usage) => usage.kind === 'global' || usage.kind === 'provider-key'),
@@ -406,13 +392,13 @@ export function ProxyPoolsPage() {
     () =>
       Array.from(
         new Set(
-          authFiles
-            .filter((file) => file.assignable !== false && authFileSupportsProxy(file))
-            .map((file) => String(file.id || file.name || '').trim())
+          bindingResources
+            .filter((resource) => resource.kind === 'credential' && resource.proxySupported)
+            .map((resource) => resource.resourceId.trim())
             .filter((id) => id.length > 0)
         )
       ),
-    [authFiles]
+    [bindingResources]
   );
   const bindingResourceGroups = useMemo(
     () => groupProxyPoolBindingResources(bindingResources),
@@ -440,7 +426,6 @@ export function ProxyPoolsPage() {
       const [snapshotResult] = await Promise.allSettled([
         proxyPoolsApi.load(),
         refreshProxyPoolStatus(),
-        refreshAuthFiles(),
       ]);
 
       if (snapshotResult.status !== 'fulfilled') {
@@ -457,7 +442,7 @@ export function ProxyPoolsPage() {
     } finally {
       setLoading(false);
     }
-  }, [refreshAuthFiles, refreshProxyPoolStatus, t]);
+  }, [refreshProxyPoolStatus, t]);
 
   const persistPools = useCallback(
     async (nextPools: ProxyPoolEntry[], successMessage: string) => {
@@ -500,10 +485,7 @@ export function ProxyPoolsPage() {
     setSyncingBindings(true);
     try {
       const result = await authFilesApi.reconcileBindings();
-      const [, statusResult] = await Promise.allSettled([
-        refreshAuthFiles(),
-        refreshLatestProxyPoolStatus(),
-      ]);
+      const [statusResult] = await Promise.allSettled([refreshLatestProxyPoolStatus()]);
       if (statusResult.status === 'rejected') {
         setStatusFailed(true);
       }
@@ -557,7 +539,7 @@ export function ProxyPoolsPage() {
       syncingBindingsRef.current = false;
       setSyncingBindings(false);
     }
-  }, [refreshAuthFiles, refreshLatestProxyPoolStatus, showNotification, t]);
+  }, [refreshLatestProxyPoolStatus, showNotification, t]);
 
   useEffect(() => {
     statusCoordinatorRef.current?.resume();
@@ -945,7 +927,7 @@ export function ProxyPoolsPage() {
   };
 
   const handleSmartBalance = async () => {
-    if (authFilesFailed || authFileIDs.length === 0) return;
+    if (statusFailed || authFileIDs.length === 0) return;
     setBalancing(true);
     try {
       const result = await proxyPoolsApi.autoAssignUnassigned(authFileIDs);
@@ -1335,7 +1317,7 @@ export function ProxyPoolsPage() {
               saving ||
               checking ||
               syncingBindings ||
-              authFilesFailed ||
+              statusFailed ||
               authFileIDs.length === 0 ||
               pools.length === 0
             }

@@ -233,6 +233,35 @@ export interface MonitoringImportResult {
   failed: number;
 }
 
+export type MonitoringImportSessionStatus =
+  'receiving' | 'processing' | 'completed' | 'cancelled' | 'failed';
+
+export type MonitoringImportSessionErrorCode =
+  | ''
+  | 'invalid_request'
+  | 'not_found'
+  | 'conflict'
+  | 'too_large'
+  | 'quota_exceeded'
+  | 'limit_exceeded'
+  | 'unavailable';
+
+export interface MonitoringImportSession {
+  id: string;
+  filename: string;
+  status: MonitoringImportSessionStatus;
+  sizeBytes: number;
+  receivedBytes: number;
+  chunkSizeBytes: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  retryable: boolean;
+  errorCode: MonitoringImportSessionErrorCode;
+  error: string;
+  result: MonitoringImportResult | null;
+}
+
 const BASE_PATH = '/usage-analytics/monitoring';
 
 const invalidResponse = (context: string): never => {
@@ -670,15 +699,96 @@ const normalizeRetention = (value: unknown, context: string): MonitoringRetentio
   };
 };
 
-const normalizeImportResult = (value: unknown): MonitoringImportResult => {
-  const record = requireRecord(value, 'import');
-  const result = requireRecord(record.result, 'import.result');
+const normalizeImportResultValue = (value: unknown, context: string): MonitoringImportResult => {
+  const result = requireRecord(value, context);
   return {
-    added: countValue(result, 'added', 'import.result'),
-    skipped: countValue(result, 'skipped', 'import.result'),
-    failed: countValue(result, 'failed', 'import.result'),
+    added: countValue(result, 'added', context),
+    skipped: countValue(result, 'skipped', context),
+    failed: countValue(result, 'failed', context),
   };
 };
+
+const normalizeImportResult = (value: unknown): MonitoringImportResult => {
+  const record = requireRecord(value, 'import');
+  return normalizeImportResultValue(record.result, 'import.result');
+};
+
+const normalizeImportSessionStatus = (
+  value: unknown,
+  context: string
+): MonitoringImportSessionStatus => {
+  if (
+    value === 'receiving' ||
+    value === 'processing' ||
+    value === 'completed' ||
+    value === 'cancelled' ||
+    value === 'failed'
+  ) {
+    return value;
+  }
+  return invalidResponse(context);
+};
+
+const normalizeImportSessionErrorCode = (
+  value: unknown,
+  context: string
+): MonitoringImportSessionErrorCode => {
+  if (
+    value === undefined ||
+    value === null ||
+    value === '' ||
+    value === 'invalid_request' ||
+    value === 'not_found' ||
+    value === 'conflict' ||
+    value === 'too_large' ||
+    value === 'quota_exceeded' ||
+    value === 'limit_exceeded' ||
+    value === 'unavailable'
+  ) {
+    return (value ?? '') as MonitoringImportSessionErrorCode;
+  }
+  return invalidResponse(context);
+};
+
+export const normalizeMonitoringImportSession = (value: unknown): MonitoringImportSession => {
+  const record = requireRecord(value, 'import_session');
+  const status = normalizeImportSessionStatus(record.status, 'import_session.status');
+  const result =
+    record.result === undefined || record.result === null
+      ? null
+      : normalizeImportResultValue(record.result, 'import_session.result');
+  if (status === 'completed' && result === null) {
+    return invalidResponse('import_session.result');
+  }
+  return {
+    id: requiredString(record, 'id', 'import_session'),
+    filename: requiredString(record, 'filename', 'import_session'),
+    status,
+    sizeBytes: countValue(record, 'size_bytes', 'import_session'),
+    receivedBytes: countValue(record, 'received_bytes', 'import_session'),
+    chunkSizeBytes: countValue(record, 'chunk_size_bytes', 'import_session'),
+    createdAt: requiredString(record, 'created_at', 'import_session'),
+    updatedAt: requiredString(record, 'updated_at', 'import_session'),
+    expiresAt: requiredString(record, 'expires_at', 'import_session'),
+    retryable: booleanValue(record, 'retryable', 'import_session'),
+    errorCode: normalizeImportSessionErrorCode(record.error_code, 'import_session.error_code'),
+    error: stringValue(record, 'error', 'import_session'),
+    result,
+  };
+};
+
+export const isMonitoringImportSessionsUnavailable = (error: unknown): boolean => {
+  const apiError = error as ApiError | null;
+  return (
+    apiError?.status === 404 ||
+    apiError?.status === 405 ||
+    apiError?.status === 501 ||
+    (apiError?.status === 503 && apiError.code === 'unavailable')
+  );
+};
+
+export const isMonitoringImportSessionNotFound = (error: unknown): boolean =>
+  (error as ApiError | null)?.code === 'not_found';
 
 export const isMonitoringCapabilityUnavailable = (error: unknown): boolean => {
   const status = (error as ApiError | null)?.status;
@@ -737,6 +847,58 @@ export const requestMonitoringApi = {
     normalizeImportResult(
       await apiClient.post(`${BASE_PATH}/import`, file, {
         headers: { 'Content-Type': 'application/x-ndjson' },
+      })
+    ),
+
+  createImportSession: async (
+    filename: string,
+    sizeBytes: number,
+    resumeKey: string,
+    signal?: AbortSignal
+  ): Promise<MonitoringImportSession> =>
+    normalizeMonitoringImportSession(
+      await apiClient.post(
+        `${BASE_PATH}/import-sessions`,
+        { filename, size_bytes: sizeBytes, resume_key: resumeKey },
+        { signal }
+      )
+    ),
+
+  getImportSession: async (id: string, signal?: AbortSignal): Promise<MonitoringImportSession> =>
+    normalizeMonitoringImportSession(
+      await apiClient.get(`${BASE_PATH}/import-sessions/${encodeURIComponent(id)}`, { signal })
+    ),
+
+  uploadImportSessionChunk: async (
+    id: string,
+    offset: number,
+    chunk: Blob,
+    signal?: AbortSignal
+  ): Promise<MonitoringImportSession> =>
+    normalizeMonitoringImportSession(
+      await apiClient.put(
+        `${BASE_PATH}/import-sessions/${encodeURIComponent(id)}/chunk?offset=${encodeURIComponent(String(offset))}`,
+        chunk,
+        { headers: { 'Content-Type': 'application/octet-stream' }, signal }
+      )
+    ),
+
+  completeImportSession: async (
+    id: string,
+    signal?: AbortSignal
+  ): Promise<MonitoringImportSession> =>
+    normalizeMonitoringImportSession(
+      await apiClient.post(
+        `${BASE_PATH}/import-sessions/${encodeURIComponent(id)}/complete`,
+        undefined,
+        { signal, timeout: 0 }
+      )
+    ),
+
+  cancelImportSession: async (id: string): Promise<MonitoringImportSession> =>
+    normalizeMonitoringImportSession(
+      await apiClient.delete(`${BASE_PATH}/import-sessions/${encodeURIComponent(id)}`, {
+        timeout: 0,
       })
     ),
 

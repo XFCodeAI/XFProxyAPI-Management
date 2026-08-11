@@ -88,9 +88,20 @@ const usage = (remaining: number, unit = 'USD') => ({
   received_at: '2026-08-02T10:00:00Z',
 });
 
+const runtimeIdentity = (supplierId: string, entryId: string) => ({
+  supplier_id: supplierId,
+  entry_id: entryId,
+  auth_id: `${entryId}-auth`,
+  credential_generation: 1,
+  availability_revision: 1,
+  availability_state: 'ready',
+});
+
 const entries = [
   {
     target_id: 'supplier:codex',
+    supplier_id: 'supplier-codex-0',
+    entry_id: 'codex-primary',
     provider_brand: 'codex',
     provider_name: 'Codex direct',
     provider_index: 0,
@@ -101,9 +112,12 @@ const entries = [
     status: 'ok',
     multiplier: multiplier('0.8'),
     usage: usage(25),
+    runtime: runtimeIdentity('supplier-codex-0', 'codex-primary'),
   },
   {
     target_id: 'supplier:openai-a',
+    supplier_id: 'supplier-openai-0',
+    entry_id: 'openai-primary',
     provider_brand: 'openaiCompatibility',
     provider_name: 'Shared upstream',
     provider_index: 0,
@@ -115,9 +129,12 @@ const entries = [
     status: 'ok',
     multiplier: multiplier('1.25'),
     usage: usage(100),
+    runtime: runtimeIdentity('supplier-openai-0', 'openai-primary'),
   },
   {
     target_id: 'supplier:openai-b',
+    supplier_id: 'supplier-openai-0',
+    entry_id: 'openai-backup',
     provider_brand: 'openaiCompatibility',
     provider_name: 'Shared upstream',
     provider_index: 0,
@@ -129,9 +146,12 @@ const entries = [
     status: 'ok',
     multiplier: multiplier('2'),
     usage: usage(61.5, 'CNY'),
+    runtime: runtimeIdentity('supplier-openai-0', 'openai-backup'),
   },
   {
     target_id: 'supplier:xai',
+    supplier_id: 'supplier-xai-0',
+    entry_id: 'xai-primary',
     provider_brand: 'xai',
     provider_name: 'xAI direct',
     provider_index: 0,
@@ -143,9 +163,12 @@ const entries = [
     status: 'ok',
     multiplier: multiplier('0.7'),
     usage: usage(70),
+    runtime: runtimeIdentity('supplier-xai-0', 'xai-primary'),
   },
   {
     target_id: 'supplier:claude',
+    supplier_id: 'supplier-claude-0',
+    entry_id: 'claude-primary',
     provider_brand: 'claude',
     provider_name: 'Claude direct',
     provider_index: 0,
@@ -157,9 +180,12 @@ const entries = [
     status: 'ok',
     multiplier: multiplier('0.6'),
     usage: usage(60),
+    runtime: runtimeIdentity('supplier-claude-0', 'claude-primary'),
   },
   {
     target_id: 'supplier:kimi-openai',
+    supplier_id: 'supplier-kimi-openai',
+    entry_id: 'kimi-openai-primary',
     provider_brand: 'openaiCompatibility',
     provider_name: 'kimi',
     provider_index: 1,
@@ -171,9 +197,12 @@ const entries = [
     status: 'ok',
     multiplier: multiplier('0.3'),
     usage: usage(30),
+    runtime: runtimeIdentity('supplier-kimi-openai', 'kimi-openai-primary'),
   },
   {
     target_id: 'supplier:kimi-claude',
+    supplier_id: 'supplier-kimi-claude',
+    entry_id: 'kimi-claude-primary',
     provider_brand: 'claude',
     provider_name: 'secondary',
     provider_index: 1,
@@ -185,9 +214,12 @@ const entries = [
     status: 'ok',
     multiplier: multiplier('0.4'),
     usage: usage(40),
+    runtime: runtimeIdentity('supplier-kimi-claude', 'kimi-claude-primary'),
   },
   {
     target_id: 'supplier:kimi-name-collision',
+    supplier_id: 'supplier-kimi-collision',
+    entry_id: 'kimi-collision-primary',
     provider_brand: 'openaiCompatibility',
     provider_name: 'kimi',
     provider_index: 9,
@@ -199,6 +231,7 @@ const entries = [
     status: 'ok',
     multiplier: multiplier('9'),
     usage: usage(900),
+    runtime: runtimeIdentity('supplier-kimi-collision', 'kimi-collision-primary'),
   },
 ];
 
@@ -208,11 +241,16 @@ const installMockAPI = async (page: Page) => {
     listResourceScopes: [] as string[],
     probe: 0,
     probeTargets: [] as string[],
+    recovery: 0,
+    recoverySupplierIds: [] as string[],
     eventNetwork: 0,
   };
   const snapshotId = 'supplier-snapshot-e2e';
   let snapshotRevision = 1;
   let snapshotEntries = entries.map((entry) => ({ ...entry }));
+  let recoveryResponse: unknown = null;
+  let recoveryGate: Promise<void> | null = null;
+  let releaseRecoveryGate: (() => void) | null = null;
   const snapshotHeaders = () => ({
     ETag: `W/"supplier-billing-${snapshotId}-${snapshotRevision}"`,
     'X-Supplier-Billing-Snapshot-ID': snapshotId,
@@ -309,6 +347,33 @@ const installMockAPI = async (page: Page) => {
         500
       );
     }
+    if (path === '/supplier-billing-probes/availability/reprobe' && request.method() === 'POST') {
+      calls.recovery += 1;
+      const supplierId = (request.postDataJSON() as { supplier_id: string }).supplier_id;
+      calls.recoverySupplierIds.push(supplierId);
+      if (recoveryGate) await recoveryGate;
+      const supplierEntries = snapshotEntries.filter((entry) => entry.supplier_id === supplierId);
+      return routeJSON(
+        route,
+        recoveryResponse ?? {
+          status: 'accepted',
+          supplier_id: supplierId,
+          requested: supplierEntries.length,
+          eligible: supplierEntries.length,
+          queued: supplierEntries.length,
+          already_probing: 0,
+          skipped: {},
+          maximum_parallel: 4,
+          entries: supplierEntries.map((entry) => ({
+            supplier_id: entry.supplier_id,
+            entry_id: entry.entry_id,
+            status: 'queued',
+            runtime: { ...entry.runtime, availability_state: 'probing' },
+          })),
+        },
+        202
+      );
+    }
     if (path === '/supplier-billing-probes') {
       if (request.method() === 'POST') {
         calls.probe += 1;
@@ -382,6 +447,19 @@ const installMockAPI = async (page: Page) => {
     setSnapshot: (nextEntries: typeof entries, revision = snapshotRevision + 1) => {
       snapshotEntries = nextEntries.map((entry) => ({ ...entry }));
       snapshotRevision = revision;
+    },
+    setRecoveryResponse: (response: unknown) => {
+      recoveryResponse = response;
+    },
+    holdRecovery: () => {
+      recoveryGate = new Promise<void>((resolve) => {
+        releaseRecoveryGate = resolve;
+      });
+    },
+    releaseRecovery: () => {
+      releaseRecoveryGate?.();
+      releaseRecoveryGate = null;
+      recoveryGate = null;
     },
     emitEvents: async (events: Array<{ revision: number; target_ids?: string[] }>) => {
       await page.evaluate((nextEvents) => {
@@ -512,6 +590,113 @@ test('provider list shows independent shared billing rates without automatic POS
     path: testInfo.outputPath('provider-billing-list.png'),
     fullPage: true,
   });
+});
+
+test('supplier recovery is live, deduplicated, and preserves filters and editor drafts', async ({
+  page,
+}) => {
+  const waitingEntries = entries.map((entry) => {
+    if (entry.entry_id !== 'openai-primary') return entry;
+    return {
+      ...entry,
+      usage: {
+        ...usage(12),
+        status: 'failed',
+        last_error: 'preserve existing usage error',
+      },
+      runtime: {
+        ...entry.runtime,
+        availability_state: 'usage_wait',
+        availability_deadline: '2026-08-02T11:00:00Z',
+        availability_reason: 'usage_exhausted',
+        provider_code: 'verified_zero_balance',
+      },
+    };
+  });
+  const primary = waitingEntries.find((entry) => entry.entry_id === 'openai-primary')!;
+  const mock = await installMockAPI(page);
+  mock.setSnapshot(waitingEntries, 2);
+  mock.setRecoveryResponse({
+    status: 'accepted',
+    supplier_id: 'supplier-openai-0',
+    requested: 2,
+    eligible: 1,
+    queued: 1,
+    already_probing: 0,
+    skipped: { missing_runtime: 1 },
+    maximum_parallel: 4,
+    entries: [
+      {
+        supplier_id: 'supplier-openai-0',
+        entry_id: 'openai-primary',
+        status: 'queued',
+        runtime: { ...primary.runtime, availability_state: 'probing' },
+      },
+      {
+        supplier_id: 'supplier-openai-0',
+        entry_id: 'openai-backup',
+        status: 'skipped',
+        reason: 'missing_runtime',
+      },
+    ],
+  });
+  mock.holdRecovery();
+  await login(page);
+  await page.evaluate(() => {
+    window.localStorage.setItem(
+      'providersPage.uiState',
+      JSON.stringify({ activeBrand: 'openaiCompatibility', filtersByBrand: {} })
+    );
+    window.location.hash = '/ai-providers';
+  });
+
+  const filterInput = page.locator('input[type="search"]').first();
+  await filterInput.fill('Shared upstream');
+  await expect(page.getByText(/额度等待：余额已耗尽|Usage wait: Balance exhausted/)).toBeVisible();
+  await expect(page.getByText('12 USD', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Next probe|下次探测/)).toBeVisible();
+  await page
+    .getByRole('button', { name: /编辑|Edit/ })
+    .first()
+    .click();
+  const draftInput = page.getByRole('textbox', { name: /名称|Name/ }).first();
+  await draftInput.fill('Shared upstream unsaved draft');
+  await page.evaluate(() => {
+    (window as Window & { __supplierRecoveryNoReload?: string }).__supplierRecoveryNoReload =
+      'preserved';
+  });
+
+  const recoveryButton = page
+    .locator(
+      'button[aria-label="验证并恢复供应商调度"], button[aria-label="Validate and recover supplier availability"], button[aria-label="正在恢复供应商可用性"], button[aria-label="Supplier availability recovery in progress"]'
+    )
+    .first();
+  await recoveryButton.evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+  });
+  await expect.poll(() => mock.calls.recovery).toBe(1);
+  expect(mock.calls.recoverySupplierIds).toEqual(['supplier-openai-0']);
+  await expect(recoveryButton).toBeDisabled();
+  await expect(draftInput).toHaveValue('Shared upstream unsaved draft');
+  await expect(filterInput).toHaveValue('Shared upstream');
+
+  mock.releaseRecovery();
+  await expect(page.getByText(/已排队 1 个.*跳过 1 个|Queued 1.*skipped 1/)).toBeVisible();
+  await expect(
+    page.getByText(/backup：运行时 API Key 不可用|backup: Runtime API key is unavailable/)
+  ).toBeVisible();
+  await expect(draftInput).toHaveValue('Shared upstream unsaved draft');
+  await expect(filterInput).toHaveValue('Shared upstream');
+  await expect(page.locator('body')).toContainText(/探测失败|Probe failed/);
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __supplierRecoveryNoReload?: string }).__supplierRecoveryNoReload
+    )
+  ).toBe('preserved');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true
+  );
 });
 
 test('slow manual billing refresh keeps its terminal result after an intermediate probing read', async ({

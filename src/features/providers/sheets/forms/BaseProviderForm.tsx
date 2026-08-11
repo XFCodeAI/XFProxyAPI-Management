@@ -21,6 +21,13 @@ import type { GeminiKeyConfig, OpenAIProviderConfig, ProviderKeyConfig } from '@
 import { isValidMaxConcurrency, normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import type { ModelInfo } from '@/utils/models';
 import { PROVIDER_DESCRIPTORS } from '../../descriptors';
+import {
+  buildCodexImageRouteSupplierCatalog,
+  formatCodexImageRouteModel,
+  getCodexImageRouteModelChoices,
+  getSelectableCodexImageRouteSuppliers,
+  inspectCodexImageRoute,
+} from '../../codexImageRoute';
 import type {
   ApiKeyEntryInput,
   ModelEntryInput,
@@ -43,6 +50,7 @@ export interface BaseProviderFormHandle {
 interface BaseProviderFormProps {
   brand: ProviderBrand;
   resource: ProviderResource | null;
+  imageRouteResources?: readonly ProviderResource[];
   credentialGroupOptions: string[];
   mode: 'create' | 'edit';
   mutating: boolean;
@@ -229,6 +237,10 @@ function buildInitialForm(
         brand === 'vertex'
           ? ''
           : undefined,
+      codexImageRoute:
+        brand === 'openaiCompatibility'
+          ? { enabled: false, targetSupplier: '', targetModel: '' }
+          : undefined,
       apiKeyEntries: brand === 'openaiCompatibility' ? [emptyApiKeyEntry()] : undefined,
     };
   }
@@ -266,6 +278,13 @@ function buildInitialForm(
         : [emptyHeader()],
       excludedModelsText: '',
       testModel: cfg.testModel ?? '',
+      codexImageRoute: cfg.codexImageRoute
+        ? {
+            enabled: cfg.codexImageRoute.enabled,
+            targetSupplier: cfg.codexImageRoute.targetSupplier,
+            targetModel: cfg.codexImageRoute.targetModel,
+          }
+        : { enabled: false, targetSupplier: '', targetModel: '' },
       apiKeyEntries: cfg.apiKeyEntries?.length
         ? cfg.apiKeyEntries.map((entry) => {
             const entryConcurrency = normalizeConcurrencySetting(
@@ -350,6 +369,7 @@ function buildInitialForm(
 export function BaseProviderForm({
   brand,
   resource,
+  imageRouteResources = [],
   credentialGroupOptions,
   mode,
   mutating,
@@ -375,6 +395,15 @@ export function BaseProviderForm({
   const [form, setForm] = useState<ProviderEntryFormInput>(() =>
     buildInitialForm(brand, resource, mode)
   );
+  const [imageRouteTargetsSelf, setImageRouteTargetsSelf] = useState(() => {
+    if (brand !== 'openaiCompatibility') return false;
+    const initial = buildInitialForm(brand, resource, mode);
+    return (
+      Boolean(initial.name.trim()) &&
+      initial.codexImageRoute?.targetSupplier.trim().toLowerCase() ===
+        initial.name.trim().toLowerCase()
+    );
+  });
   const [initialFormSignature] = useState<string>(() =>
     JSON.stringify(buildInitialForm(brand, resource, mode))
   );
@@ -451,6 +480,57 @@ export function BaseProviderForm({
     authIndex: fallbackAuthIndex,
   });
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
+
+  const imageRouteDraftId = resource?.id ?? '__new-openai-compatible-supplier__';
+  const imageRouteSuppliers = useMemo(() => {
+    if (brand !== 'openaiCompatibility') return [];
+    return buildCodexImageRouteSupplierCatalog(imageRouteResources, {
+      id: imageRouteDraftId,
+      replaceResourceId: resource?.id,
+      name: form.name,
+      disabled: form.disabled,
+      credentialCount: (form.apiKeyEntries ?? []).filter(
+        (entry) => entry.apiKey.trim() || entry.existingApiKey?.trim()
+      ).length,
+      runtimeStatus: resource?.runtimeStatus,
+      models: form.models,
+    });
+  }, [
+    brand,
+    form.apiKeyEntries,
+    form.disabled,
+    form.models,
+    form.name,
+    imageRouteDraftId,
+    imageRouteResources,
+    resource?.id,
+    resource?.runtimeStatus,
+  ]);
+  const selectableImageRouteSuppliers = useMemo(
+    () => getSelectableCodexImageRouteSuppliers(imageRouteSuppliers),
+    [imageRouteSuppliers]
+  );
+  const imageRouteInspection = useMemo(
+    () => inspectCodexImageRoute(form.codexImageRoute, imageRouteSuppliers),
+    [form.codexImageRoute, imageRouteSuppliers]
+  );
+  const selectedImageRouteSupplier = imageRouteInspection.supplier;
+  const imageRouteModelChoices = useMemo(
+    () => getCodexImageRouteModelChoices(selectedImageRouteSupplier),
+    [selectedImageRouteSupplier]
+  );
+  const selectedImageRouteSupplierValue =
+    selectableImageRouteSuppliers.find(
+      (supplier) =>
+        supplier.name.toLowerCase() ===
+        (form.codexImageRoute?.targetSupplier ?? '').trim().toLowerCase()
+    )?.name ?? '';
+  const selectedImageRouteModelValue =
+    imageRouteModelChoices.find(
+      (model) =>
+        model.routeName.toLowerCase() ===
+        (form.codexImageRoute?.targetModel ?? '').trim().toLowerCase()
+    )?.routeName ?? '';
 
   const existingModelNames = useMemo(() => {
     const set = new Set<string>();
@@ -537,6 +617,63 @@ export function BaseProviderForm({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const updateProviderName = (value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      name: value,
+      codexImageRoute:
+        imageRouteTargetsSelf && prev.codexImageRoute
+          ? { ...prev.codexImageRoute, targetSupplier: value.trim() }
+          : prev.codexImageRoute,
+    }));
+  };
+
+  const imageRouteIssueMessage = (): string => {
+    switch (imageRouteInspection.issue) {
+      case 'target_supplier_required':
+        return t('providersPage.imageRoute.issues.targetSupplierRequired');
+      case 'target_model_required':
+        return t('providersPage.imageRoute.issues.targetModelRequired');
+      case 'supplier_missing':
+        return t('providersPage.imageRoute.issues.supplierMissing', {
+          supplier: imageRouteInspection.targetSupplier,
+        });
+      case 'supplier_ambiguous':
+        return t('providersPage.imageRoute.issues.supplierAmbiguous', {
+          supplier: imageRouteInspection.targetSupplier,
+        });
+      case 'model_missing':
+        return t('providersPage.imageRoute.issues.modelMissing', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+          model: imageRouteInspection.targetModel,
+        });
+      case 'model_ambiguous':
+        return t('providersPage.imageRoute.issues.modelAmbiguous', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+          model: imageRouteInspection.targetModel,
+        });
+      case 'model_not_image':
+        return t('providersPage.imageRoute.issues.modelNotImage', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+          model: imageRouteInspection.targetModel,
+        });
+      case 'supplier_disabled':
+        return t('providersPage.imageRoute.issues.supplierDisabled', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+        });
+      case 'supplier_no_credentials':
+        return t('providersPage.imageRoute.issues.supplierNoCredentials', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+        });
+      case 'supplier_not_ready':
+        return t('providersPage.imageRoute.issues.supplierNotReady', {
+          supplier: imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier,
+        });
+      default:
+        return '';
+    }
+  };
+
   const updateCloak = <K extends keyof NonNullable<ProviderEntryFormInput['cloak']>>(
     key: K,
     value: NonNullable<ProviderEntryFormInput['cloak']>[K]
@@ -575,6 +712,9 @@ export function BaseProviderForm({
       )
     ) {
       return t('providersPage.form.validation.maxConcurrency');
+    }
+    if (form.codexImageRoute?.enabled && imageRouteInspection.status === 'invalid') {
+      return imageRouteIssueMessage();
     }
     return null;
   };
@@ -662,7 +802,7 @@ export function BaseProviderForm({
               id={`${fid}-name`}
               className={inputClass}
               value={form.name}
-              onChange={(e) => updateField('name', e.target.value)}
+              onChange={(e) => updateProviderName(e.target.value)}
               disabled={mutating}
             />
           </div>
@@ -1008,6 +1148,102 @@ export function BaseProviderForm({
               </>
             }
           />
+        ) : null}
+
+        {brand === 'openaiCompatibility' && form.codexImageRoute ? (
+          <div className={styles.imageRouteSection}>
+            <SelectionCheckbox
+              checked={form.codexImageRoute.enabled}
+              disabled={mutating}
+              onChange={(checked) => {
+                setImageRouteTargetsSelf(false);
+                updateField('codexImageRoute', {
+                  enabled: checked,
+                  targetSupplier: '',
+                  targetModel: '',
+                });
+              }}
+              className={styles.checkboxRow}
+              labelClassName={styles.checkboxText}
+              label={
+                <>
+                  <span>{t('providersPage.imageRoute.toggle')}</span>
+                  <small>{t('providersPage.imageRoute.hint')}</small>
+                </>
+              }
+            />
+            {form.codexImageRoute.enabled ? (
+              <div className={styles.imageRouteFields}>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor={`${fid}-image-route-supplier`}>
+                    {t('providersPage.imageRoute.targetSupplier')}
+                  </label>
+                  <Select
+                    id={`${fid}-image-route-supplier`}
+                    value={selectedImageRouteSupplierValue}
+                    options={selectableImageRouteSuppliers.map((supplier) => ({
+                      value: supplier.name,
+                      label: supplier.name,
+                    }))}
+                    placeholder={t('providersPage.imageRoute.selectSupplier')}
+                    onChange={(value) => {
+                      const supplier = selectableImageRouteSuppliers.find(
+                        (candidate) => candidate.name === value
+                      );
+                      setImageRouteTargetsSelf(supplier?.id === imageRouteDraftId);
+                      updateField('codexImageRoute', {
+                        enabled: true,
+                        targetSupplier: value,
+                        targetModel: '',
+                      });
+                    }}
+                    disabled={mutating || selectableImageRouteSuppliers.length === 0}
+                    ariaLabel={t('providersPage.imageRoute.targetSupplier')}
+                    ariaDescribedBy={`${fid}-image-route-status`}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor={`${fid}-image-route-model`}>
+                    {t('providersPage.imageRoute.targetModel')}
+                  </label>
+                  <Select
+                    id={`${fid}-image-route-model`}
+                    value={selectedImageRouteModelValue}
+                    options={imageRouteModelChoices.map((model) => ({
+                      value: model.routeName,
+                      label: formatCodexImageRouteModel(model),
+                    }))}
+                    placeholder={t('providersPage.imageRoute.selectModel')}
+                    onChange={(value) =>
+                      updateField('codexImageRoute', {
+                        ...form.codexImageRoute!,
+                        targetModel: value,
+                      })
+                    }
+                    disabled={
+                      mutating || !selectedImageRouteSupplier || imageRouteModelChoices.length === 0
+                    }
+                    ariaLabel={t('providersPage.imageRoute.targetModel')}
+                    ariaDescribedBy={`${fid}-image-route-status`}
+                  />
+                </div>
+                <div
+                  id={`${fid}-image-route-status`}
+                  className={`${styles.imageRouteStatus} ${styles[`imageRouteStatus_${imageRouteInspection.status}`]}`}
+                  aria-live="polite"
+                >
+                  {imageRouteInspection.status === 'configured'
+                    ? t('providersPage.imageRoute.configuredSummary', {
+                        supplier: imageRouteInspection.supplier?.name,
+                        model: imageRouteInspection.model
+                          ? formatCodexImageRouteModel(imageRouteInspection.model)
+                          : imageRouteInspection.targetModel,
+                      })
+                    : imageRouteIssueMessage()}
+                </div>
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

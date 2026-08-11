@@ -82,6 +82,39 @@ try {
     ).custom,
     'kept'
   );
+
+  const imageRouteRecord = {
+    ...baseRecord,
+    'codex-image-route': {
+      enabled: true,
+      'target-supplier': 'images',
+      'target-model': 'image-pro',
+    },
+  };
+  assert.deepEqual(normalizeOpenAIProvider(imageRouteRecord)?.codexImageRoute, {
+    enabled: true,
+    targetSupplier: 'images',
+    targetModel: 'image-pro',
+  });
+  const imageRoutePayload = serializeOpenAIProvider({
+    name: 'gateway',
+    baseUrl: 'https://gateway.example/v1',
+    apiKeyEntries: [{ apiKey: 'supplier-key' }],
+    codexImageRoute: {
+      enabled: true,
+      targetSupplier: ' images ',
+      targetModel: ' image-pro ',
+    },
+  });
+  assert.deepEqual(imageRoutePayload['codex-image-route'], {
+    enabled: true,
+    'target-supplier': 'images',
+    'target-model': 'image-pro',
+  });
+  assert.equal(
+    mergeOpenAIProviderPayload(imageRouteRecord, compatible)['codex-image-route'],
+    undefined
+  );
 } finally {
   await server.close();
 }

@@ -106,6 +106,15 @@ try {
   const client = await server.ssrLoadModule('/src/services/api/client.ts');
   const viewModel = await server.ssrLoadModule('/src/features/modelPrices/viewModel.ts');
 
+  assert.deepEqual([...api.MODEL_PRICE_SYNC_SOURCES], ['models.dev', 'litellm', 'openrouter']);
+  assert.equal(
+    api.normalizeModelPriceRule({
+      ...ruleWire,
+      source: { ...ruleWire.source, kind: 'models.dev' },
+    }).source.kind,
+    'models.dev'
+  );
+
   const catalog = api.normalizeModelPriceCatalogResponse({
     available: true,
     generated_at: '2026-07-23T01:00:00Z',

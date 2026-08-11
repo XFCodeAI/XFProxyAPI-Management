@@ -34,6 +34,7 @@ try {
       requestId: null,
       isOpen: false,
       isLoading: false,
+      step: 1,
       options: null,
     },
   });
@@ -56,6 +57,7 @@ try {
   assert.equal(replacedCancellationCount, 1);
   assert.equal(useNotificationStore.getState().confirmation.requestId, secondRequestId);
   assert.equal(useNotificationStore.getState().confirmation.isLoading, false);
+  assert.equal(useNotificationStore.getState().confirmation.step, 1);
 
   useNotificationStore.getState().setConfirmationLoading(firstRequestId, true);
   useNotificationStore.getState().hideConfirmation(firstRequestId);
@@ -63,13 +65,32 @@ try {
   assert.equal(useNotificationStore.getState().confirmation.isOpen, true);
   assert.equal(useNotificationStore.getState().confirmation.isLoading, false);
 
-  useNotificationStore.getState().setConfirmationLoading(secondRequestId, true);
-  assert.equal(useNotificationStore.getState().confirmation.isLoading, true);
   useNotificationStore.getState().hideConfirmation(secondRequestId);
+  const guardedRequestId = useNotificationStore.getState().showConfirmation({
+    message: 'first step',
+    secondConfirmation: { message: 'second step' },
+    onConfirm: () => {},
+  });
+  useNotificationStore.getState().advanceConfirmation('stale-request');
+  assert.equal(useNotificationStore.getState().confirmation.step, 1);
+  useNotificationStore.getState().advanceConfirmation(guardedRequestId);
+  assert.equal(useNotificationStore.getState().confirmation.step, 2);
+
+  const replacementRequestId = useNotificationStore.getState().showConfirmation({
+    message: 'replacement',
+    onConfirm: () => {},
+  });
+  assert.equal(useNotificationStore.getState().confirmation.requestId, replacementRequestId);
+  assert.equal(useNotificationStore.getState().confirmation.step, 1);
+
+  useNotificationStore.getState().setConfirmationLoading(replacementRequestId, true);
+  assert.equal(useNotificationStore.getState().confirmation.isLoading, true);
+  useNotificationStore.getState().hideConfirmation(replacementRequestId);
   assert.deepEqual(useNotificationStore.getState().confirmation, {
     requestId: null,
     isOpen: false,
     isLoading: false,
+    step: 1,
     options: null,
   });
 } finally {

@@ -89,6 +89,7 @@ const OPENAI_PROVIDER_FIELDS = [
   'models',
   'test-model',
   'disable-cooling',
+  'codex-image-route',
 ] as const;
 
 const MODEL_ALIAS_FIELDS = ['name', 'alias', 'priority', 'test-model'] as const;
@@ -554,6 +555,13 @@ export const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
   if (provider.fallback) payload.fallback = true;
   if (provider.testModel) payload['test-model'] = provider.testModel;
   if (provider.disableCooling) payload['disable-cooling'] = true;
+  if (provider.codexImageRoute) {
+    payload['codex-image-route'] = {
+      enabled: provider.codexImageRoute.enabled,
+      'target-supplier': provider.codexImageRoute.targetSupplier.trim(),
+      'target-model': provider.codexImageRoute.targetModel.trim(),
+    };
+  }
   return payload;
 };
 

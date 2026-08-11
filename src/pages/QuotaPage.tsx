@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { ShieldAlert, Upload, Wrench } from 'lucide-react';
+import { Search, ShieldAlert, Upload, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import { Card } from '@/components/ui/Card';
@@ -15,6 +15,7 @@ import { ProxySelectionModal } from '@/components/proxy/ProxySelectionModal';
 import {
   QuotaCard,
   QuotaSection,
+  type QuotaStatusFilterMode,
   ANTIGRAVITY_CONFIG,
   CLAUDE_CONFIG,
   CODEX_CONFIG,
@@ -23,6 +24,8 @@ import {
 } from '@/components/quota';
 import { AuthFileModelsModal } from '@/features/authFiles/components/AuthFileModelsModal';
 import { AuthFilesGroupAssignmentModal } from '@/features/authFiles/components/AuthFilesGroupAssignmentModal';
+import { AuthFileUploadProgress } from '@/features/authFiles/components/AuthFileUploadProgress';
+import { AuthFileAvailabilityReprobeResultModal } from '@/features/authFiles/components/AuthFileAvailabilityReprobeResultModal';
 import { AuthImportModal } from '@/features/authFiles/components/AuthImportModal';
 import { AuthSessionImportResultModal } from '@/features/authFiles/components/AuthSessionImportResultModal';
 import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components/AuthFilesPrefixProxyEditorModal';
@@ -36,7 +39,7 @@ import { getPluginTitle } from '@/features/plugins/pluginResources';
 import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useOAuthProviderFlow, type OAuthAttemptContext } from '@/hooks/useOAuthProviderFlow';
-import { authFilesApi, pluginsApi } from '@/services/api';
+import { authFilesApi, pluginsApi, type AuthFileAvailabilityReprobeResult } from '@/services/api';
 import type { OAuthCredentialResult, OAuthStartOptions } from '@/services/api/oauth';
 import {
   runtimeObservationResourceKey,
@@ -189,6 +192,14 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
   const runtimeResources = useRuntimeObservationStore((state) => state.resourcesByKey);
   const refreshRuntimeObservation = useRuntimeObservationStore((state) => state.refresh);
+  const inventoryTotal = useAuthInventoryStore((state) => state.total);
+  const inventoryPage = useAuthInventoryStore((state) => state.page);
+  const inventoryHasNext = useAuthInventoryStore((state) => state.hasMore);
+  const inventoryHasPrevious = useAuthInventoryStore((state) => state.cursorHistory.length > 0);
+  const inventoryProviderTotals = useAuthInventoryStore((state) => state.providerTotals);
+  const setInventoryQuery = useAuthInventoryStore((state) => state.setQuery);
+  const nextInventoryPage = useAuthInventoryStore((state) => state.nextPage);
+  const previousInventoryPage = useAuthInventoryStore((state) => state.previousPage);
 
   const {
     files,
@@ -197,6 +208,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     loading,
     error,
     uploading,
+    uploadProgress,
     deleting,
     statusUpdating,
     uploadProxyDialogOpen,
@@ -249,6 +261,12 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const [legacyRepairOpen, setLegacyRepairOpen] = useState(false);
   const [identityAuditOpen, setIdentityAuditOpen] = useState(false);
   const [availabilityReprobePending, setAvailabilityReprobePending] = useState(false);
+  const [availabilityReprobeResult, setAvailabilityReprobeResult] =
+    useState<AuthFileAvailabilityReprobeResult | null>(null);
+  const [inventoryLimit, setInventoryLimit] = useState(25);
+  const [inventoryStatus, setInventoryStatus] = useState<QuotaStatusFilterMode>('all');
+  const [inventorySearchInput, setInventorySearchInput] = useState('');
+  const [inventorySearch, setInventorySearch] = useState('');
   const [visibleQuotaCredentials, setVisibleQuotaCredentials] = useState<{
     providerId: string;
     files: AuthFileItem[];
@@ -285,9 +303,12 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     () =>
       quotaProviders.map((provider) => ({
         ...provider,
-        credentialCount: files.filter(provider.config.filterFn).length,
+        credentialCount:
+          inventoryProviderTotals[
+            provider.kind === 'builtin' ? provider.id : provider.oauthProviderId
+          ] ?? files.filter(provider.config.filterFn).length,
       })),
-    [files, quotaProviders]
+    [files, inventoryProviderTotals, quotaProviders]
   );
 
   const { defaultProviderId, activeProviderId } = resolveQuotaProviderSelection(
@@ -296,6 +317,8 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   );
   const activeProvider =
     providerSummaries.find((provider) => provider.id === activeProviderId) ?? providerSummaries[0];
+  const activeInventoryProvider =
+    activeProvider.kind === 'builtin' ? activeProvider.id : activeProvider.oauthProviderId;
   const activeProviderCredentials = useMemo(
     () => files.filter(activeProvider.config.filterFn),
     [activeProvider, files]
@@ -320,6 +343,26 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     selectedNames.length === 0 ||
     batchStatusUpdating ||
     selectedHasStatusUpdating;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setInventorySearch(inventorySearchInput.trim()), 250);
+    return () => window.clearTimeout(timeout);
+  }, [inventorySearchInput]);
+
+  useEffect(() => {
+    void setInventoryQuery({
+      provider: activeInventoryProvider,
+      status: inventoryStatus === 'all' ? undefined : inventoryStatus,
+      search: inventorySearch || undefined,
+      limit: inventoryLimit,
+    }).catch(() => undefined);
+  }, [
+    activeInventoryProvider,
+    inventoryLimit,
+    inventorySearch,
+    inventoryStatus,
+    setInventoryQuery,
+  ]);
 
   const getProviderLabel = useCallback(
     (provider: QuotaProviderDefinition) =>
@@ -431,7 +474,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     async (providerId: string, credential: OAuthCredentialResult, attempt: OAuthAttemptContext) => {
       const publication = await waitForOAuthCredentialPublication({
         credential,
-        refresh: () => useAuthInventoryStore.getState().refresh(true),
+        refresh: () => authFilesApi.list({ name: credential.name, limit: 25 }),
         signal: attempt.signal,
         isCurrent: () => attempt.isCurrent() && useAuthStore.getState().isAuthenticated,
       });
@@ -461,6 +504,14 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     [activeProvider.id]
   );
 
+  const handleInventoryNext = useCallback(() => {
+    void nextInventoryPage().catch(() => undefined);
+  }, [nextInventoryPage]);
+
+  const handleInventoryPrevious = useCallback(() => {
+    void previousInventoryPage().catch(() => undefined);
+  }, [previousInventoryPage]);
+
   const selectQuotaProvider = useCallback((providerId: string) => {
     setSelectedProviderId(providerId);
     writeNavigationPreference(QUOTA_ACTIVE_PROVIDER_STORAGE_KEY, providerId);
@@ -482,6 +533,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     setAvailabilityReprobePending(true);
     try {
       const result = await authFilesApi.reprobeAvailability();
+      setAvailabilityReprobeResult(result);
       const skipped = Object.values(result.skipped).reduce((total, count) => total + count, 0);
       if (result.queued === 0 && result.alreadyProbing === 0) {
         showNotification(t('auth_files.availability_reprobe_empty', { skipped }), 'info');
@@ -610,6 +662,14 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     onToggleCredentialStatus: handleStatusToggle,
     onToggleCredentialSelect: toggleSelect,
     onVisibleCredentialsChange: handleVisibleQuotaCredentialsChange,
+    inventoryTotal,
+    inventoryPage,
+    inventoryHasNext,
+    inventoryHasPrevious,
+    onInventoryNext: handleInventoryNext,
+    onInventoryPrevious: handleInventoryPrevious,
+    onInventoryPageSizeChange: setInventoryLimit,
+    onInventoryStatusChange: setInventoryStatus,
     headerActionAfterRefresh: renderOAuthAction(activeProvider),
   };
 
@@ -648,36 +708,65 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
             description={t('auth_login.plugin_oauth_hint', { name: providerLabel })}
           />
         ) : (
-          <div className={styles.pluginCredentialGrid}>
-            {credentialFiles.map((file) => {
-              const credentialID = String(file.id ?? '').trim();
-              const runtimeResource = credentialID
-                ? runtimeResources[runtimeObservationResourceKey('credential', credentialID)]
-                : undefined;
-              return (
-                <QuotaCard
-                  key={file.name}
-                  item={file}
-                  runtimeResource={runtimeResource}
-                  i18nPrefix="quota_management"
-                  cardClassName={styles.pluginCredentialCard}
-                  defaultType={provider.oauthProviderId}
-                  actionDisabled={disableControls}
-                  selected={selectedFiles.has(file.name)}
-                  deletingCredentialName={deleting}
-                  credentialStatusUpdating={statusUpdating}
-                  onDownload={handleDownload}
-                  onShowModels={showCredentialModels}
-                  onOpenSettings={openCredentialSettings}
-                  onDelete={handleDelete}
-                  onToggleStatus={handleStatusToggle}
-                  onToggleSelect={toggleSelect}
-                  hideQuotaSection
-                  renderQuotaItems={() => null}
-                />
-              );
-            })}
-          </div>
+          <>
+            <div className={styles.pluginCredentialGrid}>
+              {credentialFiles.map((file) => {
+                const credentialID = String(file.id ?? '').trim();
+                const runtimeResource = credentialID
+                  ? runtimeResources[runtimeObservationResourceKey('credential', credentialID)]
+                  : undefined;
+                return (
+                  <QuotaCard
+                    key={file.name}
+                    item={file}
+                    runtimeResource={runtimeResource}
+                    i18nPrefix="quota_management"
+                    cardClassName={styles.pluginCredentialCard}
+                    defaultType={provider.oauthProviderId}
+                    actionDisabled={disableControls}
+                    selected={selectedFiles.has(file.name)}
+                    deletingCredentialName={deleting}
+                    credentialStatusUpdating={statusUpdating}
+                    onDownload={handleDownload}
+                    onShowModels={showCredentialModels}
+                    onOpenSettings={openCredentialSettings}
+                    onDelete={handleDelete}
+                    onToggleStatus={handleStatusToggle}
+                    onToggleSelect={toggleSelect}
+                    hideQuotaSection
+                    renderQuotaItems={() => null}
+                  />
+                );
+              })}
+            </div>
+            {(inventoryHasPrevious || inventoryHasNext) && (
+              <div className={styles.pagination}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleInventoryPrevious}
+                  disabled={!inventoryHasPrevious || loading}
+                >
+                  {t('auth_files.pagination_prev')}
+                </Button>
+                <div className={styles.pageInfo}>
+                  {t('auth_files.pagination_info', {
+                    current: inventoryPage,
+                    total: Math.max(1, Math.ceil(inventoryTotal / Math.max(1, inventoryLimit))),
+                    count: inventoryTotal,
+                  })}
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleInventoryNext}
+                  disabled={!inventoryHasNext || loading}
+                >
+                  {t('auth_files.pagination_next')}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </Card>
     );
@@ -748,6 +837,16 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
             );
           })}
         </div>
+        <label className={styles.credentialSearch}>
+          <Search size={15} aria-hidden="true" />
+          <input
+            type="search"
+            value={inventorySearchInput}
+            onChange={(event) => setInventorySearchInput(event.target.value)}
+            placeholder={t('auth_files.search_placeholder', { defaultValue: '搜索凭证' })}
+            aria-label={t('auth_files.search_placeholder', { defaultValue: '搜索凭证' })}
+          />
+        </label>
         <TooltipButton
           variant="secondary"
           size="sm"
@@ -920,7 +1019,23 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
         pools={uploadProxyPools}
         loading={uploadProxyPoolsLoading}
         confirming={uploading}
+        allowCancelWhileConfirming
         confirmDisabled={Boolean(uploadMaxConcurrencyDefaultError)}
+        confirmText={
+          uploadProgress && !uploading && uploadProgress.remainingFiles > 0
+            ? t('auth_files.upload_retry_remaining', {
+                defaultValue: '重试剩余 {{count}} 个',
+                count: uploadProgress.remainingFiles,
+              })
+            : undefined
+        }
+        cancelText={
+          uploading
+            ? t('auth_files.upload_stop', { defaultValue: '停止' })
+            : uploadProgress
+              ? t('common.close')
+              : undefined
+        }
         inspection={uploadProxyInspection}
         allowFileMode
         onChange={setUploadProxySelection}
@@ -928,6 +1043,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
         onCancel={cancelUploadProxySelection}
         onConfirm={() => void confirmUploadProxySelection()}
       >
+        {uploadProgress ? <AuthFileUploadProgress progress={uploadProgress} /> : null}
         <ConcurrencySettingField
           id="quota-import-concurrency"
           label={t('auth_files.import_max_concurrency_default_label')}
@@ -969,6 +1085,10 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
       <CodexIdentityAuditModal
         open={identityAuditOpen}
         onClose={() => setIdentityAuditOpen(false)}
+      />
+      <AuthFileAvailabilityReprobeResultModal
+        result={availabilityReprobeResult}
+        onClose={() => setAvailabilityReprobeResult(null)}
       />
     </div>
   );

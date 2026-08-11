@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   normalizeSupplierBillingProbeEvent,
   supplierBillingProbeApi,
+  type SupplierAvailabilityReprobeResponse,
   type SupplierBillingProbeEntry,
   type SupplierBillingProbeEvent,
   type SupplierBillingProbeResponse,
@@ -19,8 +20,10 @@ type SupplierBillingProbeState = {
   phase: SupplierBillingProbePhase;
   loading: boolean;
   error: string;
+  recoveringSupplierIds: string[];
   refresh: () => Promise<void>;
   refreshTarget: (targetId: string) => Promise<void>;
+  recoverSupplier: (supplierId: string) => Promise<SupplierAvailabilityReprobeResponse>;
   start: () => void;
   stop: (clear?: boolean) => void;
 };
@@ -119,6 +122,8 @@ let forceFollowUpSnapshot = false;
 const targetVersions = new Map<string, number>();
 const targetRequests = new Map<string, Promise<void>>();
 const targetAborts = new Map<string, AbortController>();
+const supplierRecoveryRequests = new Map<string, Promise<SupplierAvailabilityReprobeResponse>>();
+const supplierRecoveryAborts = new Map<string, AbortController>();
 
 const clearTimer = (timer: ReturnType<typeof setTimeout> | null) => {
   if (timer !== null) clearTimeout(timer);
@@ -134,12 +139,16 @@ const clearSupplierBillingTasks = () => {
   targetAborts.forEach((controller) => controller.abort());
   targetAborts.clear();
   targetRequests.clear();
+  supplierRecoveryAborts.forEach((controller) => controller.abort());
+  supplierRecoveryAborts.clear();
+  supplierRecoveryRequests.clear();
   clearTimer(reconnectTimer);
   clearTimer(pollTimer);
   clearTimer(snapshotTimer);
   reconnectTimer = null;
   pollTimer = null;
   snapshotTimer = null;
+  useSupplierBillingProbeStore.setState({ recoveringSupplierIds: [] });
 };
 
 const bumpSupplierBillingTargetVersion = (targetId: string): number => {
@@ -167,6 +176,38 @@ const patchSupplierBillingTarget = (
     .getState()
     .entries.map((entry) => (entry.target_id === targetId ? update(entry) : entry));
   setSupplierBillingEntries(entries);
+};
+
+export const mergeSupplierAvailabilityReprobeEntries = (
+  currentEntries: readonly SupplierBillingProbeEntry[],
+  response: SupplierAvailabilityReprobeResponse
+): SupplierBillingProbeEntry[] => {
+  const outcomesByEntry = new Map(
+    response.entries.map((entry) => [`${entry.supplier_id}\u0000${entry.entry_id}`, entry] as const)
+  );
+  if (outcomesByEntry.size === 0) return [...currentEntries];
+  return currentEntries.map((entry) => {
+    const outcome = outcomesByEntry.get(`${entry.supplier_id}\u0000${entry.entry_id}`);
+    const sourceRuntime = outcome?.runtime ?? entry.runtime;
+    if (!outcome || !sourceRuntime) return entry;
+    const runtime =
+      outcome.status === 'queued' || outcome.status === 'already_probing'
+        ? { ...sourceRuntime, availability_state: 'probing' as const }
+        : sourceRuntime;
+    return runtime ? { ...entry, runtime } : entry;
+  });
+};
+
+const setSupplierRecoveryPending = (supplierId: string, pending: boolean) => {
+  useSupplierBillingProbeStore.setState((state) => {
+    const current = state.recoveringSupplierIds;
+    const next = pending
+      ? current.includes(supplierId)
+        ? current
+        : [...current, supplierId].sort()
+      : current.filter((value) => value !== supplierId);
+    return next === current ? state : { recoveringSupplierIds: next };
+  });
 };
 
 export const applySupplierBillingProbeSnapshot = (snapshot: SupplierBillingProbeResponse) => {
@@ -450,6 +491,7 @@ export const useSupplierBillingProbeStore = create<SupplierBillingProbeState>((s
   phase: 'idle',
   loading: false,
   error: '',
+  recoveringSupplierIds: [],
 
   refresh: async () => {
     if (snapshotRequest) return snapshotRequest;
@@ -584,6 +626,51 @@ export const useSupplierBillingProbeStore = create<SupplierBillingProbeState>((s
     return request;
   },
 
+  recoverSupplier: async (supplierId: string) => {
+    const normalizedSupplierId = supplierId.trim();
+    if (!normalizedSupplierId) {
+      throw new Error('Supplier recovery requires a supplier ID');
+    }
+    const existingRequest = supplierRecoveryRequests.get(normalizedSupplierId);
+    if (existingRequest) return existingRequest;
+    const auth = useAuthStore.getState();
+    if (!auth.apiBase || !auth.managementKey || auth.connectionStatus !== 'connected') {
+      throw new Error('Supplier recovery requires an active management session');
+    }
+
+    const requestGeneration = lifecycleGeneration;
+    const controller = new AbortController();
+    supplierRecoveryAborts.set(normalizedSupplierId, controller);
+    setSupplierRecoveryPending(normalizedSupplierId, true);
+    const request = supplierBillingProbeApi
+      .recoverSupplier(normalizedSupplierId, controller.signal)
+      .then((response) => {
+        if (controller.signal.aborted || requestGeneration !== lifecycleGeneration) {
+          return response;
+        }
+        const current = get();
+        const nextEntries = mergeSupplierAvailabilityReprobeEntries(current.entries, response);
+        nextEntries.forEach((entry, index) => {
+          if (entry !== current.entries[index]) bumpSupplierBillingTargetVersion(entry.target_id);
+        });
+        if (nextEntries.some((entry, index) => entry !== current.entries[index])) {
+          setSupplierBillingEntries(nextEntries);
+        }
+        return response;
+      })
+      .finally(() => {
+        if (supplierRecoveryAborts.get(normalizedSupplierId) === controller) {
+          supplierRecoveryAborts.delete(normalizedSupplierId);
+        }
+        if (supplierRecoveryRequests.get(normalizedSupplierId) === request) {
+          supplierRecoveryRequests.delete(normalizedSupplierId);
+          setSupplierRecoveryPending(normalizedSupplierId, false);
+        }
+      });
+    supplierRecoveryRequests.set(normalizedSupplierId, request);
+    return request;
+  },
+
   start: () => {
     if (started) return;
     started = true;
@@ -622,6 +709,7 @@ export const useSupplierBillingProbeStore = create<SupplierBillingProbeState>((s
         phase: 'idle',
         loading: false,
         error: '',
+        recoveringSupplierIds: [],
       });
     } else {
       set({ phase: 'idle', loading: false });

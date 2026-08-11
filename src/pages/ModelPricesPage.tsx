@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { TooltipIconButton } from '@/components/ui/TooltipControls';
 import {
   isModelPricesCapabilityUnavailable,
+  MODEL_PRICE_SYNC_SOURCES,
   modelPricesApi,
   type ModelPriceCatalog,
   type ModelPriceCatalogAvailable,
@@ -56,7 +57,7 @@ import type { ApiError } from '@/types/api';
 import styles from './ModelPricesPage.module.scss';
 
 const FILTERS: ModelPriceFilter[] = ['all', 'used', 'unpriced'];
-const SYNC_SOURCES: ModelPriceSyncSource[] = ['litellm', 'openrouter'];
+const SYNC_SOURCES: ModelPriceSyncSource[] = [...MODEL_PRICE_SYNC_SOURCES];
 const EMPTY_PRICE_DIMENSIONS: ModelPriceDimensions = {
   inputPerMillion: null,
   outputPerMillion: null,
@@ -1242,7 +1243,9 @@ export function ModelPricesPage() {
                         {row.coverage.map((coverage) => {
                           const reason = syncReasonLabel(coverage.reason);
                           return (
-                            <div key={`${coverage.source}:${coverage.targetProvider}:${coverage.targetModel}`}>
+                            <div
+                              key={`${coverage.source}:${coverage.targetProvider}:${coverage.targetModel}`}
+                            >
                               <div>
                                 <strong>
                                   {t(`model_prices.sync.sources.${coverage.source}`, {
@@ -1252,10 +1255,9 @@ export function ModelPricesPage() {
                                 <span
                                   className={`${styles.badge} ${syncStatusVariant(coverage.status)}`}
                                 >
-                                  {t(
-                                    `model_prices.sync.candidate_status.${coverage.status}`,
-                                    { defaultValue: coverage.status }
-                                  )}
+                                  {t(`model_prices.sync.candidate_status.${coverage.status}`, {
+                                    defaultValue: coverage.status,
+                                  })}
                                 </span>
                               </div>
                               {reason ? <small>{reason}</small> : null}
@@ -1333,9 +1335,7 @@ export function ModelPricesPage() {
                                       {t('model_prices.sync.conditional_only')}
                                     </div>
                                   ) : null}
-                                  {renderSyncPrices(
-                                    defaultRule?.prices ?? EMPTY_PRICE_DIMENSIONS
-                                  )}
+                                  {renderSyncPrices(defaultRule?.prices ?? EMPTY_PRICE_DIMENSIONS)}
                                 </div>
 
                                 {reasonLabels.length ? (

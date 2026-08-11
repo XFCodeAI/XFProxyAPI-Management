@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 
 const server = await createServer({
@@ -9,9 +11,14 @@ const server = await createServer({
 });
 
 try {
+  const i18nModule = await server.ssrLoadModule('/src/i18n/index.ts');
+  await i18nModule.initializeI18n();
   const layout = await server.ssrLoadModule('/src/components/layout/MainLayout.tsx');
   const quotaPage = await server.ssrLoadModule('/src/pages/QuotaPage.tsx');
   const quotaSection = await server.ssrLoadModule('/src/components/quota/QuotaSection.tsx');
+  const quotaResolvers = await server.ssrLoadModule('/src/utils/quota/resolvers.ts');
+  const { QuotaCard } = await server.ssrLoadModule('/src/components/quota/QuotaCard.tsx');
+  const { TooltipProvider } = await server.ssrLoadModule('/src/components/ui/Tooltip.tsx');
 
   assert.equal(
     layout.resolveCredentialNavigationBadge({ files: [], inventoryId: '', revision: 0 }),
@@ -22,8 +29,10 @@ try {
       files: [{ id: 'one' }, { id: 'two' }],
       inventoryId: 'inventory-a',
       revision: 7,
+      total: 3000,
+      providerTotals: { codex: 2000, claude: 1000 },
     }),
-    { count: 2, revision: 7 }
+    { count: 3000, revision: 7 }
   );
   assert.deepEqual(
     layout.resolveCredentialNavigationBadge({
@@ -70,6 +79,41 @@ try {
   assert.equal(quotaSection.matchesQuotaCredentialPlan({}, teamQuota, 'team'), true);
   assert.equal(quotaSection.matchesQuotaCredentialPlan({}, teamQuota, 'plus'), false);
   assert.equal(quotaSection.matchesQuotaCredentialPlan({}, undefined, '__unverified__'), true);
+  assert.equal(
+    quotaSection.resolveQuotaCredentialPlan(
+      { plan_type: 'plus' },
+      {
+        status: 'success',
+        account: { upstreamPlanType: 'k12', credentialPlanType: 'team' },
+      }
+    ),
+    'k12'
+  );
+  assert.equal(quotaSection.resolveQuotaCredentialPlan({ plan_type: 'plus' }, undefined), 'plus');
+  const codexIdToken = `header.${Buffer.from(
+    JSON.stringify({
+      'https://api.openai.com/auth': { chatgpt_plan_type: 'k12' },
+    })
+  ).toString('base64url')}.signature`;
+  assert.equal(quotaResolvers.resolveCodexPlanType({ id_token: codexIdToken }), 'k12');
+
+  const credentialPlanMarkup = renderToStaticMarkup(
+    createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      createElement(QuotaCard, {
+        item: { name: 'codex-k12.json', type: 'codex', plan_type: 'k12' },
+        i18nPrefix: 'codex_quota',
+        cardClassName: '',
+        defaultType: 'codex',
+        hideQuotaSection: true,
+        credentialPlan: { type: 'k12', label: 'K12' },
+        renderQuotaItems: () => null,
+      })
+    )
+  );
+  assert.match(credentialPlanMarkup, /data-credential-plan="k12"/);
+  assert.match(credentialPlanMarkup, /K12/);
 
   const providers = [
     { id: 'claude', credentialCount: 0 },

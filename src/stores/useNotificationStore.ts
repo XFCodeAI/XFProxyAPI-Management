@@ -6,14 +6,18 @@ import type { Notification, NotificationType } from '@/types';
 import { generateId } from '@/utils/helpers';
 import { NOTIFICATION_DURATION_MS } from '@/utils/constants';
 
-interface ConfirmationOptions {
+interface ConfirmationStepOptions {
   title?: string;
   message: ReactNode;
   confirmText?: string;
   cancelText?: string;
   variant?: 'danger' | 'primary' | 'secondary';
+}
+
+interface ConfirmationOptions extends ConfirmationStepOptions {
   onConfirm: () => void | Promise<void>;
   onCancel?: () => void;
+  secondConfirmation?: ConfirmationStepOptions;
 }
 
 interface NotificationState {
@@ -22,6 +26,7 @@ interface NotificationState {
     requestId: string | null;
     isOpen: boolean;
     isLoading: boolean;
+    step: 1 | 2;
     options: ConfirmationOptions | null;
   };
   showNotification: (message: string, type?: NotificationType, duration?: number) => void;
@@ -30,6 +35,7 @@ interface NotificationState {
   showConfirmation: (options: ConfirmationOptions) => string;
   hideConfirmation: (requestId: string) => void;
   setConfirmationLoading: (requestId: string, loading: boolean) => void;
+  advanceConfirmation: (requestId: string) => void;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
@@ -38,6 +44,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     requestId: null,
     isOpen: false,
     isLoading: false,
+    step: 1,
     options: null,
   },
 
@@ -89,6 +96,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         requestId,
         isOpen: true,
         isLoading: false,
+        step: 1,
         options,
       },
     });
@@ -103,6 +111,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
           requestId: null,
           isOpen: false,
           isLoading: false,
+          step: 1,
           options: null,
         },
       };
@@ -116,6 +125,20 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         confirmation: {
           ...state.confirmation,
           isLoading: loading,
+        },
+      };
+    });
+  },
+
+  advanceConfirmation: (requestId) => {
+    set((state) => {
+      if (state.confirmation.requestId !== requestId) return state;
+      if (!state.confirmation.options?.secondConfirmation) return state;
+      return {
+        confirmation: {
+          ...state.confirmation,
+          isLoading: false,
+          step: 2,
         },
       };
     });

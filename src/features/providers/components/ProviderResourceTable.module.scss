@@ -1,7 +1,7 @@
 @use '../../../styles/variables' as *;
 
 .providerTable {
-  min-width: 760px;
+  min-width: 794px;
   table-layout: fixed;
 
   tbody tr:hover .actionsCell {
@@ -57,6 +57,52 @@
   color: var(--muted-foreground);
   font-family: $font-mono;
   font-size: 12px;
+}
+
+.imageRouteIndicator {
+  display: inline-flex;
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.35;
+
+  svg {
+    flex: 0 0 auto;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.imageRouteIndicator_configured {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: color-mix(in srgb, var(--primary) 9%, var(--card));
+  color: var(--primary);
+}
+
+.imageRouteIndicator_invalid {
+  border-color: color-mix(in srgb, var(--destructive) 30%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 9%, var(--card));
+  color: var(--destructive);
+}
+
+.imageRouteIndicator_unavailable {
+  border-color: color-mix(in srgb, var(--warning, #d97706) 34%, var(--border));
+  background: color-mix(in srgb, var(--warning, #d97706) 9%, var(--card));
+  color: var(--warning, #d97706);
 }
 
 .baseUrl {
@@ -224,7 +270,8 @@
   min-height: 44px;
   grid-template-areas:
     'alias alias alias'
-    'value status refresh';
+    'value status refresh'
+    'availability availability availability';
   row-gap: 2px;
 
   .rateAlias {
@@ -241,6 +288,10 @@
 
   .rateRefreshSlot {
     grid-area: refresh;
+  }
+
+  .availabilityDetail {
+    grid-area: availability;
   }
 }
 
@@ -291,6 +342,22 @@
 
 .usageStateError {
   color: var(--destructive);
+}
+
+.availabilityDetail {
+  display: flex;
+  min-width: 0;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  color: var(--warning, #d97706);
+  font-size: 10px;
+  line-height: 1.35;
+
+  span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 }
 
 .rateUnavailable,
@@ -365,8 +432,8 @@
 .actionsCell {
   position: sticky;
   right: 0;
-  width: 176px;
-  min-width: 176px;
+  width: 210px;
+  min-width: 210px;
   box-shadow: -12px 0 16px -18px color-mix(in srgb, var(--foreground) 45%, transparent);
 }
 
@@ -396,6 +463,10 @@
   display: inline-flex;
   align-items: center;
   margin-right: 4px;
+}
+
+.recoveryAction {
+  display: inline-flex;
 }
 
 .iconBtnDanger {

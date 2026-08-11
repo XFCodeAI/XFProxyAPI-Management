@@ -53,6 +53,12 @@ export type OpenAIProviderProtocolMode = 'chat-completions' | 'preserve-openai' 
 export type OpenAIProviderRetryOwner = 'xfpa' | 'upstream';
 export type ClaudeAuthMode = 'x-api-key' | 'bearer';
 
+export interface CodexImageRouteConfig {
+  enabled: boolean;
+  targetSupplier: string;
+  targetModel: string;
+}
+
 export interface GeminiKeyConfig {
   name?: string;
   apiKey: string;
@@ -111,6 +117,7 @@ export interface OpenAIProviderConfig {
   fallback?: boolean;
   testModel?: string;
   disableCooling?: boolean;
+  codexImageRoute?: CodexImageRouteConfig;
   authIndex?: string;
   runtimeStatus?: ProviderRuntimeStatus;
   [key: string]: unknown;

@@ -28,6 +28,8 @@ const multiplier = (value) => ({
 
 const probeEntry = (targetId, value, overrides = {}) => ({
   target_id: targetId,
+  supplier_id: targetId.endsWith('other') ? 'supplier-other' : 'supplier-a',
+  entry_id: targetId.endsWith('other') ? 'entry-other' : 'entry-primary',
   provider_brand: 'openaiCompatibility',
   provider_name: 'supplier-a',
   provider_index: targetId.endsWith('other') ? 1 : 0,
@@ -46,6 +48,14 @@ const probeEntry = (targetId, value, overrides = {}) => ({
     unit: 'USD',
     stale: false,
     received_at: '2026-08-06T00:00:00Z',
+  },
+  runtime: {
+    supplier_id: targetId.endsWith('other') ? 'supplier-other' : 'supplier-a',
+    entry_id: targetId.endsWith('other') ? 'entry-other' : 'entry-primary',
+    auth_id: targetId.endsWith('other') ? 'auth-other' : 'auth-primary',
+    credential_generation: 1,
+    availability_revision: 1,
+    availability_state: 'ready',
   },
   ...overrides,
 });
@@ -78,6 +88,17 @@ try {
         ...probeEntry('supplier:primary', '1.25'),
         queued: true,
         usage: { remaining: '12.5', status: 'ok', stale: false, is_valid: true },
+        runtime: {
+          supplier_id: 'supplier-a',
+          entry_id: 'entry-primary',
+          auth_id: 'auth-primary',
+          credential_generation: '2',
+          availability_revision: '3',
+          availability_state: 'excluded',
+          availability_deadline: '2026-08-06T01:00:00Z',
+          availability_reason: 'usage_exhausted',
+          provider_code: 'verified_zero_balance',
+        },
       },
       { provider_brand: 'codex' },
     ],
@@ -87,6 +108,10 @@ try {
   assert.equal(normalized.entries.length, 1);
   assert.equal(normalized.entries[0].queued, true);
   assert.equal(normalized.entries[0].usage.remaining, 12.5);
+  assert.equal(normalized.entries[0].runtime.availability_state, 'excluded');
+  assert.equal(normalized.entries[0].runtime.availability_reason, 'usage_exhausted');
+  assert.equal(normalized.entries[0].runtime.provider_code, 'verified_zero_balance');
+  assert.equal(normalized.entries[0].runtime.availability_deadline, '2026-08-06T01:00:00Z');
   assert.strictEqual(
     storeModule.indexSupplierBillingProbeEntries(normalized.entries)['supplier:primary'],
     normalized.entries[0]
@@ -154,6 +179,7 @@ try {
   const originalSnapshot = apiModule.supplierBillingProbeApi.snapshot;
   const originalEvents = apiModule.supplierBillingProbeApi.events;
   const originalEnqueue = apiModule.supplierBillingProbeApi.enqueue;
+  const originalRecoverSupplier = apiModule.supplierBillingProbeApi.recoverSupplier;
   try {
     let snapshotCalls = 0;
     let eventCalls = 0;
@@ -281,6 +307,81 @@ try {
       'an older enqueue response must not overwrite a terminal snapshot'
     );
 
+    let recoverCalls = 0;
+    let resolveRecovery;
+    apiModule.supplierBillingProbeApi.recoverSupplier = () => {
+      recoverCalls += 1;
+      return new Promise((resolve) => {
+        resolveRecovery = resolve;
+      });
+    };
+    const recoverySnapshot = snapshot(6, '1.9');
+    recoverySnapshot.entries[0] = probeEntry('supplier:primary', '1.9', {
+      last_error: 'existing request error',
+      usage: {
+        ...probeEntry('supplier:primary', '1.9').usage,
+        status: 'failed',
+        last_error: 'existing usage error',
+      },
+      runtime: {
+        ...probeEntry('supplier:primary', '1.9').runtime,
+        availability_state: 'usage_wait',
+        availability_reason: 'usage_exhausted',
+      },
+    });
+    storeModule.applySupplierBillingProbeSnapshot(recoverySnapshot);
+    const unaffectedBefore =
+      storeModule.useSupplierBillingProbeStore.getState().entriesByTarget['supplier:other'];
+    const firstRecovery = storeModule.useSupplierBillingProbeStore
+      .getState()
+      .recoverSupplier('supplier-a');
+    const duplicateRecovery = storeModule.useSupplierBillingProbeStore
+      .getState()
+      .recoverSupplier('supplier-a');
+    assert.equal(recoverCalls, 1, 'duplicate supplier recovery must coalesce');
+    assert.deepEqual(storeModule.useSupplierBillingProbeStore.getState().recoveringSupplierIds, [
+      'supplier-a',
+    ]);
+    resolveRecovery({
+      status: 'accepted',
+      supplier_id: 'supplier-a',
+      requested: 1,
+      eligible: 1,
+      queued: 1,
+      already_probing: 0,
+      skipped: {},
+      maximum_parallel: 4,
+      entries: [
+        {
+          supplier_id: 'supplier-a',
+          entry_id: 'entry-primary',
+          status: 'queued',
+          runtime: {
+            supplier_id: 'supplier-a',
+            entry_id: 'entry-primary',
+            auth_id: 'auth-primary',
+            credential_generation: 1,
+            availability_revision: 4,
+            availability_state: 'usage_wait',
+            availability_deadline: '2026-08-06T01:00:00Z',
+            availability_reason: 'usage_exhausted',
+          },
+        },
+      ],
+    });
+    await Promise.all([firstRecovery, duplicateRecovery]);
+    const recovered =
+      storeModule.useSupplierBillingProbeStore.getState().entriesByTarget['supplier:primary'];
+    assert.equal(recovered.runtime.availability_state, 'probing');
+    assert.equal(recovered.last_error, 'existing request error');
+    assert.equal(recovered.usage.last_error, 'existing usage error');
+    assert.strictEqual(
+      storeModule.useSupplierBillingProbeStore.getState().entriesByTarget['supplier:other'],
+      unaffectedBefore,
+      'supplier recovery must not replace unrelated entries'
+    );
+    assert.deepEqual(storeModule.useSupplierBillingProbeStore.getState().recoveringSupplierIds, []);
+
     visibilityDocument.visibilityState = 'hidden';
     visibilityDocument.dispatchEvent(new Event('visibilitychange'));
     assert.equal(storeModule.useSupplierBillingProbeStore.getState().phase, 'paused');
@@ -290,6 +391,7 @@ try {
     apiModule.supplierBillingProbeApi.snapshot = originalSnapshot;
     apiModule.supplierBillingProbeApi.events = originalEvents;
     apiModule.supplierBillingProbeApi.enqueue = originalEnqueue;
+    apiModule.supplierBillingProbeApi.recoverSupplier = originalRecoverSupplier;
     useAuthStore.setState({ connectionStatus: 'disconnected', apiBase: '', managementKey: '' });
     globalThis.document = originalDocument;
     globalThis.window = originalWindow;

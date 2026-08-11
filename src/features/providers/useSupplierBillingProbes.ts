@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import {
   supplierBillingProbeApi,
+  type SupplierAvailabilityReprobeResponse,
   type SupplierBillingProbeEntry,
 } from '@/services/api/supplierBillingProbe';
 import { useSupplierBillingProbeStore } from '@/stores/useSupplierBillingProbeStore';
@@ -110,6 +111,8 @@ interface UseSupplierBillingProbesResult {
   isFetching: boolean;
   refetch: () => Promise<void>;
   refreshTarget: (targetId: string) => Promise<void>;
+  recoverSupplier: (supplierId: string) => Promise<SupplierAvailabilityReprobeResponse>;
+  recoveringSupplierIds: ReadonlySet<string>;
 }
 
 export function useSupplierBillingProbes({
@@ -120,6 +123,10 @@ export function useSupplierBillingProbes({
   const isFetching = useSupplierBillingProbeStore((state) => state.loading);
   const refetch = useSupplierBillingProbeStore((state) => state.refresh);
   const refreshTarget = useSupplierBillingProbeStore((state) => state.refreshTarget);
+  const recoverSupplier = useSupplierBillingProbeStore((state) => state.recoverSupplier);
+  const recoveringSupplierIdList = useSupplierBillingProbeStore(
+    (state) => state.recoveringSupplierIds
+  );
   const resourceKeyList = Array.from(
     new Set(resources.flatMap((resource) => supplierBillingSourceKeys(resource)))
   ).sort();
@@ -140,11 +147,17 @@ export function useSupplierBillingProbes({
     () => mapSupplierBillingProbeEntriesToResources(visibleEntries, resources),
     [resources, visibleEntries]
   );
+  const recoveringSupplierIds = useMemo(
+    () => new Set(recoveringSupplierIdList),
+    [recoveringSupplierIdList]
+  );
 
   return {
     entriesByResource,
     isFetching,
     refetch,
     refreshTarget,
+    recoverSupplier,
+    recoveringSupplierIds,
   };
 }

@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObj
 import { useTranslation } from 'react-i18next';
 import { authFilesApi, proxyPoolsApi } from '@/services/api';
 import { apiClient } from '@/services/api/client';
-import type { AuthFileBatchDeleteResult } from '@/services/api/authFiles';
+import type {
+  AuthFileBatchDeleteResult,
+  AuthFileBatchFailure,
+  AuthFileUploadProgress,
+} from '@/services/api/authFiles';
 import { useAuthInventoryStore, useNotificationStore } from '@/stores';
 import type {
   AuthFileItem,
@@ -16,9 +20,7 @@ import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
 import { downloadBlob } from '@/utils/download';
 import {
   getTypeLabel,
-  hasAuthFileStatusMessage,
   isRuntimeOnlyAuthFile,
-  normalizeProviderKey,
   supportsAuthFileManualRefresh,
 } from '@/features/authFiles/constants';
 import { runAuthFileManualRefresh } from '@/features/authFiles/authFileManualRefresh';
@@ -38,6 +40,12 @@ import {
 import { normalizeCredentialGroups } from '@/utils/credentialGroups';
 import { isRecord } from '@/utils/helpers';
 import { parseOptionalMaxConcurrency } from '@/utils/maxConcurrency';
+import {
+  authFileMatchesCredentialIdentity,
+  isAuthFileIdentityChangedError,
+  readAuthFileCredentialIdentity,
+  recoverAuthFileIdentityConflict,
+} from '@/features/authFiles/credentialIdentity';
 
 type DeleteAllOptions = {
   filter: string;
@@ -56,6 +64,8 @@ export type AuthFileGroupAssignmentSource = PendingUploadSource | 'oauth';
 
 export interface AuthFileGroupAssignmentTarget {
   name: string;
+  credentialId?: string | null;
+  authIndex?: string | number | null;
   type?: string;
   provider?: string;
   groups: string[];
@@ -93,6 +103,10 @@ export interface SessionImportResult {
   failures: SessionImportFailure[];
 }
 
+export type AuthFileUploadState = AuthFileUploadProgress & {
+  failures: AuthFileBatchFailure[];
+};
+
 export type UseAuthFilesDataResult = {
   files: AuthFileItem[];
   selectedFiles: Set<string>;
@@ -100,6 +114,7 @@ export type UseAuthFilesDataResult = {
   loading: boolean;
   error: string;
   uploading: boolean;
+  uploadProgress: AuthFileUploadState | null;
   deleting: string | null;
   deletingAll: boolean;
   statusUpdating: Record<string, boolean>;
@@ -122,7 +137,7 @@ export type UseAuthFilesDataResult = {
   beginFileImport: (files: File[], options?: BeginFileImportOptions) => boolean;
   handleUploadClick: () => void;
   handleFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
-  handleDelete: (name: string) => void;
+  handleDelete: (item: AuthFileItem) => void;
   handleDeleteAll: (options: DeleteAllOptions) => void;
   handleDownload: (name: string) => Promise<void>;
   handleManualRefresh: (item: AuthFileItem) => Promise<void>;
@@ -173,7 +188,9 @@ const normalizeAssignmentTargets = (targets: AuthFileItem[]): AuthFileGroupAssig
     const name = String(target.name ?? '').trim();
     if (!name || seen.has(name)) return;
     seen.add(name);
+    const identity = readAuthFileCredentialIdentity(target);
     normalized.push({
+      ...identity,
       name,
       type: typeof target.type === 'string' ? target.type : undefined,
       provider: typeof target.provider === 'string' ? target.provider : undefined,
@@ -270,6 +287,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<AuthFileUploadState | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
@@ -300,6 +318,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const batchStatusPendingRef = useRef(false);
   const uploadProxyInspectionSeqRef = useRef(0);
   const uploadProxySelectionTouchedRef = useRef(false);
+  const uploadCancelRequestedRef = useRef(false);
   const filesRef = useRef<AuthFileItem[]>([]);
   const pendingUploadGroupNamesRef = useRef<string[]>([]);
   const selectionCount = selectedFiles.size;
@@ -422,6 +441,36 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     [refreshAuthFiles, t]
   );
 
+  const refreshCredentialInventory = useCallback(async () => {
+    await refreshAuthFiles(true);
+    filesRef.current = useAuthInventoryStore.getState().files;
+  }, [refreshAuthFiles]);
+
+  const recoverStaleCredentialMutation = useCallback(
+    async (err: unknown): Promise<'not-conflict' | 'refreshed' | 'refresh-failed'> => {
+      if (!isAuthFileIdentityChangedError(err)) return 'not-conflict';
+      try {
+        await recoverAuthFileIdentityConflict(err, refreshCredentialInventory);
+        showNotification(
+          t('auth_files.identity_changed', {
+            defaultValue:
+              'Credential changed. The latest inventory has been loaded; retry the action.',
+          }),
+          'warning'
+        );
+        return 'refreshed';
+      } catch (refreshError: unknown) {
+        const message = refreshError instanceof Error ? refreshError.message : '';
+        showNotification(
+          `${t('notification.refresh_failed')}${message ? `: ${message}` : ''}`,
+          'error'
+        );
+        return 'refresh-failed';
+      }
+    },
+    [refreshCredentialInventory, showNotification, t]
+  );
+
   const refreshUploadProxyPools = useCallback(async () => {
     setUploadProxyPoolsLoading(true);
     try {
@@ -512,8 +561,15 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         const result = await applyAuthFilesGroupAssignment(
           targets,
           groups,
-          (target, targetGroups) => authFilesApi.patchFields(target.name, { groups: targetGroups })
+          (target, targetGroups) => authFilesApi.patchFields(target, { groups: targetGroups })
         );
+
+        const staleFailure = result.failed.find((entry) =>
+          isAuthFileIdentityChangedError(entry.error)
+        );
+        if (staleFailure) {
+          await recoverStaleCredentialMutation(staleFailure.error);
+        }
 
         if (result.successCount > 0) {
           await loadFiles(true);
@@ -555,7 +611,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         setGroupAssigning(false);
       }
     },
-    [groupAssignment, groupAssigning, loadFiles, showNotification, t]
+    [
+      groupAssignment,
+      groupAssigning,
+      loadFiles,
+      recoverStaleCredentialMutation,
+      showNotification,
+      t,
+    ]
   );
 
   const uploadFilesWithSelection = useCallback(
@@ -565,23 +628,44 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       concurrencyDefault: ConcurrencySetting
     ) => {
       setUploading(true);
+      uploadCancelRequestedRef.current = false;
+      setUploadProgress(null);
       try {
-        const result = await authFilesApi.uploadFiles(validFiles, selection, concurrencyDefault);
+        const result = await authFilesApi.uploadFilesInChunks(
+          validFiles,
+          selection,
+          concurrencyDefault,
+          {
+            shouldCancel: () => uploadCancelRequestedRef.current,
+            onProgress: (progress) =>
+              setUploadProgress((current) => ({
+                ...progress,
+                failures: current?.failures ?? [],
+              })),
+          }
+        );
         const successCount = result.uploaded;
+        setUploadProgress((current) => ({
+          ...(current ?? {
+            totalFiles: validFiles.length,
+            totalChunks: result.totalChunks,
+            currentChunk: result.completedChunks,
+            completedChunks: result.completedChunks,
+            processedFiles: result.attempted,
+            acceptedFiles: result.uploaded,
+            rejectedFiles: result.failed.length,
+            remainingFiles: result.remainingFiles.length,
+            phase: result.cancelled ? 'cancelled' : 'completed',
+          }),
+          failures: result.failed,
+        }));
 
         if (successCount > 0) {
-          const failedNames = new Set(result.failed.map((item) => item.name).filter(Boolean));
-          const uploadedNames =
-            result.files.length > 0
-              ? result.files
-              : validFiles
-                  .filter((file) => !failedNames.has(file.name))
-                  .slice(0, successCount)
-                  .map((file) => file.name);
+          const uploadedNames = result.files;
           const suffix = validFiles.length > 1 ? ` (${successCount}/${validFiles.length})` : '';
           showNotification(
             `${t('auth_files.upload_success')}${suffix}`,
-            result.failed.length ? 'warning' : 'success'
+            result.failed.length || result.cancelled ? 'warning' : 'success'
           );
           await loadFiles(true);
           addPendingUploadGroupNames(uploadedNames);
@@ -591,20 +675,37 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         }
 
         if (result.failed.length > 0) {
-          const details = result.failed.map((item) => `${item.name}: ${item.error}`).join('; ');
-          showNotification(`${t('notification.upload_failed')}: ${details}`, 'error');
+          const details = result.failed
+            .slice(0, 5)
+            .map((item) => `${item.name}: ${item.error}`)
+            .join('; ');
+          const suffix = result.failed.length > 5 ? `; +${result.failed.length - 5}` : '';
+          showNotification(`${t('notification.upload_failed')}: ${details}${suffix}`, 'error');
+        } else if (result.cancelled) {
+          showNotification(
+            t('auth_files.upload_cancelled', {
+              defaultValue: '已停止导入，剩余 {{count}} 个文件可重试',
+              count: result.remainingFiles.length,
+            }),
+            'warning'
+          );
         }
-
-        if (result.failed.length === 0) {
-          return [];
-        }
-        const failedNames = new Set(result.failed.map((item) => item.name).filter(Boolean));
-        return failedNames.size > 0
-          ? validFiles.filter((file) => failedNames.has(file.name))
-          : validFiles;
+        return result.remainingFiles;
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : '未知错误';
         showNotification(`${t('notification.upload_failed')}: ${errorMessage}`, 'error');
+        setUploadProgress({
+          totalFiles: validFiles.length,
+          totalChunks: 1,
+          currentChunk: 1,
+          completedChunks: 0,
+          processedFiles: 0,
+          acceptedFiles: 0,
+          rejectedFiles: validFiles.length,
+          remainingFiles: validFiles.length,
+          phase: 'completed',
+          failures: validFiles.map((file) => ({ name: file.name, error: errorMessage })),
+        });
         return validFiles;
       } finally {
         setUploading(false);
@@ -768,6 +869,8 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
 
       setPendingUploadFiles(validFiles);
       setPendingUploadSource(options.source ?? 'file');
+      setUploadProgress(null);
+      uploadCancelRequestedRef.current = false;
       setUploadConcurrencyModeDefault('inherit');
       setUploadMaxConcurrencyDefaultInput('0');
       uploadProxySelectionTouchedRef.current = false;
@@ -799,16 +902,31 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   );
 
   const handleDelete = useCallback(
-    (name: string) => {
+    (item: AuthFileItem) => {
+      const target = readAuthFileCredentialIdentity(item);
+      const name = target.name;
       showConfirmation({
         title: t('auth_files.delete_title', { defaultValue: 'Delete File' }),
         message: `${t('auth_files.delete_confirm')} "${name}" ?`,
         variant: 'danger',
-        confirmText: t('common.confirm'),
+        confirmText: t('common.next', { defaultValue: 'Next' }),
+        secondConfirmation: {
+          title: t('auth_files.delete_second_title', {
+            defaultValue: 'Confirm permanent deletion',
+          }),
+          message: t('auth_files.delete_second_confirm', {
+            name,
+            defaultValue: 'Delete "{{name}}" permanently? This action cannot be undone.',
+          }),
+          variant: 'danger',
+          confirmText: t('auth_files.delete_second_action', {
+            defaultValue: 'Delete permanently',
+          }),
+        },
         onConfirm: async () => {
           setDeleting(name);
           try {
-            const result = await authFilesApi.deleteFile(name);
+            const result = await authFilesApi.deleteFile(target);
             applyDeletedFiles(result.files);
             commitMutationVersion(result.inventoryId, result.revision);
             if (unresolvedDeleteCount(result) === 0) {
@@ -827,6 +945,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
               );
             }
           } catch (err: unknown) {
+            if ((await recoverStaleCredentialMutation(err)) !== 'not-conflict') return;
             const errorMessage = err instanceof Error ? err.message : '';
             showNotification(`${t('notification.delete_failed')}: ${errorMessage}`, 'error');
           } finally {
@@ -835,7 +954,14 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         },
       });
     },
-    [applyDeletedFiles, commitMutationVersion, showConfirmation, showNotification, t]
+    [
+      applyDeletedFiles,
+      commitMutationVersion,
+      recoverStaleCredentialMutation,
+      showConfirmation,
+      showNotification,
+      t,
+    ]
   );
 
   const handleDeleteAll = useCallback(
@@ -865,12 +991,35 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       } else if (isFiltered) {
         confirmMessage = t('auth_files.delete_filtered_confirm', { type: typeLabel });
       }
+      const deleteScope = isFiltered
+        ? typeLabel
+        : isProblemOnly
+          ? t('auth_files.problem_filter_problem')
+          : isDisabledOnly
+            ? t('auth_files.problem_filter_disabled')
+            : isEnabledOnly
+              ? t('auth_files.problem_filter_enabled')
+              : t('auth_files.filter_all');
 
       showConfirmation({
         title: t('auth_files.delete_all_title', { defaultValue: 'Delete All Files' }),
         message: confirmMessage,
         variant: 'danger',
-        confirmText: t('common.confirm'),
+        confirmText: t('common.next', { defaultValue: 'Next' }),
+        secondConfirmation: {
+          title: t('auth_files.delete_many_second_title', {
+            defaultValue: 'Confirm permanent deletion',
+          }),
+          message: t('auth_files.delete_many_second_confirm', {
+            scope: deleteScope,
+            defaultValue:
+              'Permanently delete all credentials in "{{scope}}"? This action cannot be undone.',
+          }),
+          variant: 'danger',
+          confirmText: t('auth_files.delete_second_action', {
+            defaultValue: 'Delete permanently',
+          }),
+        },
         onConfirm: async () => {
           setDeletingAll(true);
           try {
@@ -895,35 +1044,16 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
               }
               deselectAll();
             } else {
-              const filesToDelete = files.filter((file) => {
-                if (isRuntimeOnlyAuthFile(file)) return false;
-                if (
-                  isFiltered &&
-                  normalizeProviderKey(String(file.type ?? file.provider ?? '')) !== filter
-                ) {
-                  return false;
-                }
-                if (isProblemOnly && !hasAuthFileStatusMessage(file)) return false;
-                if (isDisabledOnly && file.disabled !== true) return false;
-                if (isEnabledOnly && file.disabled === true) return false;
-                return true;
+              const result = await authFilesApi.deleteMatching({
+                provider: isFiltered ? filter : undefined,
+                status: isDisabledOnly
+                  ? 'disabled'
+                  : isEnabledOnly
+                    ? 'enabled'
+                    : isProblemOnly
+                      ? 'problem'
+                      : undefined,
               });
-
-              if (filesToDelete.length === 0) {
-                let emptyMessage = t('auth_files.delete_filtered_none', { type: typeLabel });
-                if (isDisabledOnly || isEnabledOnly) {
-                  emptyMessage = t('auth_files.delete_filtered_result_none');
-                } else if (isProblemOnly) {
-                  emptyMessage = isFiltered
-                    ? t('auth_files.delete_problem_filtered_none', { type: typeLabel })
-                    : t('auth_files.delete_problem_none');
-                }
-                showNotification(emptyMessage, 'info');
-                setDeletingAll(false);
-                return;
-              }
-
-              const result = await authFilesApi.deleteFiles(filesToDelete.map((file) => file.name));
               const success = result.deleted;
               const failed = unresolvedDeleteCount(result);
 
@@ -995,15 +1125,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         },
       });
     },
-    [
-      applyDeletedFiles,
-      commitMutationVersion,
-      deselectAll,
-      files,
-      showConfirmation,
-      showNotification,
-      t,
-    ]
+    [applyDeletedFiles, commitMutationVersion, deselectAll, showConfirmation, showNotification, t]
   );
 
   const handleDownload = useCallback(
@@ -1027,16 +1149,27 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const handleStatusToggle = useCallback(
     async (item: AuthFileItem, enabled: boolean) => {
       const name = item.name;
+      const target = readAuthFileCredentialIdentity(item);
       const nextDisabled = !enabled;
       const previousDisabled = item.disabled === true;
 
       setStatusUpdating((prev) => ({ ...prev, [name]: true }));
-      setFiles((prev) => prev.map((f) => (f.name === name ? { ...f, disabled: nextDisabled } : f)));
+      setFiles((prev) =>
+        prev.map((file) =>
+          authFileMatchesCredentialIdentity(file, target)
+            ? { ...file, disabled: nextDisabled }
+            : file
+        )
+      );
 
       try {
-        const res = await authFilesApi.setStatus(name, nextDisabled);
+        const res = await authFilesApi.setStatus(target, nextDisabled);
         setFiles((prev) =>
-          prev.map((f) => (f.name === name ? { ...f, disabled: res.disabled } : f))
+          prev.map((file) =>
+            authFileMatchesCredentialIdentity(file, target)
+              ? { ...file, disabled: res.disabled }
+              : file
+          )
         );
         commitMutationVersion(res.inventory_id ?? '', res.revision ?? 0, res.files ?? []);
         showNotification(
@@ -1046,11 +1179,20 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           'success'
         );
       } catch (err: unknown) {
+        const recovery = await recoverStaleCredentialMutation(err);
         const errorMessage = err instanceof Error ? err.message : '';
-        setFiles((prev) =>
-          prev.map((f) => (f.name === name ? { ...f, disabled: previousDisabled } : f))
-        );
-        showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
+        if (recovery !== 'refreshed') {
+          setFiles((prev) =>
+            prev.map((file) =>
+              authFileMatchesCredentialIdentity(file, target)
+                ? { ...file, disabled: previousDisabled }
+                : file
+            )
+          );
+        }
+        if (recovery === 'not-conflict') {
+          showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
+        }
       } finally {
         setStatusUpdating((prev) => {
           if (!prev[name]) return prev;
@@ -1060,7 +1202,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         });
       }
     },
-    [commitMutationVersion, setFiles, showNotification, t]
+    [commitMutationVersion, recoverStaleCredentialMutation, setFiles, showNotification, t]
   );
 
   const handleManualRefresh = useCallback(
@@ -1079,7 +1221,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         const completed = await runAuthFileManualRefresh({
           name,
           pendingNames: manualRefreshPendingRef.current,
-          request: authFilesApi.requestManualRefresh,
+          request: () => authFilesApi.requestManualRefresh(item),
           refreshInventory: () => loadFiles(true, true),
           onPendingChange: (targetName, pending) => {
             setManualRefreshing((prev) => {
@@ -1095,11 +1237,12 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           showNotification(t('auth_files.manual_refresh_requested', { name }), 'info');
         }
       } catch (err: unknown) {
+        if ((await recoverStaleCredentialMutation(err)) !== 'not-conflict') return;
         const message = err instanceof Error ? err.message : t('notification.update_failed');
         showNotification(t('auth_files.manual_refresh_failed', { name, message }), 'error');
       }
     },
-    [loadFiles, showNotification, t]
+    [loadFiles, recoverStaleCredentialMutation, showNotification, t]
   );
 
   const batchSetStatus = useCallback(
@@ -1110,12 +1253,10 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       if (uniqueNames.length === 0) return;
       if (uniqueNames.some((name) => statusUpdating[name] === true)) return;
 
-      const originalDisabled = new Map(
-        files
-          .filter((file) => uniqueNames.includes(file.name))
-          .map((file) => [file.name, file.disabled === true])
-      );
-      const targetNames = new Set(originalDisabled.keys());
+      const targets = files.filter((file) => uniqueNames.includes(file.name));
+      const originalDisabled = new Map(targets.map((file) => [file.name, file.disabled === true]));
+      const targetByName = new Map(targets.map((file) => [file.name, file]));
+      const targetNames = new Set(targetByName.keys());
       const targetNameList = Array.from(targetNames);
       if (targetNameList.length === 0) return;
 
@@ -1131,19 +1272,26 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         return next;
       });
       setFiles((prev) =>
-        prev.map((file) =>
-          targetNames.has(file.name) ? { ...file, disabled: nextDisabled } : file
-        )
+        prev.map((file) => {
+          const target = targetByName.get(file.name);
+          return target &&
+            authFileMatchesCredentialIdentity(file, readAuthFileCredentialIdentity(target))
+            ? { ...file, disabled: nextDisabled }
+            : file;
+        })
       );
 
       try {
         const results = await Promise.allSettled(
-          targetNameList.map((name) => authFilesApi.setStatus(name, nextDisabled))
+          targetNameList.map((name) =>
+            authFilesApi.setStatus(targetByName.get(name) ?? name, nextDisabled)
+          )
         );
 
         let successCount = 0;
         let failCount = 0;
         const failedNames = new Set<string>();
+        let identityConflict: unknown = null;
         const confirmedDisabled = new Map<string, boolean>();
         const committedVersions: Array<{
           inventoryId: string;
@@ -1164,6 +1312,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
           } else {
             failCount++;
             failedNames.add(name);
+            if (!identityConflict && isAuthFileIdentityChangedError(result.reason)) {
+              identityConflict = result.reason;
+            }
           }
         });
 
@@ -1173,17 +1324,29 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
             commitMutationVersion(version.inventoryId, version.revision, version.files)
           );
 
-        setFiles((prev) =>
-          prev.map((file) => {
-            if (failedNames.has(file.name)) {
-              return { ...file, disabled: originalDisabled.get(file.name) === true };
-            }
-            if (confirmedDisabled.has(file.name)) {
-              return { ...file, disabled: confirmedDisabled.get(file.name) };
-            }
-            return file;
-          })
-        );
+        const identityRecovery = identityConflict
+          ? await recoverStaleCredentialMutation(identityConflict)
+          : 'not-conflict';
+        if (identityRecovery !== 'refreshed') {
+          setFiles((prev) =>
+            prev.map((file) => {
+              const target = targetByName.get(file.name);
+              if (
+                !target ||
+                !authFileMatchesCredentialIdentity(file, readAuthFileCredentialIdentity(target))
+              ) {
+                return file;
+              }
+              if (failedNames.has(file.name)) {
+                return { ...file, disabled: originalDisabled.get(file.name) === true };
+              }
+              if (confirmedDisabled.has(file.name)) {
+                return { ...file, disabled: confirmedDisabled.get(file.name) };
+              }
+              return file;
+            })
+          );
+        }
 
         if (failCount === 0) {
           showNotification(
@@ -1210,7 +1373,16 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         });
       }
     },
-    [commitMutationVersion, deselectAll, files, setFiles, showNotification, statusUpdating, t]
+    [
+      commitMutationVersion,
+      deselectAll,
+      files,
+      recoverStaleCredentialMutation,
+      setFiles,
+      showNotification,
+      statusUpdating,
+      t,
+    ]
   );
 
   const batchDownload = useCallback(
@@ -1254,15 +1426,34 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     (names: string[]) => {
       const uniqueNames = Array.from(new Set(names));
       if (uniqueNames.length === 0) return;
+      const currentByName = new Map(filesRef.current.map((file) => [file.name, file]));
+      const targets = uniqueNames
+        .map((name) => currentByName.get(name))
+        .filter((file): file is AuthFileItem => Boolean(file));
+      if (targets.length === 0) return;
 
       showConfirmation({
         title: t('auth_files.batch_delete_title'),
-        message: t('auth_files.batch_delete_confirm', { count: uniqueNames.length }),
+        message: t('auth_files.batch_delete_confirm', { count: targets.length }),
         variant: 'danger',
-        confirmText: t('common.confirm'),
+        confirmText: t('common.next', { defaultValue: 'Next' }),
+        secondConfirmation: {
+          title: t('auth_files.delete_many_second_title', {
+            defaultValue: 'Confirm permanent deletion',
+          }),
+          message: t('auth_files.batch_delete_second_confirm', {
+            count: targets.length,
+            defaultValue:
+              'Permanently delete these {{count}} credentials? This action cannot be undone.',
+          }),
+          variant: 'danger',
+          confirmText: t('auth_files.delete_second_action', {
+            defaultValue: 'Delete permanently',
+          }),
+        },
         onConfirm: async () => {
           try {
-            const result = await authFilesApi.deleteFiles(uniqueNames);
+            const result = await authFilesApi.deleteTargets(targets);
             applyDeletedFiles(result.files);
             commitMutationVersion(result.inventoryId, result.revision);
 
@@ -1282,18 +1473,32 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
                 'warning'
               );
             }
+            deselectAll();
           } catch (err: unknown) {
+            if ((await recoverStaleCredentialMutation(err)) !== 'not-conflict') return;
             const errorMessage = err instanceof Error ? err.message : '';
             showNotification(`${t('notification.delete_failed')}: ${errorMessage}`, 'error');
           }
         },
       });
     },
-    [applyDeletedFiles, commitMutationVersion, showConfirmation, showNotification, t]
+    [
+      applyDeletedFiles,
+      commitMutationVersion,
+      deselectAll,
+      recoverStaleCredentialMutation,
+      showConfirmation,
+      showNotification,
+      t,
+    ]
   );
 
   const cancelUploadProxySelection = useCallback(() => {
-    if (uploading) return;
+    if (uploading) {
+      uploadCancelRequestedRef.current = true;
+      setUploadProgress((current) => (current ? { ...current, phase: 'cancelling' } : current));
+      return;
+    }
     const source = pendingUploadSource;
     uploadProxyInspectionSeqRef.current += 1;
     setPendingUploadFiles([]);
@@ -1302,13 +1507,17 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     setUploadMaxConcurrencyDefaultInput('0');
     uploadProxySelectionTouchedRef.current = false;
     setUploadProxyInspection(emptyAuthFileProxyInspection());
+    setUploadProgress(null);
+    uploadCancelRequestedRef.current = false;
     setUploadProxyDialogOpen(false);
     flushPendingUploadGroupAssignment(source);
   }, [flushPendingUploadGroupAssignment, pendingUploadSource, uploading]);
 
   const confirmUploadProxySelection = useCallback(async () => {
+    if (uploading) return;
     if (pendingUploadFiles.length === 0) {
       setUploadProxyDialogOpen(false);
+      setUploadProgress(null);
       setUploadConcurrencyModeDefault('inherit');
       setUploadMaxConcurrencyDefaultInput('0');
       return;
@@ -1328,15 +1537,11 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     };
     const filesToUpload = pendingUploadFiles;
     const source = pendingUploadSource;
-    setUploadProxyDialogOpen(false);
-    setPendingUploadFiles([]);
-    setPendingUploadSource('file');
     if (source === 'session') {
-      await validateAndUploadSessionFiles(
-        filesToUpload,
-        uploadProxySelection,
-        concurrencyDefault
-      );
+      setUploadProxyDialogOpen(false);
+      setPendingUploadFiles([]);
+      setPendingUploadSource('file');
+      await validateAndUploadSessionFiles(filesToUpload, uploadProxySelection, concurrencyDefault);
       setUploadConcurrencyModeDefault('inherit');
       setUploadMaxConcurrencyDefaultInput('0');
       return;
@@ -1347,6 +1552,9 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       concurrencyDefault
     );
     if (failedFiles.length === 0) {
+      setUploadProxyDialogOpen(false);
+      setPendingUploadFiles([]);
+      setPendingUploadSource('file');
       setUploadConcurrencyModeDefault('inherit');
       setUploadMaxConcurrencyDefaultInput('0');
       setUploadProxyInspection(emptyAuthFileProxyInspection());
@@ -1354,6 +1562,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       return;
     }
     setPendingUploadFiles(failedFiles);
+    setPendingUploadSource('file');
     void inspectUploadProxyFiles(failedFiles);
     setUploadProxyDialogOpen(true);
   }, [
@@ -1365,6 +1574,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     uploadConcurrencyModeDefault,
     uploadMaxConcurrencyDefaultInput,
     uploadProxySelection,
+    uploading,
     validateAndUploadSessionFiles,
   ]);
 
@@ -1375,6 +1585,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     loading,
     error,
     uploading,
+    uploadProgress,
     deleting,
     deletingAll,
     statusUpdating,

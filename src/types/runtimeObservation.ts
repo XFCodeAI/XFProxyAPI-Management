@@ -11,6 +11,7 @@ export type RuntimeAvailabilityState =
   | 'probing'
   | 'half_open'
   | 'auth_invalid'
+  | 'excluded'
   | 'disabled'
   | 'unknown';
 
@@ -21,6 +22,7 @@ export interface RuntimeAvailabilityCounts {
   probing: number;
   halfOpen: number;
   authInvalid: number;
+  excluded: number;
   disabled: number;
 }
 
@@ -43,6 +45,10 @@ export interface RuntimeObservationResource {
   availabilityDeadline: string;
   availabilityUpdatedAt: string;
   availabilityCounts: RuntimeAvailabilityCounts;
+  healthFailureStreak: number;
+  healthExcluded: boolean;
+  healthExclusionCode: string;
+  healthExcludedAt: string;
 }
 
 export interface RuntimeObservationQueue {

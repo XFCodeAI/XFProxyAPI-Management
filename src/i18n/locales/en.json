@@ -3,6 +3,8 @@
     "login": "Login",
     "logout": "Logout",
     "back": "Back",
+    "previous": "Previous",
+    "next": "Next",
     "cancel": "Cancel",
     "confirm": "Confirm",
     "leave": "Leave",
@@ -376,6 +378,25 @@
     "availability_reprobe_queued": "Queued {{queued}} credential quota probes; {{already}} are already probing and {{skipped}} were skipped.",
     "availability_reprobe_empty": "No credential in the dispatch or refresh tables can be reprobed; {{skipped}} were skipped.",
     "availability_reprobe_failed": "Failed to queue quota probes: {{message}}",
+    "availability_reprobe_results_title": "Availability reprobe results",
+    "availability_reprobe_requested": "Requested",
+    "availability_reprobe_eligible": "Eligible",
+    "availability_reprobe_status_queued": "Queued",
+    "availability_reprobe_status_already": "Already probing",
+    "availability_reprobe_status_skipped": "Skipped",
+    "availability_reprobe_parallel": "Max parallel",
+    "availability_reprobe_credential_id": "Credential ID",
+    "availability_reprobe_auth_index": "Auth index",
+    "availability_reprobe_reason": "Reason",
+    "availability_reprobe_no_entries": "No per-credential outcomes were returned.",
+    "availability_reprobe_page": "{{page}} / {{pages}}",
+    "identity_changed": "Credential changed. The latest inventory has been loaded; retry the action.",
+    "delete_second_title": "Confirm permanent deletion",
+    "delete_second_confirm": "Delete \"{{name}}\" permanently? This action cannot be undone.",
+    "delete_many_second_title": "Confirm permanent deletion",
+    "delete_many_second_confirm": "Permanently delete all credentials in \"{{scope}}\"? This action cannot be undone.",
+    "batch_delete_second_confirm": "Permanently delete these {{count}} credentials? This action cannot be undone.",
+    "delete_second_action": "Delete permanently",
     "websockets_label": "WebSockets (websockets)",
     "websockets_hint": "Enable Responses API websocket transport for this credential.",
     "using_api_label": "Use official API (using_api)",
@@ -428,6 +449,7 @@
     "plan_filter_label": "Plan filter",
     "plan_filter_all": "All",
     "plan_filter_unverified": "Unverified",
+    "credential_plan_badge": "Plan {{plan}}",
     "sort_default": "Default",
     "sort_az": "A-Z Name",
     "sort_priority": "Priority",
@@ -1218,6 +1240,7 @@
       "context_at_least": "At least {{value}} input tokens",
       "context_at_most": "At most {{value}} input tokens",
       "sources": {
+        "models.dev": "models.dev",
         "litellm": "LiteLLM",
         "openrouter": "OpenRouter"
       },
@@ -1383,6 +1406,30 @@
       "title": "Import monitoring records",
       "message": "Import sanitized records from {{name}}? Existing records are skipped by identity."
     },
+    "import_progress": {
+      "title": "Monitoring import progress",
+      "pause": "Pause",
+      "resume": "Resume",
+      "retry": "Retry",
+      "cancel": "Cancel import",
+      "phases": {
+        "preparing": "Preparing import",
+        "uploading": "Uploading records",
+        "processing": "Applying records",
+        "paused": "Import paused",
+        "completed": "Import completed",
+        "failed": "Import failed",
+        "cancelled": "Import cancelled"
+      },
+      "bytes": "{{uploaded}} of {{total}} uploaded",
+      "processing_hint": "The server is applying the uploaded records.",
+      "paused_hint": "The retained session can continue from the last confirmed chunk.",
+      "result": {
+        "added": "Added",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
+    },
     "retention": {
       "title": "Monitoring retention",
       "days": "Retention days",
@@ -1397,6 +1444,7 @@
     "notifications": {
       "exported": "Monitoring records exported",
       "imported": "Imported {{added}}, skipped {{skipped}}, failed {{failed}}",
+      "import_cancelled": "Monitoring import cancelled",
       "retention_saved": "Monitoring retention saved",
       "retention_ran": "Deleted {{deleted}} records; {{remaining}} remain eligible"
     },
@@ -1410,6 +1458,7 @@
       "invalid_range": "Choose a valid time range.",
       "export": "Failed to export monitoring records",
       "import": "Failed to import monitoring records",
+      "import_cancel": "Failed to cancel monitoring import",
       "import_file": "Choose a JSONL file no larger than 32 MB.",
       "retention": "Failed to update monitoring retention"
     }
@@ -2389,6 +2438,7 @@
       "probing": "Probing",
       "half_open": "Half-open",
       "auth_invalid": "Authentication invalid",
+      "excluded": "Excluded",
       "disabled": "Disabled"
     },
     "availability_model": "Model: {{model}}",
@@ -2559,6 +2609,34 @@
         "authIndex": "Auth Index",
         "excludedModels": "Excluded models",
         "apiKeyEntries": "API key entries"
+      }
+    },
+    "imageRoute": {
+      "title": "Codex image route",
+      "toggle": "Enable Codex image route",
+      "hint": "Send turn-correlated Codex image requests to one configured image-capable supplier.",
+      "targetSupplier": "Target supplier",
+      "targetModel": "Target image model",
+      "selectSupplier": "Select an image-capable supplier",
+      "selectModel": "Select an image model",
+      "configuredSummary": "Routes to {{supplier}} / {{model}}",
+      "status": {
+        "disabled": "Disabled",
+        "configured": "Configured",
+        "invalid": "Invalid",
+        "unavailable": "Unavailable"
+      },
+      "issues": {
+        "targetSupplierRequired": "Select a target supplier.",
+        "targetModelRequired": "Select a target image model.",
+        "supplierMissing": "Target supplier {{supplier}} no longer exists. Select another supplier before saving.",
+        "supplierAmbiguous": "Target supplier {{supplier}} is duplicated and cannot be referenced safely.",
+        "modelMissing": "Image model {{model}} no longer exists on {{supplier}}. Select another image model before saving.",
+        "modelAmbiguous": "Image model {{model}} is duplicated on {{supplier}} and cannot be referenced safely.",
+        "modelNotImage": "Model {{model}} on {{supplier}} is not marked as image-capable.",
+        "supplierDisabled": "Target supplier {{supplier}} is disabled.",
+        "supplierNoCredentials": "Target supplier {{supplier}} has no usable API key entries.",
+        "supplierNotReady": "Target supplier {{supplier}} is not currently schedulable."
       }
     },
     "failures": {
@@ -2766,6 +2844,33 @@
       "balanceUnavailable": "No balance returned",
       "updatedAt": "Updated {{time}}",
       "error": "{{reason}} (HTTP {{status}})"
+    },
+    "availabilityRecovery": {
+      "actions": {
+        "ready": "Revalidate supplier availability",
+        "recover": "Validate and recover supplier availability",
+        "probing": "Supplier availability recovery in progress",
+        "disabled": "Enable this supplier before recovering it",
+        "missing_runtime": "No runtime API key is registered for this supplier",
+        "unsupported": "This supplier does not support availability recovery"
+      },
+      "summary": "Queued {{queued}}, already probing {{alreadyProbing}}, skipped {{skipped}}.",
+      "partialEntry": "{{key}}: {{reason}}",
+      "failed": "Supplier recovery failed: {{reason}}",
+      "waitReason": "Usage wait: {{reason}}",
+      "nextProbe": "Next probe {{time}}",
+      "reasons": {
+        "usage_exhausted": "Balance exhausted",
+        "probe_rate_limited": "Probe rate limited",
+        "authentication_invalid": "Authentication invalid",
+        "probe_unknown": "Probe result unavailable",
+        "disabled": "Supplier is disabled",
+        "feature_disabled": "Availability recovery is disabled by configuration",
+        "missing_runtime": "Runtime API key is unavailable",
+        "queue_unavailable": "Recovery queue is unavailable",
+        "unknown_state": "Runtime state cannot be recovered",
+        "unsupported": "Availability probe is unsupported"
+      }
     }
   },
   "proxy_pools": {

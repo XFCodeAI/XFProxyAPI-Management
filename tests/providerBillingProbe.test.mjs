@@ -14,13 +14,15 @@ try {
   await initializeI18n();
   await changeI18nLanguage('en');
   const { TooltipProvider } = await server.ssrLoadModule('/src/components/ui/Tooltip.tsx');
-  const { supplierBillingProbeApi } = await server.ssrLoadModule(
-    '/src/services/api/supplierBillingProbe.ts'
-  );
+  const { supplierBillingProbeApi, normalizeSupplierAvailabilityReprobeResponse } =
+    await server.ssrLoadModule('/src/services/api/supplierBillingProbe.ts');
   const { apiClient } = await server.ssrLoadModule('/src/services/api/client.ts');
   const billing = await server.ssrLoadModule('/src/features/providers/useSupplierBillingProbes.ts');
   const { ProviderResourceTable } = await server.ssrLoadModule(
     '/src/features/providers/components/ProviderResourceTable.tsx'
+  );
+  const { getSupplierRecoveryControlState } = await server.ssrLoadModule(
+    '/src/features/providers/supplierRecoveryControl.ts'
   );
   const { ResourceDetailView } = await server.ssrLoadModule(
     '/src/features/providers/sheets/ResourceDetailView.tsx'
@@ -48,21 +50,39 @@ try {
     next_probe_at: '2026-08-02T10:01:00Z',
     ...overrides,
   });
-  const probeEntry = (overrides) => ({
-    target_id: 'supplier:target',
-    provider_brand: 'codex',
-    provider_name: 'Codex supplier',
-    provider_index: 0,
-    api_key_index: 0,
-    eligible: true,
-    probing: false,
-    stale: false,
-    status: 'ok',
-    multiplier: multiplier('0.8'),
-    next_probe_at: '2026-08-02T10:30:00Z',
-    usage: usage(),
-    ...overrides,
-  });
+  const probeEntry = (overrides = {}) => {
+    const providerBrand = overrides.provider_brand ?? 'codex';
+    const providerIndex = overrides.provider_index ?? 0;
+    const targetId = overrides.target_id ?? 'supplier:target';
+    const supplierId = overrides.supplier_id ?? `supplier-${providerBrand}-${providerIndex}`;
+    const entryId = overrides.entry_id ?? `${targetId}-entry`;
+    return {
+      target_id: targetId,
+      supplier_id: supplierId,
+      entry_id: entryId,
+      provider_brand: providerBrand,
+      provider_name: 'Codex supplier',
+      provider_index: providerIndex,
+      api_key_index: 0,
+      eligible: true,
+      queued: false,
+      probing: false,
+      stale: false,
+      status: 'ok',
+      multiplier: multiplier('0.8'),
+      next_probe_at: '2026-08-02T10:30:00Z',
+      usage: usage(),
+      runtime: {
+        supplier_id: supplierId,
+        entry_id: entryId,
+        auth_id: `${entryId}-auth`,
+        credential_generation: 1,
+        availability_revision: 1,
+        availability_state: 'ready',
+      },
+      ...overrides,
+    };
+  };
   const entries = [
     probeEntry({ target_id: 'supplier:codex', provider_brand: 'codex' }),
     probeEntry({
@@ -391,6 +411,90 @@ try {
     false,
     'same-name providers outside the selector must not leak into Kimi'
   );
+  const recoveryResponse = normalizeSupplierAvailabilityReprobeResponse({
+    status: 'accepted',
+    supplier_id: 'supplier-openaiCompatibility-2',
+    requested: '2',
+    eligible: 1,
+    queued: 1,
+    already_probing: 0,
+    skipped: { missing_runtime: '1', ignored_zero: 0 },
+    maximum_parallel: 4,
+    entries: [
+      {
+        supplier_id: 'supplier-openaiCompatibility-2',
+        entry_id: 'supplier:openai-a-entry',
+        status: 'queued',
+      },
+      {
+        supplier_id: 'supplier-openaiCompatibility-2',
+        entry_id: 'supplier:openai-b-entry',
+        status: 'skipped',
+        reason: 'missing_runtime',
+      },
+    ],
+  });
+  assert.equal(recoveryResponse.requested, 2);
+  assert.deepEqual(recoveryResponse.skipped, { missing_runtime: 1 });
+  assert.deepEqual(
+    recoveryResponse.entries.map((entry) => `${entry.status}:${entry.reason ?? ''}`),
+    ['queued:', 'skipped:missing_runtime']
+  );
+
+  const recoveryEntry = (state, overrides = {}) =>
+    probeEntry({
+      runtime: {
+        ...probeEntry().runtime,
+        availability_state: state,
+      },
+      ...overrides,
+    });
+  const emptyPending = new Set();
+  assert.equal(
+    getSupplierRecoveryControlState([recoveryEntry('ready')], false, emptyPending).reason,
+    'ready'
+  );
+  for (const state of [
+    'transient_throttled',
+    'usage_wait',
+    'half_open',
+    'auth_invalid',
+    'excluded',
+  ]) {
+    const control = getSupplierRecoveryControlState([recoveryEntry(state)], false, emptyPending);
+    assert.equal(control.reason, 'recover', `${state} must remain recoverable`);
+    assert.equal(control.disabled, false, `${state} recovery must be enabled`);
+  }
+  assert.deepEqual(
+    getSupplierRecoveryControlState([recoveryEntry('probing')], false, emptyPending),
+    {
+      supplierIds: ['supplier-codex-0'],
+      reason: 'probing',
+      disabled: true,
+    }
+  );
+  assert.equal(
+    getSupplierRecoveryControlState([recoveryEntry('ready')], true, emptyPending).reason,
+    'disabled'
+  );
+  assert.equal(
+    getSupplierRecoveryControlState([probeEntry({ runtime: undefined })], false, emptyPending)
+      .reason,
+    'missing_runtime'
+  );
+  assert.equal(
+    getSupplierRecoveryControlState(
+      [probeEntry({ eligible: false, runtime: undefined })],
+      false,
+      emptyPending
+    ).reason,
+    'unsupported'
+  );
+  assert.equal(
+    getSupplierRecoveryControlState([recoveryEntry('ready')], false, new Set(['supplier-codex-0']))
+      .reason,
+    'probing'
+  );
   const usageByProvider = new Map([
     [
       'codex',
@@ -443,6 +547,8 @@ try {
           usageByProvider,
           billingProbeEntriesByResource: probeEntriesByResource,
           onRefreshBillingProbe: async () => {},
+          recoveringSupplierIds: new Set(),
+          onRecoverSuppliers: async () => {},
           onView: () => {},
           onEdit: () => {},
           onDelete: () => {},
@@ -460,6 +566,7 @@ try {
   ]) {
     assert.equal(tableMarkup.includes(expected), true, `missing table header ${expected}`);
   }
+  assert.equal(tableMarkup.includes('aria-label="Revalidate supplier availability"'), true);
   for (const removed of ['Models/Headers', '>Prefix<']) {
     assert.equal(tableMarkup.includes(removed), false, `legacy list content remains: ${removed}`);
   }
@@ -499,6 +606,27 @@ try {
       `billing refresh cleared request health: ${expected}`
     );
   }
+
+  const waitingMapped = billing.mapSupplierBillingProbeEntriesToResources(
+    [
+      probeEntry({
+        target_id: 'supplier:codex-waiting',
+        provider_brand: 'codex',
+        usage: usage(0, { reset_at: '2026-08-02T11:00:00Z' }),
+        runtime: {
+          ...probeEntry().runtime,
+          availability_state: 'usage_wait',
+          availability_deadline: '2026-08-02T11:00:00Z',
+          availability_reason: 'usage_exhausted',
+        },
+      }),
+    ],
+    [codexResource]
+  );
+  const waitingMarkup = renderTable(waitingMapped, [codexResource]);
+  assert.equal(waitingMarkup.includes('Usage wait: Balance exhausted'), true);
+  assert.equal(waitingMarkup.includes('Next probe'), true);
+  assert.equal(waitingMarkup.includes('0 USD'), true);
   const extendedMarkup = renderTable(mapped, [claudeResource, xaiResource, kimiResource]);
   for (const expected of [
     '0.6x',

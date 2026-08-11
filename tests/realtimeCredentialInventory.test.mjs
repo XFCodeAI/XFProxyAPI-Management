@@ -58,6 +58,19 @@ try {
     ]
   );
   assert.equal(reconciled[0].displayName, 'historical-name.json');
+  const partialReconciled = catalogModule.reconcileCredentialIdentityCatalog(
+    staleCatalog,
+    currentFiles,
+    false
+  );
+  assert.deepEqual(
+    partialReconciled.map((entry) => [entry.recordedId, entry.current, entry.hasUsage]),
+    [
+      ['used-deleted', true, true],
+      ['zero-deleted', true, false],
+      ['new-current', true, false],
+    ]
+  );
 
   const filters = { ...monitoringViewModel.EMPTY_MONITORING_FILTERS };
   const monitoringRows = monitoringViewModel.mergeMonitoringCredentialRows(
@@ -213,13 +226,14 @@ try {
     return {
       files: [survivor],
       inventory_id: 'inventory-targeted',
-      revision: 15,
+      revision: inventoryLoads === 1 ? 12 : 15,
     };
   };
   inventoryStore.setState({
     files: [{ id: 'auth-a', name: 'auth-a.json', provider: 'codex', disabled: false }, survivor],
     inventoryId: 'inventory-targeted',
     revision: 10,
+    total: 9,
     loading: false,
     error: '',
   });
@@ -240,6 +254,7 @@ try {
     files: [],
   });
   assert.deepEqual(inventoryStore.getState().files, [survivor]);
+  assert.equal(inventoryStore.getState().total, 9);
   inventoryStoreModule.applyInventoryEvent({
     inventoryId: 'inventory-targeted',
     revision: 11,
@@ -248,7 +263,7 @@ try {
     files: [{ ...survivor, statusMessage: '' }],
   });
   await waitForInventoryRefresh();
-  assert.equal(inventoryLoads, 0);
+  assert.equal(inventoryLoads, 1);
   assert.deepEqual(inventoryStore.getState().files, [survivor]);
 
   inventoryStore
@@ -262,7 +277,7 @@ try {
       { ...survivor, disabled: true, disable_cooling: true },
     ]);
   await waitForInventoryRefresh();
-  assert.equal(inventoryLoads, 0);
+  assert.equal(inventoryLoads, 1);
   assert.equal(inventoryStore.getState().revision, 13);
   assert.equal(inventoryStore.getState().files[0].statusMessage, 'quota exhausted');
   assert.equal(inventoryStore.getState().files[0].disable_cooling, true);
@@ -275,7 +290,7 @@ try {
     files: [{ ...survivor, statusMessage: 'newer error' }],
   });
   await waitForInventoryRefresh();
-  assert.equal(inventoryLoads, 1);
+  assert.equal(inventoryLoads, 2);
   assert.equal(inventoryStore.getState().revision, 15);
   assert.deepEqual(inventoryStore.getState().files, [survivor]);
 
@@ -295,7 +310,7 @@ try {
     files: [],
   });
   await waitForInventoryRefresh();
-  assert.equal(inventoryLoads, 2);
+  assert.equal(inventoryLoads, 3);
   assert.equal(inventoryStore.getState().inventoryId, 'inventory-replacement');
   assert.equal(inventoryStore.getState().files[0].id, 'replacement');
 
@@ -315,8 +330,67 @@ try {
     files: [],
   });
   await waitForInventoryRefresh();
-  assert.equal(inventoryLoads, 3);
+  assert.equal(inventoryLoads, 4);
   assert.equal(inventoryStore.getState().files[0].disabled, true);
+
+  inventoryStore.getState().stop(true);
+  const pageQueries = [];
+  authFilesApiModule.authFilesApi.list = async (query = {}) => {
+    pageQueries.push(query);
+    if (query.cursor === 'cursor-2') {
+      return {
+        files: [{ id: 'page-c', name: 'page-c.json', provider: 'codex' }],
+        total: 3,
+        limit: 2,
+        has_more: false,
+        next_cursor: '',
+        provider_totals: { codex: 3 },
+        inventory_id: 'inventory-pages',
+        revision: 20,
+      };
+    }
+    return {
+      files: [
+        { id: 'page-a', name: 'page-a.json', provider: 'codex' },
+        { id: 'page-b', name: 'page-b.json', provider: 'codex' },
+      ],
+      total: 3,
+      limit: 2,
+      has_more: true,
+      next_cursor: 'cursor-2',
+      provider_totals: { codex: 3 },
+      inventory_id: 'inventory-pages',
+      revision: 20,
+    };
+  };
+  await inventoryStore.getState().setQuery({ provider: 'codex', search: 'page', limit: 2 });
+  assert.deepEqual(
+    inventoryStore.getState().files.map((file) => file.id),
+    ['page-a', 'page-b']
+  );
+  assert.equal(inventoryStore.getState().total, 3);
+  assert.equal(inventoryStore.getState().hasMore, true);
+  assert.equal(inventoryStore.getState().providerTotals.codex, 3);
+  await inventoryStore.getState().nextPage();
+  assert.deepEqual(
+    inventoryStore.getState().files.map((file) => file.id),
+    ['page-c']
+  );
+  assert.equal(inventoryStore.getState().page, 2);
+  await inventoryStore.getState().previousPage();
+  assert.deepEqual(
+    inventoryStore.getState().files.map((file) => file.id),
+    ['page-a', 'page-b']
+  );
+  assert.equal(inventoryStore.getState().page, 1);
+  assert.deepEqual(
+    pageQueries.map((query) => [query.provider, query.search, query.limit, query.cursor ?? '']),
+    [
+      ['codex', 'page', 2, ''],
+      ['codex', 'page', 2, 'cursor-2'],
+      ['codex', 'page', 2, ''],
+    ]
+  );
   authFilesApiModule.authFilesApi.list = originalList;
 } finally {
   await server.close();

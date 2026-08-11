@@ -23,6 +23,8 @@ type CodexQuotaResetCreditResponse = {
 };
 
 type CodexQuotaResponse = {
+  credential_id: string;
+  credential_generation: number;
   auth_index: string;
   account: CodexQuotaAccountEvidenceResponse;
   observed_at: string;
@@ -37,6 +39,8 @@ type CodexQuotaResponse = {
 };
 
 export type CodexQuotaSnapshot = {
+  credentialId: string;
+  credentialGeneration: number;
   authIndex: string;
   account: {
     selectedAccountFingerprint: string;
@@ -61,6 +65,102 @@ export type CodexQuotaSnapshot = {
   };
 };
 
+export type CodexQuotaIdentityTarget = {
+  credentialId?: string | null;
+  authIndex: string;
+  credentialGeneration?: number | null;
+};
+
+type CodexQuotaResetResponse = {
+  credential_id: string;
+  credential_generation: number;
+  auth_index: string;
+  result: unknown;
+};
+
+export type CodexQuotaResetSnapshot = {
+  credentialId: string;
+  credentialGeneration: number;
+  authIndex: string;
+  result: unknown;
+};
+
+type CodexQuotaContextError = Error & {
+  status: number;
+  code: string;
+};
+
+const createCodexQuotaContextChangedError = (): CodexQuotaContextError => {
+  const error = new Error(
+    'credential context changed while requesting Codex quota'
+  ) as CodexQuotaContextError;
+  error.name = 'ApiError';
+  error.status = 409;
+  error.code = 'auth_context_changed';
+  return error;
+};
+
+export const isCodexQuotaContextChangedError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { status?: unknown; code?: unknown };
+  return candidate.status === 409 && candidate.code === 'auth_context_changed';
+};
+
+const normalizeIdentityTarget = (
+  target: string | CodexQuotaIdentityTarget
+): CodexQuotaIdentityTarget =>
+  typeof target === 'string'
+    ? { authIndex: target.trim() }
+    : {
+        credentialId: String(target.credentialId ?? '').trim() || null,
+        authIndex: String(target.authIndex ?? '').trim(),
+        credentialGeneration:
+          Number.isSafeInteger(target.credentialGeneration) &&
+          Number(target.credentialGeneration) >= 0
+            ? Number(target.credentialGeneration)
+            : null,
+      };
+
+const readResponseIdentity = (response: {
+  credential_id: string;
+  credential_generation: number;
+  auth_index: string;
+}) => {
+  const credentialId = String(response.credential_id ?? '').trim();
+  const authIndex = String(response.auth_index ?? '').trim();
+  const credentialGeneration = Number(response.credential_generation);
+  if (
+    !credentialId ||
+    !authIndex ||
+    !Number.isSafeInteger(credentialGeneration) ||
+    credentialGeneration < 1
+  ) {
+    throw createCodexQuotaContextChangedError();
+  }
+  return { credentialId, authIndex, credentialGeneration };
+};
+
+const assertResponseIdentity = (
+  response: {
+    credential_id: string;
+    credential_generation: number;
+    auth_index: string;
+  },
+  expected: CodexQuotaIdentityTarget
+) => {
+  const identity = readResponseIdentity(response);
+  if (
+    identity.authIndex !== expected.authIndex ||
+    (expected.credentialId && identity.credentialId !== expected.credentialId) ||
+    (expected.credentialGeneration !== null &&
+      expected.credentialGeneration !== undefined &&
+      identity.credentialGeneration < expected.credentialGeneration)
+  ) {
+    throw createCodexQuotaContextChangedError();
+  }
+  return identity;
+};
+
 const normalizeCredit = (
   credit: CodexQuotaResetCreditResponse,
   index: number
@@ -71,8 +171,11 @@ const normalizeCredit = (
   expiresAt: credit.expires_at ?? '',
 });
 
-const normalizeSnapshot = (response: CodexQuotaResponse): CodexQuotaSnapshot => ({
-  authIndex: response.auth_index,
+const normalizeSnapshot = (
+  response: CodexQuotaResponse,
+  expected: CodexQuotaIdentityTarget
+): CodexQuotaSnapshot => ({
+  ...assertResponseIdentity(response, expected),
   account: {
     selectedAccountFingerprint: response.account.selected_account_fingerprint,
     upstreamAccountFingerprint: response.account.upstream_account_fingerprint ?? null,
@@ -97,19 +200,27 @@ const normalizeSnapshot = (response: CodexQuotaResponse): CodexQuotaSnapshot => 
 });
 
 export const codexQuotaApi = {
-  async get(authIndex: string): Promise<CodexQuotaSnapshot> {
+  async get(target: string | CodexQuotaIdentityTarget): Promise<CodexQuotaSnapshot> {
+    const identity = normalizeIdentityTarget(target);
     const response = await apiClient.get<CodexQuotaResponse>('/codex/quota', {
-      params: { auth_index: authIndex },
+      params: { auth_index: identity.authIndex },
       timeout: CODEX_QUOTA_TIMEOUT_MS,
     });
-    return normalizeSnapshot(response);
+    return normalizeSnapshot(response, identity);
   },
 
-  consumeResetCredit(authIndex: string): Promise<unknown> {
-    return apiClient.post(
+  async consumeResetCredit(
+    target: string | CodexQuotaIdentityTarget
+  ): Promise<CodexQuotaResetSnapshot> {
+    const identity = normalizeIdentityTarget(target);
+    const response = await apiClient.post<CodexQuotaResetResponse>(
       '/codex/quota/reset-credit',
-      { auth_index: authIndex },
+      { auth_index: identity.authIndex },
       { timeout: CODEX_QUOTA_TIMEOUT_MS }
     );
+    return {
+      ...assertResponseIdentity(response, identity),
+      result: response.result,
+    };
   },
 };

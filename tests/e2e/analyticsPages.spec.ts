@@ -199,10 +199,44 @@ interface MockState {
   calls: Record<string, number>;
   failFacets: boolean;
   staleRollup: boolean;
+  importSessionStatus?: 'receiving' | 'processing' | 'cancelled';
+  syncSources?: string[];
 }
 
 const routeJSON = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+
+const monitoringImportSession = (status: 'receiving' | 'processing' | 'cancelled') => ({
+  id: '0123456789abcdef0123456789abcdef',
+  filename: 'history.jsonl',
+  status,
+  size_bytes: 10,
+  received_bytes: 10,
+  chunk_size_bytes: 4,
+  created_at: '2026-08-11T00:00:00Z',
+  updated_at: '2026-08-11T00:00:01Z',
+  expires_at: '2026-08-12T00:00:00Z',
+  retryable: status === 'receiving',
+  error_code: '',
+  error: '',
+  result: null,
+});
+
+const emptyModelPriceCatalog = {
+  available: true,
+  generated_at: '2026-08-11T00:00:00Z',
+  last_sync_at: null,
+  catalog_version: 0,
+  summary: {
+    model_count: 0,
+    used_model_count: 0,
+    unpriced_model_count: 0,
+    estimated_cost: '0',
+    currency: 'USD',
+    truncated: false,
+  },
+  entries: [],
+};
 
 const installMockAPI = async (page: Page, state: MockState) => {
   await page.route('**/v0/management/**', async (route) => {
@@ -216,6 +250,48 @@ const installMockAPI = async (page: Page, state: MockState) => {
     }
     if (path === '/auth-files/events') {
       return route.fulfill({ status: 200, contentType: 'text/event-stream', body: '' });
+    }
+    if (path === '/usage-analytics/model-prices') {
+      return routeJSON(route, emptyModelPriceCatalog);
+    }
+    if (path === '/usage-analytics/model-prices/sync/preview') {
+      const payload = route.request().postDataJSON() as { sources?: unknown };
+      state.syncSources = Array.isArray(payload.sources)
+        ? payload.sources.map((source) => String(source))
+        : [];
+      return routeJSON(route, {
+        preview_id: 'preview-models-dev',
+        stale: false,
+        expires_at: '2026-08-11T01:00:00Z',
+        source_results: [
+          {
+            source: 'models.dev',
+            status: 'ok',
+            fetched_count: 0,
+            candidate_count: 0,
+            rejected_count: 0,
+            error: null,
+          },
+        ],
+        candidates: [],
+        coverage: [],
+        rejected: [],
+      });
+    }
+    if (path === '/usage-analytics/monitoring/import-sessions') {
+      state.importSessionStatus = 'receiving';
+      return routeJSON(route, monitoringImportSession(state.importSessionStatus));
+    }
+    if (
+      path ===
+      '/usage-analytics/monitoring/import-sessions/0123456789abcdef0123456789abcdef/complete'
+    ) {
+      state.importSessionStatus = 'processing';
+      return routeJSON(route, monitoringImportSession(state.importSessionStatus));
+    }
+    if (path === '/usage-analytics/monitoring/import-sessions/0123456789abcdef0123456789abcdef') {
+      if (route.request().method() === 'DELETE') state.importSessionStatus = 'cancelled';
+      return routeJSON(route, monitoringImportSession(state.importSessionStatus ?? 'processing'));
     }
     if (path === '/usage-analytics/monitoring/summary') {
       return routeJSON(route, { ...sectionMeta, summary, cost: monitoringCost });
@@ -294,6 +370,18 @@ test('request monitoring isolates sections, paging, polling, and partial failure
   });
   await expect(page.getByRole('heading', { name: /请求监控|Request Monitoring/ })).toBeVisible();
   await expect(page.getByText('gpt-5.6').first()).toBeVisible();
+  expect(state.calls['/usage-analytics/monitoring/identities'] ?? 0).toBe(0);
+
+  const requestsBeforeIdentityTab = state.calls['/usage-analytics/monitoring/requests'];
+  await page.getByRole('tab', { name: /凭证|Credentials/ }).click();
+  await expect
+    .poll(() => state.calls['/usage-analytics/monitoring/identities'] ?? 0)
+    .toBeGreaterThan(0);
+  expect(state.calls['/usage-analytics/monitoring/requests']).toBe(requestsBeforeIdentityTab);
+  await page.getByRole('tab', { name: /请求|Requests/ }).click();
+  await expect
+    .poll(() => state.calls['/usage-analytics/monitoring/requests'])
+    .toBeGreaterThan(requestsBeforeIdentityTab);
 
   await page.waitForTimeout(500);
   const beforeRapid = state.calls['/usage-analytics/monitoring/summary'];
@@ -354,6 +442,65 @@ test('request monitoring isolates sections, paging, polling, and partial failure
     true
   );
   await page.screenshot({ path: testInfo.outputPath('request-monitoring.png'), fullPage: true });
+});
+
+test('monitoring import pauses, resumes, and cancels a server session', async ({ page }) => {
+  const state: MockState = { calls: {}, failFacets: false, staleRollup: false };
+  await installMockAPI(page, state);
+  await login(page);
+  await page.evaluate(() => {
+    window.location.hash = '/monitoring';
+  });
+  await expect(page.getByRole('heading', { name: /请求监控|Request Monitoring/ })).toBeVisible();
+
+  await page.locator('input[type="file"][accept*=".jsonl"]').setInputFiles({
+    name: 'history.jsonl',
+    mimeType: 'application/x-ndjson',
+    buffer: Buffer.from('0123456789'),
+  });
+  const confirmation = page.getByRole('dialog');
+  await expect(confirmation).toContainText(/导入监控记录|Import monitoring records/i);
+  await confirmation.getByRole('button', { name: /导入 JSONL|Import JSONL/i }).click();
+
+  const progress = page.getByRole('dialog');
+  await expect(progress).toContainText(/监控记录导入进度|Monitoring import progress/i);
+  await expect(progress.getByRole('button', { name: /暂停|Pause/i })).toBeVisible();
+  await progress.getByRole('button', { name: /暂停|Pause/i }).click();
+  await expect(progress).toContainText(/导入已暂停|Import paused/i);
+
+  await progress.getByRole('button', { name: /继续|Resume/i }).click();
+  await expect(progress).toContainText(/正在写入记录|Processing/i);
+  await progress.getByRole('button', { name: /暂停|Pause/i }).click();
+  await expect(progress).toContainText(/导入已暂停|Import paused/i);
+  await progress.getByRole('button', { name: /取消导入|Cancel import/i }).click();
+  await expect(progress).toContainText(/导入已取消|Import cancelled/i);
+  expect(state.importSessionStatus).toBe('cancelled');
+  expect(
+    await page.evaluate(() => localStorage.getItem('xfproxyapi:monitoring-import-sessions:v1'))
+  ).toBeNull();
+});
+
+test('model price sync sends models.dev first from the existing XF page', async ({
+  page,
+}, testInfo) => {
+  const state: MockState = { calls: {}, failFacets: false, staleRollup: false };
+  await installMockAPI(page, state);
+  await login(page);
+  await page.evaluate(() => {
+    window.location.hash = '/model-prices';
+  });
+  await expect(page.getByRole('heading', { name: /模型价格|Model Prices/i })).toBeVisible();
+
+  await page.getByRole('button', { name: /同步来源|Sync sources/i }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('models.dev')).toBeChecked();
+  await dialog.getByRole('button', { name: /生成预览|Generate preview/i }).click();
+  await expect(dialog).toContainText('preview-models-dev');
+  expect(state.syncSources).toEqual(['models.dev', 'litellm', 'openrouter']);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true
+  );
+  await page.screenshot({ path: testInfo.outputPath('model-price-sync.png'), fullPage: true });
 });
 
 test('usage analytics keeps overview independent and exposes stale rollups', async ({

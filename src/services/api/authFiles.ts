@@ -1,10 +1,11 @@
 /**
- * 认证文件与 OAuth 排除模型相关 API
+ * Credential files and OAuth excluded-model APIs.
  */
 
 import { apiClient } from './client';
-import type { AuthFilesResponse } from '@/types/authFile';
+import type { AuthFileCredentialIdentity, AuthFileItem, AuthFilesResponse } from '@/types/authFile';
 import type { ConcurrencySetting, OAuthModelAliasEntry, ProxySelection } from '@/types';
+import { readAuthFileCredentialIdentity } from '@/features/authFiles/credentialIdentity';
 import { normalizeOAuthProviderKey } from '@/utils/providerKeys';
 import { parseTimestampMs } from '@/utils/timestamp';
 import { proxySelectionParams } from './proxyPools';
@@ -26,6 +27,22 @@ export type AuthFileMutationResponse = {
 };
 type AuthFileStatusResponse = AuthFileMutationResponse & { disabled: boolean };
 type AuthFileEntry = AuthFilesResponse['files'][number];
+export type AuthFileMutationTarget = string | AuthFileCredentialIdentity | AuthFileItem;
+export type AuthFilesListQuery = {
+  cursor?: string;
+  limit?: number;
+  provider?: string;
+  group?: string;
+  withoutGroup?: string;
+  status?: string;
+  search?: string;
+  name?: string;
+  authIndex?: string;
+};
+export type AuthFileDeleteFilter = Pick<
+  AuthFilesListQuery,
+  'provider' | 'group' | 'withoutGroup' | 'status' | 'search'
+>;
 export type AuthFileFieldsPatch = {
   alias?: string;
   groups?: string[];
@@ -42,7 +59,7 @@ export type AuthFileFieldsPatch = {
   note?: string;
   expired?: string;
 };
-type AuthFileBatchFailure = { name: string; error: string };
+export type AuthFileBatchFailure = { name: string; error: string };
 export type AuthFileDeleteItem = { name: string; status: string; error?: string };
 export type AuthFileAvailabilityReprobeResult = {
   status: string;
@@ -52,6 +69,13 @@ export type AuthFileAvailabilityReprobeResult = {
   alreadyProbing: number;
   skipped: Record<string, number>;
   maximumParallel: number;
+  entries: AuthFileAvailabilityReprobeEntry[];
+};
+export type AuthFileAvailabilityReprobeEntry = {
+  credentialId: string;
+  authIndex: string;
+  status: 'queued' | 'already_probing' | 'skipped' | string;
+  reason: string;
 };
 type AuthFileBatchUploadResponse = {
   status?: string;
@@ -76,11 +100,33 @@ type AuthFileBatchDeleteResponse = {
   revision?: number;
   inventory_id?: string;
 };
-type AuthFileBatchUploadResult = {
+export type AuthFileBatchUploadResult = {
   status: string;
   uploaded: number;
   files: string[];
   failed: AuthFileBatchFailure[];
+};
+export type AuthFileUploadProgress = {
+  totalFiles: number;
+  totalChunks: number;
+  currentChunk: number;
+  completedChunks: number;
+  processedFiles: number;
+  acceptedFiles: number;
+  rejectedFiles: number;
+  remainingFiles: number;
+  phase: 'uploading' | 'cancelling' | 'cancelled' | 'completed';
+};
+export type AuthFileChunkedUploadResult = AuthFileBatchUploadResult & {
+  attempted: number;
+  completedChunks: number;
+  totalChunks: number;
+  cancelled: boolean;
+  remainingFiles: File[];
+};
+export type AuthFileChunkedUploadOptions = {
+  shouldCancel?: () => boolean;
+  onProgress?: (progress: AuthFileUploadProgress) => void;
 };
 export type AuthFileSessionValidationResolvedFile = {
   name: string;
@@ -318,6 +364,55 @@ const normalizeBatchDeleteResponse = (
   };
 };
 
+const normalizeAuthFileMutationTarget = (
+  target: AuthFileMutationTarget
+): AuthFileCredentialIdentity => {
+  const identity =
+    typeof target === 'string'
+      ? readAuthFileCredentialIdentity({ name: target })
+      : readAuthFileCredentialIdentity(target);
+  if (!identity.name) throw new Error('auth file name is required');
+  return identity;
+};
+
+const buildAuthFileMutationPayload = (target: AuthFileMutationTarget) => {
+  const identity = normalizeAuthFileMutationTarget(target);
+  return {
+    name: identity.name,
+    ...(identity.credentialId ? { credential_id: identity.credentialId } : {}),
+    ...(identity.authIndex ? { auth_index: String(identity.authIndex) } : {}),
+  };
+};
+
+const mergeAuthFileDeleteResults = (
+  results: AuthFileBatchDeleteResult[],
+  failures: AuthFileBatchFailure[]
+): AuthFileBatchDeleteResult => {
+  const latestVersion = results.reduce(
+    (latest, result) => (result.revision > latest.revision ? result : latest),
+    { revision: 0, inventoryId: '' } as Pick<AuthFileBatchDeleteResult, 'revision' | 'inventoryId'>
+  );
+  const pending = results.flatMap((result) => result.pending);
+  const conflicts = results.flatMap((result) => result.conflicts);
+  const failed = [...results.flatMap((result) => result.failed), ...failures];
+  const deleted = results.reduce((total, result) => total + result.deleted, 0);
+  return {
+    status:
+      pending.length > 0 || conflicts.length > 0 || failed.length > 0
+        ? deleted > 0
+          ? 'partial'
+          : 'error'
+        : 'ok',
+    deleted,
+    files: normalizeRequestedAuthFileNames(results.flatMap((result) => result.files)),
+    pending,
+    conflicts,
+    failed,
+    revision: latestVersion.revision,
+    inventoryId: latestVersion.inventoryId,
+  };
+};
+
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 
@@ -340,6 +435,22 @@ export const normalizeAuthFileAvailabilityReprobeResult = (
     },
     {}
   );
+  const entries = Array.isArray(record.entries)
+    ? record.entries.reduce<AuthFileAvailabilityReprobeEntry[]>((result, value) => {
+        const entry = asRecord(value);
+        const credentialId = String(entry.credential_id ?? entry.credentialId ?? '').trim();
+        const authIndex = String(entry.auth_index ?? entry.authIndex ?? '').trim();
+        const status = String(entry.status ?? '').trim();
+        if (!credentialId || !authIndex || !status) return result;
+        result.push({
+          credentialId,
+          authIndex,
+          status,
+          reason: String(entry.reason ?? '').trim(),
+        });
+        return result;
+      }, [])
+    : [];
   return {
     status: String(record.status ?? '').trim(),
     requested: normalizeCount(record.requested),
@@ -348,6 +459,7 @@ export const normalizeAuthFileAvailabilityReprobeResult = (
     alreadyProbing: normalizeCount(record.already_probing ?? record.alreadyProbing),
     skipped,
     maximumParallel: normalizeCount(record.maximum_parallel ?? record.maximumParallel),
+    entries,
   };
 };
 
@@ -566,8 +678,32 @@ const dedupeAuthFilesResponse = (payload: AuthFilesResponse): AuthFilesResponse 
   return {
     ...payload,
     files: normalizedFiles,
-    total: normalizedFiles.length,
+    total:
+      typeof payload.total === 'number' && Number.isFinite(payload.total)
+        ? payload.total
+        : normalizedFiles.length,
   };
+};
+
+const buildAuthFilesListPath = (query: AuthFilesListQuery = {}): string => {
+  const params = new URLSearchParams();
+  const append = (key: string, value: unknown) => {
+    const normalized = String(value ?? '').trim();
+    if (normalized) params.set(key, normalized);
+  };
+  append('cursor', query.cursor);
+  if (Number.isSafeInteger(query.limit) && Number(query.limit) > 0) {
+    params.set('limit', String(query.limit));
+  }
+  append('provider', query.provider);
+  append('group', query.group);
+  append('without_group', query.withoutGroup);
+  append('status', query.status);
+  append('search', query.search);
+  append('name', query.name);
+  append('auth_index', query.authIndex);
+  const encoded = params.toString();
+  return encoded ? `/auth-files?${encoded}` : '/auth-files';
 };
 
 const parseAuthFileJsonObject = (rawText: string): Record<string, unknown> => {
@@ -664,12 +800,38 @@ const normalizeOauthModelAlias = (payload: unknown): Record<string, OAuthModelAl
 
 const OAUTH_MODEL_ALIAS_ENDPOINT = '/oauth-model-alias';
 const MANUAL_REFRESH_EXPIRY_OFFSET_MS = 60_000;
+export const AUTH_FILE_UPLOAD_CHUNK_SIZE = 100;
+export const AUTH_FILE_UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024;
+
+export const chunkAuthFilesForUpload = (files: File[]): File[][] => {
+  if (files.some((file) => file.size > AUTH_FILE_UPLOAD_CHUNK_BYTES)) {
+    throw new Error('A credential file exceeds the upload chunk byte limit');
+  }
+  const chunks: File[][] = [];
+  let current: File[] = [];
+  let currentBytes = 0;
+  files.forEach((file) => {
+    const exceedsCount = current.length >= AUTH_FILE_UPLOAD_CHUNK_SIZE;
+    const exceedsBytes =
+      current.length > 0 && currentBytes + file.size > AUTH_FILE_UPLOAD_CHUNK_BYTES;
+    if (exceedsCount || exceedsBytes) {
+      chunks.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(file);
+    currentBytes += file.size;
+  });
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+};
 
 export const buildManualRefreshExpiredAt = (nowMs = Date.now()): string =>
   new Date(nowMs - MANUAL_REFRESH_EXPIRY_OFFSET_MS).toISOString();
 
 export const authFilesApi = {
-  list: async () => dedupeAuthFilesResponse(await apiClient.get<AuthFilesResponse>('/auth-files')),
+  list: async (query: AuthFilesListQuery = {}) =>
+    dedupeAuthFilesResponse(await apiClient.get<AuthFilesResponse>(buildAuthFilesListPath(query))),
 
   getCodexIdentityAudit: async (): Promise<CodexIdentityAuditResult> =>
     normalizeCodexIdentityAuditResult(await apiClient.get('/auth-files/codex-identity-audit')),
@@ -691,16 +853,22 @@ export const authFilesApi = {
       })
     ),
 
-  setStatus: (name: string, disabled: boolean) =>
-    apiClient.patch<AuthFileStatusResponse>('/auth-files/status', { name, disabled }),
+  setStatus: (target: AuthFileMutationTarget, disabled: boolean) =>
+    apiClient.patch<AuthFileStatusResponse>('/auth-files/status', {
+      ...buildAuthFileMutationPayload(target),
+      disabled,
+    }),
 
-  patchFields: (name: string, fields: AuthFileFieldsPatch) =>
-    apiClient.patch<AuthFileMutationResponse>('/auth-files/fields', { name, ...fields }),
+  patchFields: (target: AuthFileMutationTarget, fields: AuthFileFieldsPatch) =>
+    apiClient.patch<AuthFileMutationResponse>('/auth-files/fields', {
+      ...fields,
+      ...buildAuthFileMutationPayload(target),
+    }),
 
-  requestManualRefresh: (name: string) =>
+  requestManualRefresh: (target: AuthFileMutationTarget) =>
     apiClient.patch('/auth-files/fields', {
-      name,
       expired: buildManualRefreshExpiredAt(),
+      ...buildAuthFileMutationPayload(target),
     }),
 
   reprobeAvailability: async (): Promise<AuthFileAvailabilityReprobeResult> =>
@@ -733,6 +901,127 @@ export const authFilesApi = {
     }
     const payload = await apiClient.postForm<AuthFileBatchUploadResponse>('/auth-files', formData);
     return normalizeBatchUploadResponse(payload, requestedNames);
+  },
+
+  uploadFilesInChunks: async (
+    files: File[],
+    proxySelection?: ProxySelection,
+    concurrencyDefault?: ConcurrencySetting,
+    options: AuthFileChunkedUploadOptions = {}
+  ): Promise<AuthFileChunkedUploadResult> => {
+    const nameCounts = new Map<string, number>();
+    files.forEach((file) => nameCounts.set(file.name, (nameCounts.get(file.name) ?? 0) + 1));
+
+    const uploadableFiles: File[] = [];
+    const failures: AuthFileBatchFailure[] = [];
+    const retryFiles: File[] = [];
+    files.forEach((file) => {
+      let error = '';
+      if ((nameCounts.get(file.name) ?? 0) > 1) {
+        error = 'Duplicate filename in selected upload batch';
+      } else if (file.size > AUTH_FILE_UPLOAD_CHUNK_BYTES) {
+        error = 'Credential file exceeds the 16 MiB upload limit';
+      }
+      if (error) {
+        failures.push({ name: file.name, error });
+        retryFiles.push(file);
+      } else {
+        uploadableFiles.push(file);
+      }
+    });
+
+    const chunks = chunkAuthFilesForUpload(uploadableFiles);
+    if (files.length === 0) {
+      return {
+        status: 'ok',
+        uploaded: 0,
+        files: [],
+        failed: [],
+        attempted: 0,
+        completedChunks: 0,
+        totalChunks: 0,
+        cancelled: false,
+        remainingFiles: [],
+      };
+    }
+
+    const acceptedNames: string[] = [];
+    let attempted = 0;
+    let acceptedInputFiles = 0;
+    let rejectedInputFiles = retryFiles.length;
+    let completedChunks = 0;
+    let nextChunkIndex = 0;
+    let cancelled = false;
+
+    const publishProgress = (
+      phase: AuthFileUploadProgress['phase'],
+      remainingFiles = retryFiles.length + Math.max(0, uploadableFiles.length - attempted)
+    ) => {
+      options.onProgress?.({
+        totalFiles: files.length,
+        totalChunks: chunks.length,
+        currentChunk: chunks.length === 0 ? 0 : Math.min(nextChunkIndex + 1, chunks.length),
+        completedChunks,
+        processedFiles: attempted + (files.length - uploadableFiles.length),
+        acceptedFiles: acceptedInputFiles,
+        rejectedFiles: rejectedInputFiles,
+        remainingFiles,
+        phase,
+      });
+    };
+
+    publishProgress('uploading');
+    for (; nextChunkIndex < chunks.length; nextChunkIndex += 1) {
+      if (options.shouldCancel?.()) {
+        cancelled = true;
+        break;
+      }
+      const chunk = chunks[nextChunkIndex];
+      try {
+        const result = await authFilesApi.uploadFiles(chunk, proxySelection, concurrencyDefault);
+        const failedByName = new Map(result.failed.map((failure) => [failure.name, failure]));
+        acceptedNames.push(...result.files);
+        chunk.forEach((file) => {
+          const failure = failedByName.get(file.name);
+          if (failure) {
+            failures.push(failure);
+            retryFiles.push(file);
+            rejectedInputFiles += 1;
+            return;
+          }
+          acceptedInputFiles += 1;
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error && error.message ? error.message : 'Upload failed';
+        chunk.forEach((file) => {
+          failures.push({ name: file.name, error: message });
+          retryFiles.push(file);
+        });
+        rejectedInputFiles += chunk.length;
+      }
+      attempted += chunk.length;
+      completedChunks += 1;
+      publishProgress(options.shouldCancel?.() ? 'cancelling' : 'uploading');
+    }
+
+    if (nextChunkIndex < chunks.length) {
+      chunks.slice(nextChunkIndex).forEach((chunk) => retryFiles.push(...chunk));
+    }
+    cancelled = cancelled || (Boolean(options.shouldCancel?.()) && attempted < files.length);
+    const phase: AuthFileUploadProgress['phase'] = cancelled ? 'cancelled' : 'completed';
+    publishProgress(phase, retryFiles.length);
+
+    return {
+      status: cancelled ? 'cancelled' : failures.length > 0 ? 'partial' : 'ok',
+      uploaded: acceptedNames.length,
+      files: acceptedNames,
+      failed: failures,
+      attempted,
+      completedChunks,
+      totalChunks: chunks.length,
+      cancelled,
+      remainingFiles: retryFiles,
+    };
   },
 
   upload: (file: File, proxySelection?: ProxySelection, concurrencyDefault?: ConcurrencySetting) =>
@@ -783,7 +1072,69 @@ export const authFilesApi = {
     return normalizeBatchDeleteResponse(payload, requestedNames);
   },
 
-  deleteFile: (name: string) => authFilesApi.deleteFiles([name]),
+  deleteFile: async (target: AuthFileMutationTarget): Promise<AuthFileBatchDeleteResult> => {
+    const identity = normalizeAuthFileMutationTarget(target);
+    const payload = await apiClient.delete<AuthFileBatchDeleteResponse>('/auth-files', {
+      data: buildAuthFileMutationPayload(identity),
+    });
+    return normalizeBatchDeleteResponse(payload, [identity.name]);
+  },
+
+  deleteTargets: async (targets: AuthFileMutationTarget[]): Promise<AuthFileBatchDeleteResult> => {
+    const uniqueTargets = Array.from(
+      targets
+        .reduce<Map<string, AuthFileCredentialIdentity>>((result, target) => {
+          const identity = normalizeAuthFileMutationTarget(target);
+          if (!result.has(identity.name)) result.set(identity.name, identity);
+          return result;
+        }, new Map())
+        .values()
+    );
+    if (uniqueTargets.length === 0) return normalizeBatchDeleteResponse(undefined, []);
+
+    const settled = await Promise.allSettled(
+      uniqueTargets.map((target) => authFilesApi.deleteFile(target))
+    );
+    const identityConflict = settled.find(
+      (result) =>
+        result.status === 'rejected' &&
+        result.reason &&
+        typeof result.reason === 'object' &&
+        (result.reason as { status?: unknown; code?: unknown }).status === 409 &&
+        (result.reason as { status?: unknown; code?: unknown }).code === 'auth_identity_changed'
+    );
+    if (identityConflict?.status === 'rejected') throw identityConflict.reason;
+
+    const results: AuthFileBatchDeleteResult[] = [];
+    const failures: AuthFileBatchFailure[] = [];
+    settled.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        results.push(result.value);
+        return;
+      }
+      failures.push({
+        name: uniqueTargets[index].name,
+        error: result.reason instanceof Error ? result.reason.message : 'Delete failed',
+      });
+    });
+    return mergeAuthFileDeleteResults(results, failures);
+  },
+
+  deleteMatching: async (filter: AuthFileDeleteFilter): Promise<AuthFileBatchDeleteResult> =>
+    normalizeBatchDeleteResponse(
+      await apiClient.delete<AuthFileBatchDeleteResponse>('/auth-files', {
+        data: {
+          filter: {
+            provider: filter.provider,
+            group: filter.group,
+            without_group: filter.withoutGroup,
+            status: filter.status,
+            search: filter.search,
+          },
+        },
+      }),
+      []
+    ),
 
   deleteAll: async (): Promise<AuthFileBatchDeleteResult> =>
     normalizeBatchDeleteResponse(

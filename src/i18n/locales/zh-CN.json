@@ -3,6 +3,8 @@
     "login": "登录",
     "logout": "登出",
     "back": "返回",
+    "previous": "上一步",
+    "next": "下一步",
     "cancel": "取消",
     "confirm": "确认",
     "leave": "离开",
@@ -376,6 +378,25 @@
     "availability_reprobe_queued": "已分批提交 {{queued}} 个凭证进行额度重探测；{{already}} 个正在探测，跳过 {{skipped}} 个不符合条件的凭证。",
     "availability_reprobe_empty": "当前调度表和刷新表中没有可重探测的凭证，已跳过 {{skipped}} 个。",
     "availability_reprobe_failed": "提交额度重探测失败：{{message}}",
+    "availability_reprobe_results_title": "额度重探测结果",
+    "availability_reprobe_requested": "请求数",
+    "availability_reprobe_eligible": "可探测",
+    "availability_reprobe_status_queued": "已排队",
+    "availability_reprobe_status_already": "正在探测",
+    "availability_reprobe_status_skipped": "已跳过",
+    "availability_reprobe_parallel": "最大并发",
+    "availability_reprobe_credential_id": "凭证 ID",
+    "availability_reprobe_auth_index": "认证索引",
+    "availability_reprobe_reason": "原因",
+    "availability_reprobe_no_entries": "后端未返回逐凭证结果。",
+    "availability_reprobe_page": "第 {{page}} / {{pages}} 页",
+    "identity_changed": "凭证已发生变化，已加载最新凭证列表，请重试当前操作。",
+    "delete_second_title": "确认永久删除",
+    "delete_second_confirm": "确定永久删除“{{name}}”吗？此操作无法撤销。",
+    "delete_many_second_title": "确认永久删除",
+    "delete_many_second_confirm": "确定永久删除“{{scope}}”范围内的全部凭证吗？此操作无法撤销。",
+    "batch_delete_second_confirm": "确定永久删除选中的 {{count}} 个凭证吗？此操作无法撤销。",
+    "delete_second_action": "永久删除",
     "websockets_label": "WebSockets（websockets）",
     "websockets_hint": "为该凭证开启 Responses API 的 websocket 传输。",
     "using_api_label": "使用官方 API（using_api）",
@@ -428,6 +449,7 @@
     "plan_filter_label": "套餐筛选",
     "plan_filter_all": "全部",
     "plan_filter_unverified": "未验证",
+    "credential_plan_badge": "套餐 {{plan}}",
     "sort_default": "默认",
     "sort_az": "A-Z 名称",
     "sort_priority": "优先级",
@@ -1218,6 +1240,7 @@
       "context_at_least": "输入 Token 至少 {{value}}",
       "context_at_most": "输入 Token 最多 {{value}}",
       "sources": {
+        "models.dev": "models.dev",
         "litellm": "LiteLLM",
         "openrouter": "OpenRouter"
       },
@@ -1383,6 +1406,30 @@
       "title": "导入监控记录",
       "message": "确定从 {{name}} 导入已脱敏记录吗？已有记录会按唯一标识跳过。"
     },
+    "import_progress": {
+      "title": "监控记录导入进度",
+      "pause": "暂停",
+      "resume": "继续",
+      "retry": "重试",
+      "cancel": "取消导入",
+      "phases": {
+        "preparing": "正在准备导入",
+        "uploading": "正在上传记录",
+        "processing": "正在写入记录",
+        "paused": "导入已暂停",
+        "completed": "导入已完成",
+        "failed": "导入失败",
+        "cancelled": "导入已取消"
+      },
+      "bytes": "已上传 {{uploaded}} / {{total}}",
+      "processing_hint": "服务器正在写入已上传的记录。",
+      "paused_hint": "已保留导入会话，可从最后确认的分片继续。",
+      "result": {
+        "added": "新增",
+        "skipped": "跳过",
+        "failed": "失败"
+      }
+    },
     "retention": {
       "title": "监控数据保留",
       "days": "保留天数",
@@ -1397,6 +1444,7 @@
     "notifications": {
       "exported": "监控记录已导出",
       "imported": "已导入 {{added}} 条，跳过 {{skipped}} 条，失败 {{failed}} 条",
+      "import_cancelled": "已取消监控记录导入",
       "retention_saved": "监控数据保留设置已保存",
       "retention_ran": "已删除 {{deleted}} 条，仍有 {{remaining}} 条符合清理条件"
     },
@@ -1410,6 +1458,7 @@
       "invalid_range": "请选择有效的时间范围。",
       "export": "导出监控记录失败",
       "import": "导入监控记录失败",
+      "import_cancel": "取消监控记录导入失败",
       "import_file": "请选择不超过 32 MB 的 JSONL 文件。",
       "retention": "更新监控数据保留设置失败"
     }
@@ -2421,6 +2470,7 @@
       "probing": "额度探测中",
       "half_open": "半开验证",
       "auth_invalid": "认证失效",
+      "excluded": "已排除",
       "disabled": "已禁用"
     },
     "availability_model": "模型：{{model}}",
@@ -2591,6 +2641,34 @@
         "authIndex": "Auth Index",
         "excludedModels": "排除模型数",
         "apiKeyEntries": "密钥条目数"
+      }
+    },
+    "imageRoute": {
+      "title": "Codex 生图路由",
+      "toggle": "启用 Codex 生图路由",
+      "hint": "将同一轮 Codex 触发的生图请求发送到指定的图片供应商。",
+      "targetSupplier": "目标供应商",
+      "targetModel": "目标生图模型",
+      "selectSupplier": "选择支持生图的供应商",
+      "selectModel": "选择生图模型",
+      "configuredSummary": "路由到 {{supplier}} / {{model}}",
+      "status": {
+        "disabled": "未启用",
+        "configured": "已配置",
+        "invalid": "配置失效",
+        "unavailable": "当前不可用"
+      },
+      "issues": {
+        "targetSupplierRequired": "请选择目标供应商。",
+        "targetModelRequired": "请选择目标生图模型。",
+        "supplierMissing": "目标供应商 {{supplier}} 已不存在，保存前请选择其他供应商。",
+        "supplierAmbiguous": "目标供应商 {{supplier}} 名称重复，无法安全引用。",
+        "modelMissing": "{{supplier}} 中已不存在生图模型 {{model}}，保存前请选择其他模型。",
+        "modelAmbiguous": "{{supplier}} 中的生图模型 {{model}} 存在重复，无法安全引用。",
+        "modelNotImage": "{{supplier}} 中的模型 {{model}} 未标记为支持生图。",
+        "supplierDisabled": "目标供应商 {{supplier}} 已停用。",
+        "supplierNoCredentials": "目标供应商 {{supplier}} 没有可用的 API 密钥条目。",
+        "supplierNotReady": "目标供应商 {{supplier}} 当前不可调度。"
       }
     },
     "failures": {
@@ -2798,6 +2876,33 @@
       "balanceUnavailable": "未返回额度",
       "updatedAt": "更新于 {{time}}",
       "error": "{{reason}}（HTTP {{status}}）"
+    },
+    "availabilityRecovery": {
+      "actions": {
+        "ready": "重新验证供应商可用性",
+        "recover": "验证并恢复供应商调度",
+        "probing": "正在恢复供应商可用性",
+        "disabled": "请先启用该供应商再恢复",
+        "missing_runtime": "该供应商没有已注册的运行时 API Key",
+        "unsupported": "该供应商不支持可用性恢复"
+      },
+      "summary": "已排队 {{queued}} 个，探测中 {{alreadyProbing}} 个，跳过 {{skipped}} 个。",
+      "partialEntry": "{{key}}：{{reason}}",
+      "failed": "供应商恢复失败：{{reason}}",
+      "waitReason": "额度等待：{{reason}}",
+      "nextProbe": "下次探测 {{time}}",
+      "reasons": {
+        "usage_exhausted": "余额已耗尽",
+        "probe_rate_limited": "探测请求被限流",
+        "authentication_invalid": "认证失效",
+        "probe_unknown": "无法取得探测结果",
+        "disabled": "供应商已禁用",
+        "feature_disabled": "配置已关闭可用性恢复",
+        "missing_runtime": "运行时 API Key 不可用",
+        "queue_unavailable": "恢复队列不可用",
+        "unknown_state": "当前运行时状态无法恢复",
+        "unsupported": "不支持可用性探测"
+      }
     }
   },
   "proxy_pools": {

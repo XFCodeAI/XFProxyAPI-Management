@@ -45,6 +45,7 @@ interface ProviderSheetProps {
   onCreated: () => void;
   onUpdated: () => void;
   mutationDisabled?: boolean;
+  imageRouteResources?: readonly ProviderResource[];
   usageByProvider?: ProviderRecentUsageMap;
   billingProbeEntries?: readonly SupplierBillingProbeEntry[];
   onRefreshBillingProbe?: (targetId: string) => Promise<void>;
@@ -59,6 +60,7 @@ export function ProviderSheet({
   onCreated,
   onUpdated,
   mutationDisabled = false,
+  imageRouteResources = [],
   usageByProvider,
   billingProbeEntries,
   onRefreshBillingProbe,
@@ -173,6 +175,7 @@ export function ProviderSheet({
       return (
         <ResourceDetailView
           resource={state.resource}
+          imageRouteResources={imageRouteResources}
           usageByProvider={usageByProvider}
           focusFailureHistory={state.focusFailureHistory === true}
           billingProbeEntries={billingProbeEntries}
@@ -200,6 +203,7 @@ export function ProviderSheet({
         key={formKey}
         brand={state.brand}
         resource={state.resource}
+        imageRouteResources={imageRouteResources}
         credentialGroupOptions={credentialGroupOptions}
         mode={state.mode}
         mutating={formMutating}

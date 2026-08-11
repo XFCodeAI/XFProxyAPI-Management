@@ -20,17 +20,11 @@ import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useVisualConfig } from '@/hooks/useVisualConfig';
 import { resolveCredentialGroupOptions } from '@/hooks/apiKeyBindings';
-import {
-  useAuthInventoryStore,
-  useNotificationStore,
-  useAuthStore,
-  useThemeStore,
-  useConfigStore,
-} from '@/stores';
+import { useNotificationStore, useAuthStore, useThemeStore, useConfigStore } from '@/stores';
+import { credentialGroupsApi } from '@/services/api';
 import { configApi } from '@/services/api/config';
 import { configFileApi } from '@/services/api/configFile';
 import { invalidateProviderRecentRequests } from '@/services/providerRecentRequests';
-import type { AuthFileItem } from '@/types';
 import styles from './ConfigPage.module.scss';
 
 type ConfigEditorTab = 'visual' | 'source';
@@ -82,12 +76,6 @@ function mergeCredentialGroupOptions(...groupLists: string[][]): string[] {
   return merged;
 }
 
-function resolveAuthFileCredentialGroupOptions(files: AuthFileItem[]): string[] {
-  return mergeCredentialGroupOptions(
-    files.flatMap((file) => (Array.isArray(file.groups) ? file.groups : []))
-  );
-}
-
 function resolveConfigCredentialGroupOptionsFromYaml(yamlContent: string): string[] {
   try {
     const parsed = asRecord(parseYaml(yamlContent) || {}) ?? {};
@@ -99,11 +87,11 @@ function resolveConfigCredentialGroupOptionsFromYaml(yamlContent: string): strin
 
 function buildVisualCredentialGroupOptions(
   yamlContent: string,
-  authFiles: AuthFileItem[]
+  registeredGroups: string[]
 ): string[] {
   return mergeCredentialGroupOptions(
     resolveConfigCredentialGroupOptionsFromYaml(yamlContent),
-    resolveAuthFileCredentialGroupOptions(authFiles)
+    registeredGroups
   );
 }
 
@@ -114,8 +102,6 @@ export function ConfigPage() {
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
-  const authFiles = useAuthInventoryStore((state) => state.files);
-  const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const isMobile = useMediaQuery('(max-width: 768px)');
 
@@ -146,6 +132,7 @@ export function ConfigPage() {
   const [serverYaml, setServerYaml] = useState('');
   const [mergedYaml, setMergedYaml] = useState('');
   const [panelUpdating, setPanelUpdating] = useState(false);
+  const [registeredCredentialGroups, setRegisteredCredentialGroups] = useState<string[]>([]);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -186,25 +173,24 @@ export function ConfigPage() {
 
   const refreshVisualReferenceOptions = useCallback(
     async (yamlContent: string) => {
-      await refreshAuthFiles().catch(() => undefined);
+      const groups = await credentialGroupsApi.list().catch(() => registeredCredentialGroups);
+      setRegisteredCredentialGroups(groups);
       setVisualValues({
-        credentialGroupOptions: buildVisualCredentialGroupOptions(
-          yamlContent,
-          useAuthInventoryStore.getState().files
-        ),
+        credentialGroupOptions: buildVisualCredentialGroupOptions(yamlContent, groups),
       });
     },
-    [refreshAuthFiles, setVisualValues]
+    [registeredCredentialGroups, setVisualValues]
   );
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [data] = await Promise.all([
+      const [data, groups] = await Promise.all([
         configFileApi.fetchConfigYaml(),
-        refreshAuthFiles().catch(() => undefined),
+        credentialGroupsApi.list().catch(() => []),
       ]);
+      setRegisteredCredentialGroups(groups);
       setContent(data);
       setDirty(false);
       setDiffModalOpen(false);
@@ -213,10 +199,7 @@ export function ConfigPage() {
       if (activeTabRef.current === 'visual') {
         loadVisualValuesFromYaml(data);
         setVisualValues({
-          credentialGroupOptions: buildVisualCredentialGroupOptions(
-            data,
-            useAuthInventoryStore.getState().files
-          ),
+          credentialGroupOptions: buildVisualCredentialGroupOptions(data, groups),
         });
       }
     } catch (err: unknown) {
@@ -225,14 +208,17 @@ export function ConfigPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadVisualValuesFromYaml, refreshAuthFiles, setVisualValues, t]);
+  }, [loadVisualValuesFromYaml, setVisualValues, t]);
 
   useEffect(() => {
     if (activeTab !== 'visual' || !content) return;
     setVisualValues({
-      credentialGroupOptions: buildVisualCredentialGroupOptions(content, authFiles),
+      credentialGroupOptions: buildVisualCredentialGroupOptions(
+        content,
+        registeredCredentialGroups
+      ),
     });
-  }, [activeTab, authFiles, content, setVisualValues]);
+  }, [activeTab, content, registeredCredentialGroups, setVisualValues]);
 
   useEffect(() => {
     loadConfig();

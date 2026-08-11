@@ -10,31 +10,30 @@ export function ConfirmationModal() {
   const confirmation = useNotificationStore((state) => state.confirmation);
   const hideConfirmation = useNotificationStore((state) => state.hideConfirmation);
   const setConfirmationLoading = useNotificationStore((state) => state.setConfirmationLoading);
+  const advanceConfirmation = useNotificationStore((state) => state.advanceConfirmation);
   const confirmingRequestRef = useRef<string | null>(null);
 
-  const { requestId, isOpen, isLoading, options } = confirmation;
+  const { requestId, isOpen, isLoading, step, options } = confirmation;
 
   if (!requestId || !isOpen || !options) {
     return null;
   }
 
-  const {
-    title,
-    message,
-    onConfirm,
-    onCancel,
-    confirmText,
-    cancelText,
-    variant = 'primary',
-  } = options;
+  const currentStep =
+    step === 2 && options.secondConfirmation ? options.secondConfirmation : options;
+  const { title, message, confirmText, cancelText, variant = 'primary' } = currentStep;
 
   const handleConfirm = async () => {
     if (useNotificationStore.getState().confirmation.requestId !== requestId) return;
+    if (step === 1 && options.secondConfirmation) {
+      advanceConfirmation(requestId);
+      return;
+    }
     if (confirmingRequestRef.current === requestId) return;
     confirmingRequestRef.current = requestId;
     try {
       setConfirmationLoading(requestId, true);
-      await onConfirm();
+      await options.onConfirm();
       hideConfirmation(requestId);
     } catch (error) {
       console.error('Confirmation action failed:', error);
@@ -54,7 +53,7 @@ export function ConfirmationModal() {
       return;
     }
     try {
-      onCancel?.();
+      options.onCancel?.();
     } catch (error) {
       console.error('Confirmation cancellation failed:', error);
     } finally {

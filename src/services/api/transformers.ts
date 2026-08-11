@@ -164,6 +164,17 @@ const normalizeCredentialName = (value: unknown): string | undefined => {
   return trimmed ? trimmed : undefined;
 };
 
+const normalizeCodexImageRoute = (
+  value: unknown
+): OpenAIProviderConfig['codexImageRoute'] | undefined => {
+  if (!isRecord(value)) return undefined;
+  return {
+    enabled: value.enabled === true,
+    targetSupplier: String(value['target-supplier'] ?? '').trim(),
+    targetModel: String(value['target-model'] ?? '').trim(),
+  };
+};
+
 const normalizeDownstreamApiKey = (entry: unknown): string | null => {
   if (typeof entry === 'string') {
     const trimmed = entry.trim();
@@ -392,6 +403,8 @@ const normalizeOpenAIProvider = (
   if (models.length) result.models = models;
   if (priority !== undefined) result.priority = Number(priority);
   if (testModel) result.testModel = String(testModel);
+  const codexImageRoute = normalizeCodexImageRoute(provider['codex-image-route']);
+  if (codexImageRoute) result.codexImageRoute = codexImageRoute;
   const authIndex = normalizeAuthIndex(provider['auth-index']);
   if (authIndex) result.authIndex = authIndex;
   const runtimeStatus = normalizeProviderRuntimeStatus(provider['runtime-status']);

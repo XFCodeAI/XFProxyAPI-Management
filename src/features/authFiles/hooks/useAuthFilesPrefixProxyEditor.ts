@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { authFilesApi, type AuthFileFieldsPatch } from '@/services/api';
-import type { AuthFileItem, ConcurrencyMode } from '@/types';
+import type { AuthFileCredentialIdentity, AuthFileItem, ConcurrencyMode } from '@/types';
 import { useAuthInventoryStore, useNotificationStore } from '@/stores';
 import { normalizeProviderKey, parsePriorityValue } from '@/features/authFiles/constants';
 import {
@@ -17,6 +17,11 @@ import {
   parseOptionalMaxConcurrency,
   resolveAuthFileConcurrencySetting,
 } from '@/utils/maxConcurrency';
+import {
+  authFileMatchesCredentialIdentity,
+  isAuthFileIdentityChangedError,
+  readAuthFileCredentialIdentity,
+} from '@/features/authFiles/credentialIdentity';
 
 type AuthFileHeaders = Record<string, string>;
 type AuthFileHeadersErrorKey =
@@ -43,6 +48,7 @@ export type PrefixProxyEditorFieldValue = string | boolean;
 
 export type PrefixProxyEditorState = {
   fileName: string;
+  credentialIdentity: AuthFileCredentialIdentity;
   fileInfoText: string;
   loading: boolean;
   saving: boolean;
@@ -431,8 +437,10 @@ export function useAuthFilesPrefixProxyEditor(
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
   const commitMutationVersion = useAuthInventoryStore((state) => state.commitMutationVersion);
+  const refreshAuthInventory = useAuthInventoryStore((state) => state.refresh);
 
   const [prefixProxyEditor, setPrefixProxyEditor] = useState<PrefixProxyEditorState | null>(null);
+  const editorRequestIdRef = useRef(0);
 
   const hasBlockingValidationError = Boolean(
     (prefixProxyEditor?.headersTouched && prefixProxyEditor.headersError) ||
@@ -451,21 +459,27 @@ export function useAuthFilesPrefixProxyEditor(
   const prefixProxyDirty = hasKeys(prefixProxyPatch);
 
   const closePrefixProxyEditor = () => {
+    editorRequestIdRef.current += 1;
     setPrefixProxyEditor(null);
   };
 
   const openPrefixProxyEditor = async (file: AuthFileItem) => {
     const name = file.name;
+    const credentialIdentity = readAuthFileCredentialIdentity(file);
     const fileProviderKey = normalizeProviderKey(String(file.type ?? file.provider ?? ''));
 
     if (disableControls) return;
     if (prefixProxyEditor?.fileName === name) {
+      editorRequestIdRef.current += 1;
       setPrefixProxyEditor(null);
       return;
     }
+    const editorRequestId = editorRequestIdRef.current + 1;
+    editorRequestIdRef.current = editorRequestId;
 
     setPrefixProxyEditor({
       fileName: name,
+      credentialIdentity,
       fileInfoText: JSON.stringify(file, null, 2),
       loading: true,
       saving: false,
@@ -497,6 +511,7 @@ export function useAuthFilesPrefixProxyEditor(
 
     try {
       const rawText = await authFilesApi.downloadText(name);
+      if (editorRequestIdRef.current !== editorRequestId) return;
       const trimmed = rawText.trim();
 
       let parsed: unknown;
@@ -582,6 +597,7 @@ export function useAuthFilesPrefixProxyEditor(
         };
       });
     } catch (err: unknown) {
+      if (editorRequestIdRef.current !== editorRequestId) return;
       const errorMessage = err instanceof Error ? err.message : t('notification.download_failed');
       setPrefixProxyEditor((prev) => {
         if (!prev || prev.fileName !== name) return prev;
@@ -642,6 +658,8 @@ export function useAuthFilesPrefixProxyEditor(
     if (!prefixProxyDirty) return;
 
     const name = prefixProxyEditor.fileName;
+    const target = prefixProxyEditor.credentialIdentity;
+    const editorRequestId = editorRequestIdRef.current;
     let payload: AuthFileFieldsPatch;
     try {
       payload = buildAuthFileFieldsPatch(prefixProxyEditor, (key) => t(key));
@@ -663,8 +681,10 @@ export function useAuthFilesPrefixProxyEditor(
     });
 
     try {
-      const response = await authFilesApi.patchFields(name, payload);
-      const authoritativeFile = response.files?.find((file) => file.name === name);
+      const response = await authFilesApi.patchFields(target, payload);
+      const authoritativeFile = response.files?.find((file) =>
+        authFileMatchesCredentialIdentity(file, target)
+      );
       if (!authoritativeFile) {
         throw new Error(t('auth_files.field_save_confirmation_failed'));
       }
@@ -680,8 +700,38 @@ export function useAuthFilesPrefixProxyEditor(
         response.files ?? []
       );
       showNotification(t('auth_files.prefix_proxy_saved_success', { name }), 'success');
-      setPrefixProxyEditor(null);
+      if (editorRequestIdRef.current === editorRequestId) {
+        editorRequestIdRef.current += 1;
+        setPrefixProxyEditor(null);
+      }
     } catch (err: unknown) {
+      if (isAuthFileIdentityChangedError(err)) {
+        try {
+          await refreshAuthInventory(true);
+          showNotification(
+            t('auth_files.identity_changed', {
+              defaultValue:
+                'Credential changed. The latest inventory has been loaded; reopen it before saving.',
+            }),
+            'warning'
+          );
+          if (editorRequestIdRef.current === editorRequestId) {
+            editorRequestIdRef.current += 1;
+            setPrefixProxyEditor(null);
+          }
+        } catch (refreshError: unknown) {
+          const message = refreshError instanceof Error ? refreshError.message : '';
+          showNotification(
+            `${t('notification.refresh_failed')}${message ? `: ${message}` : ''}`,
+            'error'
+          );
+          setPrefixProxyEditor((prev) => {
+            if (!prev || editorRequestIdRef.current !== editorRequestId) return prev;
+            return { ...prev, saving: false };
+          });
+        }
+        return;
+      }
       const errorMessage = err instanceof Error ? err.message : '';
       showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
       setPrefixProxyEditor((prev) => {

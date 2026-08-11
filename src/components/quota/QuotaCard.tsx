@@ -119,11 +119,15 @@ interface QuotaCardProps<TState extends QuotaStatusState> {
   onDownload?: (name: string) => void;
   onShowModels?: (item: AuthFileItem) => void;
   onOpenSettings?: (item: AuthFileItem) => void;
-  onDelete?: (name: string) => void;
+  onDelete?: (item: AuthFileItem) => void;
   onToggleStatus?: (item: AuthFileItem, enabled: boolean) => void;
   onToggleSelect?: (name: string) => void;
   hideQuotaSection?: boolean;
   resetQuotaAction?: ReactNode;
+  credentialPlan?: {
+    type: string | null;
+    label: string;
+  };
   renderQuotaItems: (quota: TState, t: TFunction, helpers: QuotaRenderHelpers) => ReactNode;
 }
 
@@ -149,6 +153,7 @@ export function QuotaCard<TState extends QuotaStatusState>({
   onToggleSelect,
   hideQuotaSection = false,
   resetQuotaAction,
+  credentialPlan,
   renderQuotaItems,
 }: QuotaCardProps<TState>) {
   const { t } = useTranslation();
@@ -212,6 +217,17 @@ export function QuotaCard<TState extends QuotaStatusState>({
   const canEditFile = !isRuntimeOnly;
   const isDeleting = deletingCredentialName === item.name;
   const isStatusUpdating = credentialStatusUpdating[item.name] === true;
+  const credentialPlanBadgeClass = credentialPlan?.type
+    ? credentialPlan.type === 'free'
+      ? authStyles.subscriptionBadgeFree
+      : authStyles.subscriptionBadgePaid
+    : authStyles.subscriptionBadgeUnknown;
+  const credentialPlanText = credentialPlan
+    ? t('auth_files.credential_plan_badge', {
+        plan: credentialPlan.label,
+        defaultValue: `Plan ${credentialPlan.label}`,
+      })
+    : '';
 
   return (
     <div
@@ -265,6 +281,15 @@ export function QuotaCard<TState extends QuotaStatusState>({
                 </span>
                 <span className={`${authStyles.stateBadge} ${stateBadgeClass}`}>{stateLabel}</span>
                 <RuntimeAvailabilityBadge resource={runtimeResource} />
+                {credentialPlan && (
+                  <span
+                    className={`${authStyles.subscriptionBadge} ${credentialPlanBadgeClass}`}
+                    data-credential-plan={credentialPlan.type ?? 'unverified'}
+                    title={credentialPlanText}
+                  >
+                    {credentialPlanText}
+                  </span>
+                )}
                 {item.fallback === true && (
                   <span className={authStyles.fallbackBadge}>{t('auth_files.fallback_badge')}</span>
                 )}
@@ -442,7 +467,7 @@ export function QuotaCard<TState extends QuotaStatusState>({
                       variant="danger"
                       size="sm"
                       className={authStyles.iconButton}
-                      onClick={() => onDelete(item.name)}
+                      onClick={() => onDelete(item)}
                       disabled={actionDisabled || isDeleting}
                       label={t('auth_files.delete_button')}
                     >

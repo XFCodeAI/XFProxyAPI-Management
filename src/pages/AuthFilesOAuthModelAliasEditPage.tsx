@@ -92,7 +92,7 @@ export function AuthFilesOAuthModelAliasEditPage({
   const [initialProviderKey] = useState(() => normalizeProviderKey(providerFromParams));
 
   const [provider, setProvider] = useState(providerFromParams);
-  const files = useAuthInventoryStore((state) => state.files);
+  const providerTotals = useAuthInventoryStore((state) => state.providerTotals);
   const refreshAuthFiles = useAuthInventoryStore((state) => state.refresh);
   const [excluded, setExcluded] = useState<Record<string, string[]>>({});
   const [modelAlias, setModelAlias] = useState<Record<string, OAuthModelAliasEntry[]>>({});
@@ -118,17 +118,10 @@ export function AuthFilesOAuthModelAliasEditPage({
     const extraProviders = new Set<string>();
     Object.keys(excluded).forEach((value) => extraProviders.add(value));
     Object.keys(modelAlias).forEach((value) => extraProviders.add(value));
-    files.forEach((file) => {
-      if (typeof file.type === 'string') {
-        extraProviders.add(file.type);
-      }
-      if (typeof file.provider === 'string') {
-        extraProviders.add(file.provider);
-      }
-    });
+    Object.keys(providerTotals).forEach((value) => extraProviders.add(value));
 
     return buildOAuthProviderOptions(extraProviders);
-  }, [excluded, files, modelAlias]);
+  }, [excluded, modelAlias, providerTotals]);
 
   const resolvedProviderKey = useMemo(() => normalizeProviderKey(provider), [provider]);
   const isEditing = useMemo(() => {

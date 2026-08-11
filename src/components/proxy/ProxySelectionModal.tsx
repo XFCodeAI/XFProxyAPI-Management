@@ -18,7 +18,10 @@ interface ProxySelectionModalProps {
   pools: ProxyPoolStatusEntry[];
   loading?: boolean;
   confirming?: boolean;
+  allowCancelWhileConfirming?: boolean;
   confirmDisabled?: boolean;
+  confirmText?: ReactNode;
+  cancelText?: ReactNode;
   allowFileMode?: boolean;
   inspection?: AuthFileProxyInspection;
   children?: ReactNode;
@@ -35,7 +38,10 @@ export function ProxySelectionModal({
   pools,
   loading = false,
   confirming = false,
+  allowCancelWhileConfirming = false,
   confirmDisabled = false,
+  confirmText,
+  cancelText,
   allowFileMode = false,
   inspection,
   children,
@@ -61,13 +67,18 @@ export function ProxySelectionModal({
     <Modal
       open={open}
       onClose={onCancel}
-      closeDisabled={confirming}
+      closeDisabled={confirming && !allowCancelWhileConfirming}
       title={title}
       width={620}
       footer={
         <div className={styles.footer}>
-          <Button type="button" variant="secondary" onClick={onCancel} disabled={confirming}>
-            {t('common.cancel')}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onCancel}
+            disabled={confirming && !allowCancelWhileConfirming}
+          >
+            {cancelText ?? t('common.cancel')}
           </Button>
           <Button
             type="button"
@@ -80,7 +91,7 @@ export function ProxySelectionModal({
               smartProxyUnavailable
             }
           >
-            {t('common.confirm')}
+            {confirmText ?? t('common.confirm')}
           </Button>
         </div>
       }

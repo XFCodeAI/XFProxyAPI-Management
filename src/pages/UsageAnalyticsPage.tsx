@@ -52,7 +52,7 @@ import {
   type AnalyticsQueryInput,
 } from '@/services/api';
 import { useDebouncedValue, useLatestAsyncSection } from '@/hooks';
-import { useAuthInventoryStore, useAuthStore } from '@/stores';
+import { authInventoryPageIsComplete, useAuthInventoryStore, useAuthStore } from '@/stores';
 import { getErrorMessage } from '@/utils/helpers';
 import styles from './UsageAnalyticsPage.module.scss';
 
@@ -278,6 +278,7 @@ export function UsageAnalyticsPage() {
   const location = useLocation();
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const authFiles = useAuthInventoryStore((state) => state.files);
+  const authInventoryComplete = useAuthInventoryStore(authInventoryPageIsComplete);
   const credentialInventoryId = useAuthInventoryStore((state) => state.inventoryId);
   const credentialRevision = useAuthInventoryStore((state) => state.revision);
   const [initialDrill] = useState(() => parseMonitoringDrillQuery(location.search));
@@ -423,9 +424,10 @@ export function UsageAnalyticsPage() {
     () =>
       reconcileCredentialIdentityCatalog(
         report?.credentialCatalog ?? overview?.credentialCatalog ?? [],
-        authFiles
+        authFiles,
+        authInventoryComplete
       ),
-    [authFiles, overview?.credentialCatalog, report?.credentialCatalog]
+    [authFiles, authInventoryComplete, overview?.credentialCatalog, report?.credentialCatalog]
   );
   const credentialOptions = useMemo(
     () => [

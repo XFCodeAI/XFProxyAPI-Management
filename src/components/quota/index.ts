@@ -3,6 +3,7 @@
  */
 
 export { QuotaSection } from './QuotaSection';
+export type { QuotaStatusFilterMode } from './QuotaSection';
 export { QuotaCard } from './QuotaCard';
 export { useQuotaLoader } from './useQuotaLoader';
 export {

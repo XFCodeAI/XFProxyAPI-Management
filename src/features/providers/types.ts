@@ -1,5 +1,6 @@
 import type {
   ClaudeAuthMode,
+  CodexImageRouteConfig,
   OpenAIProviderConfig,
   OpenAIProviderProtocolMode,
   OpenAIProviderRetryOwner,
@@ -164,6 +165,7 @@ export interface ProviderEntryFormInput {
   cloak?: CloakInput;
   experimentalCchSigning?: boolean;
   testModel?: string;
+  codexImageRoute?: CodexImageRouteConfig;
   apiKeyEntries?: ApiKeyEntryInput[];
   sponsorKeyEntries?: SponsorKeyEntryInput[];
 }

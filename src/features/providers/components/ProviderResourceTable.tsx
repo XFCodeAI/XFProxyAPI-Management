@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   IconAlertTriangle,
@@ -5,6 +6,7 @@ import {
   IconEye,
   IconInfo,
   IconLoader2,
+  IconNetwork,
   IconPencil,
   IconRefreshCw,
   IconTrash2,
@@ -26,7 +28,13 @@ import type { ProviderRecentUsageMap } from '@/components/providers/utils';
 import { useAuthInventoryStore, useRuntimeObservationStore } from '@/stores';
 import { statusBarDataFromRecentRequests } from '@/utils/recentRequests';
 import type { SupplierBillingProbeEntry } from '@/services/api/supplierBillingProbe';
+import type { OpenAIProviderConfig } from '@/types';
 import type { ProviderResource } from '../types';
+import {
+  buildCodexImageRouteSupplierCatalog,
+  formatCodexImageRouteModel,
+  inspectCodexImageRoute,
+} from '../codexImageRoute';
 import {
   getProviderResourceStatusData,
   getProviderResourceTotalStats,
@@ -38,6 +46,7 @@ import {
   supplierBillingResourceKey,
   type SupplierBillingProbeEntriesByResource,
 } from '../useSupplierBillingProbes';
+import { getSupplierRecoveryControlState } from '../supplierRecoveryControl';
 import styles from './ProviderResourceTable.module.scss';
 import statusBarStyles from './providerStatusBar.module.scss';
 
@@ -47,7 +56,10 @@ interface ProviderResourceTableProps {
   disableMutations?: boolean;
   usageByProvider?: ProviderRecentUsageMap;
   billingProbeEntriesByResource?: SupplierBillingProbeEntriesByResource;
+  imageRouteResources?: readonly ProviderResource[];
   onRefreshBillingProbe?: (targetId: string) => Promise<void>;
+  recoveringSupplierIds?: ReadonlySet<string>;
+  onRecoverSuppliers?: (supplierIds: readonly string[]) => Promise<void>;
   onView: (resource: ProviderResource) => void;
   onViewFailures: (resource: ProviderResource) => void;
   onEdit: (resource: ProviderResource) => void;
@@ -55,7 +67,7 @@ interface ProviderResourceTableProps {
   onToggleDisabled?: (resource: ProviderResource, disabled: boolean) => void;
 }
 
-const columnWidths = ['154px', '180px', '160px', '90px', '176px'];
+const columnWidths = ['154px', '180px', '160px', '90px', '210px'];
 
 const formatUsageBalance = (
   remaining: number,
@@ -77,7 +89,10 @@ export function ProviderResourceTable({
   disableMutations,
   usageByProvider,
   billingProbeEntriesByResource,
+  imageRouteResources = [],
   onRefreshBillingProbe,
+  recoveringSupplierIds = new Set<string>(),
+  onRecoverSuppliers,
   onView,
   onViewFailures,
   onEdit,
@@ -89,6 +104,10 @@ export function ProviderResourceTable({
   const runtimeResources = useRuntimeObservationStore((state) => state.resourcesByKey);
   const runtimeCredentialsByAuthIndex = useRuntimeObservationStore(
     (state) => state.credentialsByAuthIndex
+  );
+  const imageRouteSuppliers = useMemo(
+    () => buildCodexImageRouteSupplierCatalog(imageRouteResources),
+    [imageRouteResources]
   );
 
   const renderStatus = (
@@ -199,6 +218,16 @@ export function ProviderResourceTable({
   const renderPrimary = (resource: ProviderResource) => {
     const name = resource.name ?? resource.identifier;
     const homepageUrl = getProviderHomepageUrl(resource.baseUrl);
+    const imageRoute =
+      resource.brand === 'openaiCompatibility'
+        ? (resource.raw as OpenAIProviderConfig).codexImageRoute
+        : undefined;
+    const imageRouteInspection = inspectCodexImageRoute(imageRoute, imageRouteSuppliers);
+    const imageRouteTarget = imageRouteInspection.model
+      ? `${imageRouteInspection.supplier?.name ?? imageRouteInspection.targetSupplier} / ${formatCodexImageRouteModel(imageRouteInspection.model)}`
+      : [imageRouteInspection.targetSupplier, imageRouteInspection.targetModel]
+          .filter(Boolean)
+          .join(' / ');
     const secondary = [
       resource.apiKeyPreview,
       resource.apiKeyEntryCount > 1
@@ -227,6 +256,18 @@ export function ProviderResourceTable({
         )}
         {secondary.length > 0 ? (
           <span className={styles.primarySub}>{secondary.join(' · ')}</span>
+        ) : null}
+        {imageRoute?.enabled ? (
+          <span
+            className={`${styles.imageRouteIndicator} ${styles[`imageRouteIndicator_${imageRouteInspection.status}`]}`}
+            title={`${t(`providersPage.imageRoute.status.${imageRouteInspection.status}`)}${imageRouteTarget ? ` · ${imageRouteTarget}` : ''}`}
+          >
+            <IconNetwork size={12} />
+            <span>
+              {imageRouteTarget ||
+                t(`providersPage.imageRoute.status.${imageRouteInspection.status}`)}
+            </span>
+          </span>
         ) : null}
       </div>
     );
@@ -269,6 +310,50 @@ export function ProviderResourceTable({
     return t(`providersPage.billingProbe.status.${usage.status}`);
   };
 
+  const formatProbeTime = (value: string | undefined): string => {
+    if (!value) return '';
+    const timestamp = new Date(value);
+    if (Number.isNaN(timestamp.getTime())) return '';
+    try {
+      return new Intl.DateTimeFormat(i18n.language, {
+        dateStyle: 'short',
+        timeStyle: 'medium',
+      }).format(timestamp);
+    } catch {
+      return timestamp.toLocaleString();
+    }
+  };
+
+  const renderAvailabilityDetail = (entry: SupplierBillingProbeEntry) => {
+    const runtime = entry.runtime;
+    if (!runtime) return null;
+    const reasonCode = runtime.availability_reason?.trim() || runtime.provider_code?.trim() || '';
+    const reason = reasonCode
+      ? t(`providersPage.availabilityRecovery.reasons.${reasonCode}`, {
+          defaultValue: reasonCode,
+        })
+      : t(`runtime_observation.availability.${runtime.availability_state}`);
+    const deadline = formatProbeTime(
+      runtime.availability_deadline ||
+        (runtime.availability_state === 'usage_wait'
+          ? entry.usage?.reset_at || entry.usage?.next_probe_at
+          : undefined)
+    );
+    if (runtime.availability_state === 'ready' && !deadline) return null;
+    const stateText =
+      runtime.availability_state === 'usage_wait'
+        ? t('providersPage.availabilityRecovery.waitReason', { reason })
+        : t(`runtime_observation.availability.${runtime.availability_state}`);
+    return (
+      <span className={styles.availabilityDetail} title={runtime.provider_code || stateText}>
+        <span>{stateText}</span>
+        {deadline ? (
+          <span>{t('providersPage.availabilityRecovery.nextProbe', { time: deadline })}</span>
+        ) : null}
+      </span>
+    );
+  };
+
   const renderBillingStatusIcon = (entry: SupplierBillingProbeEntry) => {
     if (entry.probing || entry.queued) {
       return <IconLoader2 className={styles.rateLoading} size={13} />;
@@ -303,7 +388,7 @@ export function ProviderResourceTable({
           const rate = entry.multiplier?.effective_rate_multiplier_text;
           const usage = entry.usage;
           const usageAmount =
-            usage?.remaining !== undefined && usage.received_at
+            usage?.remaining !== undefined
               ? formatUsageBalance(usage.remaining, usage.unit, i18n.language)
               : null;
           const usageState = usageStatusText(entry);
@@ -355,6 +440,7 @@ export function ProviderResourceTable({
                   </ActionTooltipButton>
                 ) : null}
               </span>
+              {renderAvailabilityDetail(entry)}
             </div>
           );
         })}
@@ -382,11 +468,24 @@ export function ProviderResourceTable({
       </TableHeader>
       <TableBody>
         {resources.map((resource) => {
+          const billingEntries =
+            billingProbeEntriesByResource?.[
+              supplierBillingResourceKey(resource.brand, resource.originalIndex)
+            ] ?? [];
           const runtimeResource = getProviderRuntimeObservation(
             resource,
             authFiles,
             runtimeResources,
             runtimeCredentialsByAuthIndex
+          );
+          const recoveryControl = getSupplierRecoveryControlState(
+            billingEntries,
+            resource.disabled,
+            recoveringSupplierIds,
+            runtimeResource?.availabilityState ?? 'unknown'
+          );
+          const recoveryLabel = t(
+            `providersPage.availabilityRecovery.actions.${recoveryControl.reason}`
           );
           return (
             <TableRow
@@ -420,6 +519,24 @@ export function ProviderResourceTable({
                   .join(' ')}
               >
                 <div className={styles.actions}>
+                  <span className={styles.recoveryAction} title={recoveryLabel}>
+                    <ActionTooltipButton
+                      className={styles.iconBtn}
+                      label={recoveryLabel}
+                      disabled={recoveryControl.disabled || !onRecoverSuppliers}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (recoveryControl.disabled || !onRecoverSuppliers) return;
+                        void onRecoverSuppliers(recoveryControl.supplierIds).catch(() => undefined);
+                      }}
+                    >
+                      {recoveryControl.reason === 'probing' ? (
+                        <IconLoader2 className={styles.rateLoading} size={16} />
+                      ) : (
+                        <IconRefreshCw size={16} />
+                      )}
+                    </ActionTooltipButton>
+                  </span>
                   {onToggleDisabled ? (
                     <span
                       className={styles.toggleWrap}

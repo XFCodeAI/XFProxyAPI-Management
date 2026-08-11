@@ -1,6 +1,5 @@
 /**
- * 认证文件相关类型
- * 基于原项目 src/modules/auth-files.js
+ * Authentication file types.
  */
 
 import type { RecentRequestBucket } from '@/utils/recentRequests';
@@ -20,15 +19,34 @@ export type AuthFileType =
   | 'empty'
   | 'unknown';
 
+export interface AuthFileCredentialIdentity {
+  name: string;
+  credentialId?: string | null;
+  authIndex?: string | number | null;
+  credentialGeneration?: number | null;
+}
+
 export interface AuthFileItem {
   id?: string;
+  credentialId?: string;
+  credential_id?: string;
+  credentialGeneration?: number;
+  credential_generation?: number;
   name: string;
   type?: AuthFileType | string;
   provider?: string;
   alias?: string;
+  planType?: string;
+  plan_type?: string;
+  chatgptPlanType?: string;
+  chatgpt_plan_type?: string;
+  id_token?: string | Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  attributes?: Record<string, unknown>;
   groups?: string[];
   size?: number;
   authIndex?: string | number | null;
+  auth_index?: string | number | null;
   runtimeOnly?: boolean | string;
   fallback?: boolean;
   concurrencyMode?: ConcurrencyMode;
@@ -62,6 +80,11 @@ export interface AuthFileItem {
 export interface AuthFilesResponse {
   files: AuthFileItem[];
   total?: number;
+  limit?: number;
+  next_cursor?: string;
+  has_more?: boolean;
+  provider_totals?: Record<string, number>;
+  group_totals?: Record<string, number>;
   revision?: number;
   inventory_id?: string;
 }

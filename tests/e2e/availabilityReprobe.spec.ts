@@ -52,6 +52,14 @@ const installMockAPI = async (page: Page, onReprobe: () => void) => {
         already_probing: 0,
         skipped: {},
         maximum_parallel: 4,
+        entries: [
+          {
+            credential_id: 'credential-1',
+            auth_index: 'codex:user',
+            status: 'queued',
+            reason: 'manual_reprobe',
+          },
+        ],
       });
     }
     if (path === '/auth-files') {
@@ -109,6 +117,18 @@ test('quota page exposes and submits the credential quota reprobe action', async
   await expect(
     page.getByText(/已分批提交 1 个凭证|Queued 1 credential quota probe/i)
   ).toBeVisible();
+  const resultDialog = page.getByRole('dialog');
+  await expect(
+    resultDialog.getByRole('heading', { name: /额度重探测结果|Availability reprobe results/i })
+  ).toBeVisible();
+  await expect(resultDialog.getByText('credential-1')).toBeVisible();
+  await expect(resultDialog.getByText('codex:user')).toBeVisible();
+  await expect(resultDialog.getByText('manual_reprobe')).toBeVisible();
+  await resultDialog
+    .getByRole('button', { name: /Close|关闭/i })
+    .last()
+    .click();
+  await expect(resultDialog).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   );

@@ -121,6 +121,8 @@ type CredentialNavigationInventory = {
   files: readonly unknown[];
   inventoryId: string;
   revision: number;
+  total?: number;
+  providerTotals?: Readonly<Record<string, number>>;
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -128,9 +130,16 @@ export const resolveCredentialNavigationBadge = ({
   files,
   inventoryId,
   revision,
+  total,
+  providerTotals,
 }: CredentialNavigationInventory): { count: number; revision: number } | null => {
   if (!inventoryId && revision === 0) return null;
-  return { count: files.length, revision };
+  const providerTotal = Object.values(providerTotals ?? {}).reduce(
+    (sum, count) => sum + (Number.isSafeInteger(count) && count > 0 ? count : 0),
+    0
+  );
+  const count = providerTotal > 0 ? providerTotal : Math.max(0, total ?? files.length);
+  return { count, revision };
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -227,6 +236,8 @@ export function MainLayout() {
   const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
 
   const credentialFiles = useAuthInventoryStore((state) => state.files);
+  const credentialTotal = useAuthInventoryStore((state) => state.total);
+  const credentialProviderTotals = useAuthInventoryStore((state) => state.providerTotals);
   const credentialInventoryId = useAuthInventoryStore((state) => state.inventoryId);
   const credentialRevision = useAuthInventoryStore((state) => state.revision);
 
@@ -438,6 +449,8 @@ export function MainLayout() {
 
   const credentialBadge = resolveCredentialNavigationBadge({
     files: credentialFiles,
+    total: credentialTotal,
+    providerTotals: credentialProviderTotals,
     inventoryId: credentialInventoryId,
     revision: credentialRevision,
   });
