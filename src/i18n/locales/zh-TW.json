@@ -2320,7 +2320,10 @@
     "transfer_title": "遷移進度",
     "transfer_completed": "遷移完成",
     "transfer_poll_failed": "讀取遷移進度失敗",
+    "transfer_recovering": "正在恢復進行中的遷移...",
+    "transfer_recovery_missing": "已儲存的遷移工作不存在，請重新預檢。",
     "transfer_status": {
+      "preparing": "正在產生來源快照",
       "staging": "正在下載",
       "staged": "等待套用",
       "applying": "正在套用",
@@ -2346,6 +2349,7 @@
       "plugins": "插件"
     },
     "issue": {
+      "source_async_export_unavailable": "請先升級來源伺服器再開始遷移",
       "source_not_sealed": "來源尚未封存",
       "source_mutations_active": "來源仍有進行中的寫入操作",
       "source_seal_expired": "來源封存已過期",
@@ -2354,6 +2358,32 @@
       "plugin_artifact_missing": "來源缺少插件檔案",
       "plugin_platform_incompatible": "插件平台不相容",
       "storage_backend_conversion": "儲存後端不同，目標端將同步可遷移狀態"
+    },
+    "error": {
+      "source_async_export_unavailable": "請先升級來源伺服器再開始本次遷移。",
+      "transfer_source_mismatch": "此預檢已有來自另一來源伺服器的進行中遷移。",
+      "source_export_preparation_failed": "來源無法產生遷移快照。",
+      "source_snapshot_unavailable": "來源遷移快照無法使用。",
+      "source_export_seal_expired": "產生快照時來源封存已過期，請重新預檢。",
+      "source_export_preparation_interrupted": "快照產生被中斷，請重新開始遷移。",
+      "source_export_canceled": "來源匯出已取消。",
+      "transfer_source_preparation_failed": "來源無法產生遷移套件。",
+      "transfer_source_canceled": "來源遷移匯出已取消。",
+      "transfer_source_authorization_failed": "來源拒絕遷移授權，請重新開始遷移。",
+      "transfer_source_export_missing": "來源遷移匯出已不存在，請重新開始遷移。",
+      "transfer_source_expired": "來源遷移匯出已過期，請重新開始遷移。",
+      "transfer_source_unavailable": "來源暫時無法使用，請在網路恢復後繼續遷移。",
+      "transfer_source_rejected": "來源拒絕遷移進度請求。",
+      "transfer_source_endpoint_invalid": "已儲存的來源位址不再有效。",
+      "transfer_manifest_invalid": "來源回傳了無效的遷移清單。",
+      "transfer_manifest_changed": "下載開始後遷移清單發生變更。",
+      "transfer_manifest_recipient_invalid": "遷移套件並非為目前目標端加密。",
+      "transfer_secret_unavailable": "已儲存的遷移授權無法使用，請重新開始遷移。",
+      "transfer_identity_invalid": "已儲存的遷移解密身分無效，請重新開始遷移。",
+      "transfer_stage_unavailable": "目標端暫存目錄無法使用。",
+      "transfer_download_failed": "無法下載加密遷移套件。",
+      "transfer_apply_failed": "無法套用遷移套件，請查看伺服器日誌後再繼續。",
+      "transfer_canceled": "遷移已取消。"
     }
   },
   "notification": {

@@ -2283,7 +2283,10 @@
     "transfer_title": "Ход миграции",
     "transfer_completed": "Миграция завершена",
     "transfer_poll_failed": "Не удалось получить состояние миграции",
+    "transfer_recovering": "Восстановление активной миграции...",
+    "transfer_recovery_missing": "Сохранённое задание миграции больше не существует. Повторите проверку.",
     "transfer_status": {
+      "preparing": "Подготовка снимка источника",
       "staging": "Загрузка",
       "staged": "Ожидает применения",
       "applying": "Применение",
@@ -2309,6 +2312,7 @@
       "plugins": "Плагины"
     },
     "issue": {
+      "source_async_export_unavailable": "Перед миграцией обновите исходный сервер",
       "source_not_sealed": "Источник не заблокирован",
       "source_mutations_active": "На источнике есть активные изменения",
       "source_seal_expired": "Блокировка источника истекла",
@@ -2317,6 +2321,32 @@
       "plugin_artifact_missing": "Отсутствует файл плагина источника",
       "plugin_platform_incompatible": "Платформа плагина несовместима",
       "storage_backend_conversion": "Хранилища различаются; переносимое состояние будет синхронизировано"
+    },
+    "error": {
+      "source_async_export_unavailable": "Перед запуском миграции обновите исходный сервер.",
+      "transfer_source_mismatch": "Для этой проверки уже выполняется перенос с другого источника.",
+      "source_export_preparation_failed": "Источник не смог подготовить снимок миграции.",
+      "source_snapshot_unavailable": "Снимок миграции источника недоступен.",
+      "source_export_seal_expired": "Блокировка источника истекла во время подготовки снимка. Повторите проверку.",
+      "source_export_preparation_interrupted": "Подготовка снимка была прервана. Начните миграцию заново.",
+      "source_export_canceled": "Экспорт источника отменён.",
+      "transfer_source_preparation_failed": "Источник не смог подготовить пакет миграции.",
+      "transfer_source_canceled": "Экспорт миграции на источнике отменён.",
+      "transfer_source_authorization_failed": "Источник отклонил авторизацию миграции. Начните миграцию заново.",
+      "transfer_source_export_missing": "Экспорт миграции на источнике больше не существует. Начните миграцию заново.",
+      "transfer_source_expired": "Экспорт миграции на источнике истёк. Начните миграцию заново.",
+      "transfer_source_unavailable": "Источник временно недоступен. Продолжите миграцию после восстановления связи.",
+      "transfer_source_rejected": "Источник отклонил запрос состояния миграции.",
+      "transfer_source_endpoint_invalid": "Сохранённый адрес источника больше недействителен.",
+      "transfer_manifest_invalid": "Источник вернул недействительный манифест миграции.",
+      "transfer_manifest_changed": "Манифест миграции изменился после начала загрузки.",
+      "transfer_manifest_recipient_invalid": "Пакет миграции зашифрован для другого получателя.",
+      "transfer_secret_unavailable": "Сохранённая авторизация переноса недоступна. Начните миграцию заново.",
+      "transfer_identity_invalid": "Сохранённый ключ расшифровки миграции недействителен. Начните миграцию заново.",
+      "transfer_stage_unavailable": "Каталог временного хранения на целевом сервере недоступен.",
+      "transfer_download_failed": "Не удалось загрузить зашифрованный пакет миграции.",
+      "transfer_apply_failed": "Не удалось применить пакет миграции. Проверьте журналы сервера перед продолжением.",
+      "transfer_canceled": "Миграция отменена."
     }
   },
   "notification": {

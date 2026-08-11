@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
   ArrowRightLeft,
   CheckCircle2,
@@ -21,6 +22,12 @@ import {
 import { getStatusBadgeClass, type StatusBadgeVariant } from '@/components/ui/statusStyles';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
 import {
+  clearActiveMigrationTransferID,
+  readActiveMigrationTransferID,
+  shouldPersistMigrationTransfer,
+  writeActiveMigrationTransferID,
+} from '@/features/migration/transferSession';
+import {
   migrationApi,
   normalizeMigrationSourceEndpoint,
   sourceMigrationApi,
@@ -29,7 +36,9 @@ import {
   type MigrationPreflightJob,
   type MigrationPreflightSource,
   type MigrationTransferJob,
+  type MigrationTransferStatus,
 } from '@/services/api';
+import type { ApiError } from '@/types';
 import styles from './MigrationPage.module.scss';
 
 type PreflightState = {
@@ -43,7 +52,11 @@ type SealedSource = {
   generation: number;
 };
 
-const terminalTransferStatuses = new Set(['completed', 'failed', 'canceled']);
+const terminalTransferStatuses = new Set<MigrationTransferStatus>([
+  'completed',
+  'failed',
+  'canceled',
+]);
 
 const domainLabels: Record<string, string> = {
   config: 'config',
@@ -60,7 +73,7 @@ function countDomain(domain?: MigrationDomainInventory): number {
   return domain.records + (domain.logical_records ?? 0);
 }
 
-function transferStatusTone(status?: string): StatusBadgeVariant {
+function transferStatusTone(status?: MigrationTransferStatus): StatusBadgeVariant {
   switch (status) {
     case 'completed':
       return 'success';
@@ -70,6 +83,7 @@ function transferStatusTone(status?: string): StatusBadgeVariant {
     case 'staging':
     case 'staged':
     case 'applying':
+    case 'preparing':
       return 'warning';
     default:
       return 'muted';
@@ -99,17 +113,21 @@ export function MigrationPage() {
   const [preflight, setPreflight] = useState<PreflightState | null>(null);
   const [sealedSource, setSealedSource] = useState<SealedSource | null>(null);
   const [transfer, setTransfer] = useState<MigrationTransferJob | null>(null);
+  const [recoveringTransfer, setRecoveringTransfer] = useState(true);
   const [action, setAction] = useState<
     'idle' | 'preflight' | 'starting' | 'resuming' | 'canceling'
   >('idle');
   const [error, setError] = useState('');
   const sealedSourceRef = useRef<SealedSource | null>(null);
   const completedTransferRef = useRef<string | null>(null);
+  const transferID = transfer?.id ?? '';
+  const transferStatus = transfer?.status;
 
   const busy = action !== 'idle';
   const canPrepare =
     connectionStatus === 'connected' &&
     !busy &&
+    !recoveringTransfer &&
     !transfer &&
     sourceEndpoint.trim().length > 0 &&
     sourceManagementKey.trim().length > 0;
@@ -138,6 +156,53 @@ export function MigrationPage() {
   }, [releaseSourceSeal]);
 
   useEffect(() => {
+    const id = readActiveMigrationTransferID();
+    if (!id) {
+      setRecoveringTransfer(false);
+      return;
+    }
+
+    let active = true;
+    let retryTimer: number | undefined;
+    const recover = async () => {
+      try {
+        const response = await migrationApi.getTransfer(id);
+        if (!active) return;
+        setTransfer(response.job);
+        setError('');
+        if (!shouldPersistMigrationTransfer(response.job.status)) {
+          clearActiveMigrationTransferID();
+        }
+        setRecoveringTransfer(false);
+      } catch (recoveryError: unknown) {
+        if (!active) return;
+        if ((recoveryError as Partial<ApiError>)?.status === 404) {
+          clearActiveMigrationTransferID();
+          setError(t('migration.transfer_recovery_missing'));
+          setRecoveringTransfer(false);
+          return;
+        }
+        setError(readMigrationErrorMessage(recoveryError, t('migration.transfer_poll_failed'), t));
+        retryTimer = window.setTimeout(() => void recover(), 3_000);
+      }
+    };
+    void recover();
+    return () => {
+      active = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
+  }, [t]);
+
+  useEffect(() => {
+    if (!transferID || !transferStatus) return;
+    if (shouldPersistMigrationTransfer(transferStatus)) {
+      writeActiveMigrationTransferID(transferID);
+    } else {
+      clearActiveMigrationTransferID();
+    }
+  }, [transferID, transferStatus]);
+
+  useEffect(() => {
     if (!sealedSource || transfer) return;
     const timer = window.setInterval(() => {
       const session = sealedSourceRef.current;
@@ -157,14 +222,17 @@ export function MigrationPage() {
   }, [sealedSource, t, transfer]);
 
   useEffect(() => {
-    if (!transfer || terminalTransferStatuses.has(transfer.status)) return;
+    if (!transferID || !transferStatus || terminalTransferStatuses.has(transferStatus)) return;
     let active = true;
+    let pollTimer: number | undefined;
     const poll = async () => {
+      let continuePolling = true;
       try {
-        const response = await migrationApi.getTransfer(transfer.id);
+        const response = await migrationApi.getTransfer(transferID);
         if (!active) return;
         const next = response.job;
         setTransfer(next);
+        continuePolling = !terminalTransferStatuses.has(next.status);
         if (next.status === 'completed' && completedTransferRef.current !== next.id) {
           completedTransferRef.current = next.id;
           void fetchConfig().catch(() => undefined);
@@ -172,16 +240,19 @@ export function MigrationPage() {
         }
       } catch (pollError: unknown) {
         if (!active) return;
-        setError(readErrorMessage(pollError, t('migration.transfer_poll_failed')));
+        setError(readMigrationErrorMessage(pollError, t('migration.transfer_poll_failed'), t));
+      } finally {
+        if (active && continuePolling) {
+          pollTimer = window.setTimeout(() => void poll(), 1_500);
+        }
       }
     };
     void poll();
-    const timer = window.setInterval(() => void poll(), 1_500);
     return () => {
       active = false;
-      window.clearInterval(timer);
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
     };
-  }, [fetchConfig, showNotification, t, transfer]);
+  }, [fetchConfig, showNotification, t, transferID, transferStatus]);
 
   const replacementRows = useMemo(() => preflight?.job.result.replacement ?? [], [preflight]);
 
@@ -217,7 +288,7 @@ export function MigrationPage() {
     } catch (prepareError: unknown) {
       await releaseSourceSeal();
       setSealedSource(null);
-      setError(readErrorMessage(prepareError, t('migration.preflight_failed')));
+      setError(readMigrationErrorMessage(prepareError, t('migration.preflight_failed'), t));
     } finally {
       setAction('idle');
     }
@@ -233,7 +304,8 @@ export function MigrationPage() {
       onConfirm: async () => {
         const session = sealedSourceRef.current;
         if (!session) {
-          throw new Error(t('migration.source_seal_missing'));
+          setError(t('migration.source_seal_missing'));
+          return;
         }
         setAction('starting');
         setError('');
@@ -246,11 +318,11 @@ export function MigrationPage() {
           sealedSourceRef.current = null;
           setSealedSource(null);
           setSourceManagementKey('');
+          writeActiveMigrationTransferID(response.job.id);
           setTransfer(response.job);
           showNotification(t('migration.transfer_started'), 'success');
         } catch (startError: unknown) {
-          setError(readErrorMessage(startError, t('migration.transfer_start_failed')));
-          throw startError;
+          setError(readMigrationErrorMessage(startError, t('migration.transfer_start_failed'), t));
         } finally {
           setAction('idle');
         }
@@ -264,9 +336,10 @@ export function MigrationPage() {
     setError('');
     try {
       const response = await migrationApi.resumeTransfer(transfer.id);
+      writeActiveMigrationTransferID(response.job.id);
       setTransfer(response.job);
     } catch (resumeError: unknown) {
-      setError(readErrorMessage(resumeError, t('migration.transfer_resume_failed')));
+      setError(readMigrationErrorMessage(resumeError, t('migration.transfer_resume_failed'), t));
     } finally {
       setAction('idle');
     }
@@ -283,11 +356,14 @@ export function MigrationPage() {
         setAction('canceling');
         try {
           await migrationApi.cancelTransfer(transfer.id);
+          clearActiveMigrationTransferID();
           setTransfer(null);
           setPreflight(null);
           showNotification(t('migration.transfer_canceled'), 'success');
         } catch (cancelError: unknown) {
-          setError(readErrorMessage(cancelError, t('migration.transfer_cancel_failed')));
+          setError(
+            readMigrationErrorMessage(cancelError, t('migration.transfer_cancel_failed'), t)
+          );
           throw cancelError;
         } finally {
           setAction('idle');
@@ -334,7 +410,7 @@ export function MigrationPage() {
               onChange={(event) => setSourceEndpoint(event.target.value)}
               placeholder="https://source.example.com"
               autoComplete="url"
-              disabled={busy || Boolean(transfer)}
+              disabled={busy || recoveringTransfer || Boolean(transfer)}
             />
           </div>
           <div className={fieldRootClass}>
@@ -348,7 +424,7 @@ export function MigrationPage() {
               value={sourceManagementKey}
               onChange={(event) => setSourceManagementKey(event.target.value)}
               autoComplete="off"
-              disabled={busy || Boolean(transfer)}
+              disabled={busy || recoveringTransfer || Boolean(transfer)}
             />
           </div>
         </div>
@@ -473,7 +549,9 @@ export function MigrationPage() {
       ) : null}
 
       {!preflight && !transfer ? (
-        <div className={fieldHintClass}>{t('migration.idle_hint')}</div>
+        <div className={fieldHintClass}>
+          {recoveringTransfer ? t('migration.transfer_recovering') : t('migration.idle_hint')}
+        </div>
       ) : null}
     </div>
   );
@@ -542,6 +620,11 @@ function findDomain(
   return domains.find((domain) => domain.id === id);
 }
 
-function readErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim() ? error.message : fallback;
+function readMigrationErrorMessage(error: unknown, fallback: string, t: TFunction): string {
+  const code = (error as Partial<ApiError> | null)?.code;
+  if (typeof code === 'string' && code.trim()) {
+    const localized = t(`migration.error.${code.trim()}`, { defaultValue: '' });
+    if (localized) return localized;
+  }
+  return fallback;
 }

@@ -2325,7 +2325,10 @@
     "transfer_title": "迁移进度",
     "transfer_completed": "迁移完成",
     "transfer_poll_failed": "读取迁移进度失败",
+    "transfer_recovering": "正在恢复进行中的迁移...",
+    "transfer_recovery_missing": "已保存的迁移任务不存在，请重新预检。",
     "transfer_status": {
+      "preparing": "正在生成源端快照",
       "staging": "正在下载",
       "staged": "等待应用",
       "applying": "正在应用",
@@ -2351,6 +2354,7 @@
       "plugins": "插件"
     },
     "issue": {
+      "source_async_export_unavailable": "请先升级源服务器再开始迁移",
       "source_not_sealed": "源端尚未封存",
       "source_mutations_active": "源端仍有进行中的写入操作",
       "source_seal_expired": "源端封存已过期",
@@ -2359,6 +2363,32 @@
       "plugin_artifact_missing": "源端缺少插件文件",
       "plugin_platform_incompatible": "插件平台不兼容",
       "storage_backend_conversion": "存储后端不同，目标端将同步可迁移状态"
+    },
+    "error": {
+      "source_async_export_unavailable": "请先升级源服务器再开始本次迁移。",
+      "transfer_source_mismatch": "该预检已有来自另一源服务器的进行中迁移。",
+      "source_export_preparation_failed": "源端无法生成迁移快照。",
+      "source_snapshot_unavailable": "源端迁移快照不可用。",
+      "source_export_seal_expired": "生成快照时源端封存已过期，请重新预检。",
+      "source_export_preparation_interrupted": "快照生成被中断，请重新开始迁移。",
+      "source_export_canceled": "源端导出已取消。",
+      "transfer_source_preparation_failed": "源端无法生成迁移包。",
+      "transfer_source_canceled": "源端迁移导出已取消。",
+      "transfer_source_authorization_failed": "源端拒绝迁移授权，请重新开始迁移。",
+      "transfer_source_export_missing": "源端迁移导出已不存在，请重新开始迁移。",
+      "transfer_source_expired": "源端迁移导出已过期，请重新开始迁移。",
+      "transfer_source_unavailable": "源端暂时不可用，请在网络恢复后继续迁移。",
+      "transfer_source_rejected": "源端拒绝迁移进度请求。",
+      "transfer_source_endpoint_invalid": "已保存的源端地址不再有效。",
+      "transfer_manifest_invalid": "源端返回了无效的迁移清单。",
+      "transfer_manifest_changed": "下载开始后迁移清单发生了变化。",
+      "transfer_manifest_recipient_invalid": "迁移包并非为当前目标端加密。",
+      "transfer_secret_unavailable": "已保存的迁移授权不可用，请重新开始迁移。",
+      "transfer_identity_invalid": "已保存的迁移解密身份无效，请重新开始迁移。",
+      "transfer_stage_unavailable": "目标端暂存目录不可用。",
+      "transfer_download_failed": "无法下载加密迁移包。",
+      "transfer_apply_failed": "无法应用迁移包，请查看服务器日志后再继续。",
+      "transfer_canceled": "迁移已取消。"
     }
   },
   "notification": {

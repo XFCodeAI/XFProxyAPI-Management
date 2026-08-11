@@ -51,6 +51,27 @@ function testSupportsNestedAndLegacyErrors() {
   });
 }
 
+function testPrefersStructuredSnakeCaseErrorCode() {
+  assert.deepEqual(
+    parseApiErrorResponse(
+      {
+        error: 'migration source upgrade is required',
+        error_code: 'source_async_export_unavailable',
+      },
+      { status: 409, code: 'ERR_BAD_RESPONSE' }
+    ),
+    {
+      status: 409,
+      code: 'source_async_export_unavailable',
+      message: 'migration source upgrade is required',
+      details: {
+        error: 'migration source upgrade is required',
+        error_code: 'source_async_export_unavailable',
+      },
+    }
+  );
+}
+
 function testSupportsTextResponsesAndTransportFallbacks() {
   assert.deepEqual(
     parseApiErrorResponse('upstream unavailable', {
@@ -150,6 +171,7 @@ function testRedactsCredentialsEmbeddedInText() {
 const tests = [
   testParsesXfpaErrorEnvelope,
   testSupportsNestedAndLegacyErrors,
+  testPrefersStructuredSnakeCaseErrorCode,
   testSupportsTextResponsesAndTransportFallbacks,
   testRedactsSensitiveFieldsRecursively,
   testRedactsCredentialsEmbeddedInText,

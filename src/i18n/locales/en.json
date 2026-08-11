@@ -2293,7 +2293,10 @@
     "transfer_title": "Migration Progress",
     "transfer_completed": "Migration completed",
     "transfer_poll_failed": "Could not read migration progress",
+    "transfer_recovering": "Restoring the active migration...",
+    "transfer_recovery_missing": "The saved migration job no longer exists. Run preflight again.",
     "transfer_status": {
+      "preparing": "Preparing source snapshot",
       "staging": "Downloading",
       "staged": "Ready to apply",
       "applying": "Applying",
@@ -2319,6 +2322,7 @@
       "plugins": "Plugins"
     },
     "issue": {
+      "source_async_export_unavailable": "Upgrade the source server before starting this migration",
       "source_not_sealed": "The source is not sealed",
       "source_mutations_active": "The source still has active writes",
       "source_seal_expired": "The source seal expired",
@@ -2327,6 +2331,32 @@
       "plugin_artifact_missing": "A source plugin artifact is missing",
       "plugin_platform_incompatible": "Plugin platform is incompatible",
       "storage_backend_conversion": "Storage backends differ; portable state will be synchronized"
+    },
+    "error": {
+      "source_async_export_unavailable": "Upgrade the source server before starting this migration.",
+      "transfer_source_mismatch": "This preflight already has an active transfer from another source.",
+      "source_export_preparation_failed": "The source could not prepare the migration snapshot.",
+      "source_snapshot_unavailable": "The source snapshot is unavailable.",
+      "source_export_seal_expired": "The source seal expired while preparing the snapshot. Run preflight again.",
+      "source_export_preparation_interrupted": "Snapshot preparation was interrupted. Start a new migration.",
+      "source_export_canceled": "The source export was canceled.",
+      "transfer_source_preparation_failed": "The source could not prepare the migration package.",
+      "transfer_source_canceled": "The source migration export was canceled.",
+      "transfer_source_authorization_failed": "The source rejected the migration authorization. Start a new migration.",
+      "transfer_source_export_missing": "The source migration export no longer exists. Start a new migration.",
+      "transfer_source_expired": "The source migration export expired. Start a new migration.",
+      "transfer_source_unavailable": "The source is temporarily unavailable. Resume the migration after connectivity recovers.",
+      "transfer_source_rejected": "The source rejected the migration progress request.",
+      "transfer_source_endpoint_invalid": "The saved source endpoint is no longer valid.",
+      "transfer_manifest_invalid": "The source returned an invalid migration manifest.",
+      "transfer_manifest_changed": "The migration manifest changed after download started.",
+      "transfer_manifest_recipient_invalid": "The migration package was encrypted for a different recipient.",
+      "transfer_secret_unavailable": "The saved transfer authorization is unavailable. Start a new migration.",
+      "transfer_identity_invalid": "The saved migration decryption identity is invalid. Start a new migration.",
+      "transfer_stage_unavailable": "The destination staging directory is unavailable.",
+      "transfer_download_failed": "The encrypted migration package could not be downloaded.",
+      "transfer_apply_failed": "The migration package could not be applied. Review server logs before resuming.",
+      "transfer_canceled": "The migration was canceled."
     }
   },
   "notification": {

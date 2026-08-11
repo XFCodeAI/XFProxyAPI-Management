@@ -145,9 +145,10 @@ export const parseApiErrorResponse = (
     readStatus(errorRecord?.status);
   const code =
     readString(responseRecord?.code) ||
-    stringError ||
+    readString(responseRecord?.error_code) ||
     readString(errorRecord?.code) ||
     readString(errorRecord?.type) ||
+    stringError ||
     readString(context.code) ||
     undefined;
   const message =

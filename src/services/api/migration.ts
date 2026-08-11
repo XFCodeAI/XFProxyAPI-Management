@@ -3,7 +3,7 @@ import { computeApiUrl, normalizeApiBase } from '@/utils/connection';
 import { isRecord } from '@/utils/helpers';
 
 export type MigrationTransferStatus =
-  'staging' | 'staged' | 'applying' | 'completed' | 'failed' | 'canceled';
+  'preparing' | 'staging' | 'staged' | 'applying' | 'completed' | 'failed' | 'canceled';
 
 export interface MigrationDomainInventory {
   id: string;
