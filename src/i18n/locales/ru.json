@@ -2440,7 +2440,7 @@
     "credential_count": "Учётные данные: {{count}}"
   },
   "footer": {
-    "api_version": "Версия CLI Proxy API",
+    "api_version": "Версия ядра XFProxyAPI",
     "build_date": "Время сборки",
     "version": "Версия интерфейса управления",
     "author": "Автор"

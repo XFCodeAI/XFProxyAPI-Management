@@ -1,16 +1,8 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
 import { TooltipButton } from '@/components/ui/TooltipControls';
-import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { fieldErrorClass, fieldHintClass } from '@/components/ui/formStyles';
 import {
   itemListClass,
@@ -20,14 +12,8 @@ import {
   itemTitleClass,
 } from '@/components/ui/listStyles';
 import { getStatusBadgeClass } from '@/components/ui/statusStyles';
-import {
-  useAuthStore,
-  useConfigStore,
-  useNotificationStore,
-  useModelsStore,
-  useThemeStore,
-} from '@/stores';
-import { configApi, versionApi } from '@/services/api';
+import { useAuthStore, useNotificationStore, useModelsStore, useThemeStore } from '@/stores';
+import { versionApi } from '@/services/api';
 import { useApiKeysForModels } from '@/hooks/useApiKeysForModels';
 import { formatDateTimeValue } from '@/utils/format';
 import { classifyModels } from '@/utils/models';
@@ -89,11 +75,6 @@ export function SystemPage() {
   const { showNotification, showConfirmation } = useNotificationStore();
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const auth = useAuthStore();
-  const config = useConfigStore((state) => state.config);
-  const fetchConfig = useConfigStore((state) => state.fetchConfig);
-  const clearCache = useConfigStore((state) => state.clearCache);
-  const updateConfigValue = useConfigStore((state) => state.updateConfigValue);
-
   const models = useModelsStore((state) => state.models);
   const modelsLoading = useModelsStore((state) => state.loading);
   const modelsError = useModelsStore((state) => state.error);
@@ -103,24 +84,13 @@ export function SystemPage() {
     type: 'success' | 'warning' | 'error' | 'muted';
     message: string;
   }>();
-  const [requestLogModalOpen, setRequestLogModalOpen] = useState(false);
-  const [requestLogDraft, setRequestLogDraft] = useState(false);
-  const [requestLogTouched, setRequestLogTouched] = useState(false);
-  const [requestLogSaving, setRequestLogSaving] = useState(false);
   const [checkingVersion, setCheckingVersion] = useState(false);
-
-  const versionTapCount = useRef(0);
-  const versionTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const otherLabel = useMemo(
     () => (i18n.language?.toLowerCase().startsWith('zh') ? '其他' : 'Other'),
     [i18n.language]
   );
   const groupedModels = useMemo(() => classifyModels(models, { otherLabel }), [models, otherLabel]);
-  const requestLogEnabled = config?.requestLog ?? false;
-  const requestLogDirty = requestLogDraft !== requestLogEnabled;
-  const canEditRequestLog = auth.connectionStatus === 'connected' && Boolean(config);
-
   const appVersion = __APP_VERSION__ || t('system_info.version_unknown');
   const apiVersion = auth.serverVersion || t('system_info.version_unknown');
   const buildTime =
@@ -185,65 +155,6 @@ export function SystemPage() {
     });
   };
 
-  const openRequestLogModal = useCallback(() => {
-    setRequestLogTouched(false);
-    setRequestLogDraft(requestLogEnabled);
-    setRequestLogModalOpen(true);
-  }, [requestLogEnabled]);
-
-  const handleInfoVersionTap = useCallback(() => {
-    versionTapCount.current += 1;
-    if (versionTapTimer.current) {
-      clearTimeout(versionTapTimer.current);
-    }
-
-    if (versionTapCount.current >= 7) {
-      versionTapCount.current = 0;
-      versionTapTimer.current = null;
-      openRequestLogModal();
-      return;
-    }
-
-    versionTapTimer.current = setTimeout(() => {
-      versionTapCount.current = 0;
-      versionTapTimer.current = null;
-    }, 1500);
-  }, [openRequestLogModal]);
-
-  const handleRequestLogClose = useCallback(() => {
-    setRequestLogModalOpen(false);
-    setRequestLogTouched(false);
-  }, []);
-
-  const handleRequestLogSave = async () => {
-    if (!canEditRequestLog) return;
-    if (!requestLogDirty) {
-      setRequestLogModalOpen(false);
-      return;
-    }
-
-    const previous = requestLogEnabled;
-    setRequestLogSaving(true);
-    updateConfigValue('request-log', requestLogDraft);
-
-    try {
-      await configApi.updateRequestLog(requestLogDraft);
-      clearCache('request-log');
-      showNotification(t('notification.request_log_updated'), 'success');
-      setRequestLogModalOpen(false);
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : typeof error === 'string' ? error : '';
-      updateConfigValue('request-log', previous);
-      showNotification(
-        `${t('notification.update_failed')}${message ? `: ${message}` : ''}`,
-        'error'
-      );
-    } finally {
-      setRequestLogSaving(false);
-    }
-  };
-
   const handleVersionCheck = useCallback(async () => {
     setCheckingVersion(true);
     try {
@@ -278,26 +189,6 @@ export function SystemPage() {
   }, [auth.serverVersion, showNotification, t]);
 
   useEffect(() => {
-    fetchConfig().catch(() => {
-      // ignore
-    });
-  }, [fetchConfig]);
-
-  useEffect(() => {
-    if (requestLogModalOpen && !requestLogTouched) {
-      setRequestLogDraft(requestLogEnabled);
-    }
-  }, [requestLogModalOpen, requestLogTouched, requestLogEnabled]);
-
-  useEffect(() => {
-    return () => {
-      if (versionTapTimer.current) {
-        clearTimeout(versionTapTimer.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     fetchModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.connectionStatus, auth.apiBase]);
@@ -311,16 +202,12 @@ export function SystemPage() {
       <div className={styles.content}>
         <Card className={styles.aboutCard}>
           <div className={styles.aboutInfoGrid}>
-            <button
-              type="button"
-              className={`${styles.infoTile} ${styles.tapTile}`}
-              onClick={handleInfoVersionTap}
-            >
+            <div className={styles.infoTile}>
               <div className={styles.tileHeader}>
                 <div className={styles.tileLabel}>{t('footer.version')}</div>
               </div>
               <div className={styles.tileValue}>{appVersion}</div>
-            </button>
+            </div>
 
             <div className={styles.infoTile}>
               <div className={styles.tileHeader}>
@@ -417,42 +304,6 @@ export function SystemPage() {
           </div>
         </Card>
       </div>
-
-      <Modal
-        open={requestLogModalOpen}
-        onClose={handleRequestLogClose}
-        title={t('basic_settings.request_log_title')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={handleRequestLogClose} disabled={requestLogSaving}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              onClick={handleRequestLogSave}
-              loading={requestLogSaving}
-              disabled={!canEditRequestLog || !requestLogDirty}
-            >
-              {t('common.save')}
-            </Button>
-          </>
-        }
-      >
-        <div className={styles.requestLogModal}>
-          <div className={getStatusBadgeClass('warning')}>
-            {t('basic_settings.request_log_warning')}
-          </div>
-          <ToggleSwitch
-            label={t('basic_settings.request_log_enable')}
-            labelPosition="left"
-            checked={requestLogDraft}
-            disabled={!canEditRequestLog || requestLogSaving}
-            onChange={(value) => {
-              setRequestLogDraft(value);
-              setRequestLogTouched(true);
-            }}
-          />
-        </div>
-      </Modal>
     </div>
   );
 }

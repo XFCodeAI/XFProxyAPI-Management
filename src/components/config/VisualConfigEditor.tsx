@@ -695,6 +695,18 @@ export function VisualConfigEditor({
     </FieldAnchor>
   );
 
+  const requestLogToggle = (
+    <FieldAnchor fieldId="requestLog">
+      <ToggleRow
+        title={t('basic_settings.request_log_enable')}
+        description={t('basic_settings.request_log_warning')}
+        checked={values.requestLog}
+        disabled={disabled}
+        onChange={(requestLog) => onChange({ requestLog })}
+      />
+    </FieldAnchor>
+  );
+
   const quotaSwitchProjectToggle = (
     <FieldAnchor fieldId="quotaSwitchProject">
       <ToggleRow
@@ -939,6 +951,7 @@ export function VisualConfigEditor({
               <div className={styles.simpleToggleGrid}>
                 {debugToggle}
                 {loggingToFileToggle}
+                {requestLogToggle}
                 {quotaSwitchProjectToggle}
                 {quotaSwitchPreviewModelToggle}
               </div>
@@ -1398,6 +1411,7 @@ export function VisualConfigEditor({
                     />
                   </FieldAnchor>
                   {loggingToFileToggle}
+                  {requestLogToggle}
                 </SectionGrid>
 
                 <SectionGrid>

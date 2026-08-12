@@ -9,6 +9,14 @@ export const notifyPluginResourcesChanged = () => {
   window.dispatchEvent(new Event(PLUGIN_RESOURCES_REFRESH_EVENT));
 };
 
+export const isPluginManagementNavVisible = ({
+  supportsPlugin,
+  pluginsEnabled,
+}: {
+  supportsPlugin: boolean;
+  pluginsEnabled?: boolean | null;
+}) => supportsPlugin && pluginsEnabled !== false;
+
 export interface PluginResourceEntry {
   pluginID: string;
   pluginTitle: string;

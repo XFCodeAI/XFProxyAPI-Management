@@ -33,12 +33,13 @@ try {
 
     if (phase === 0) {
       visualConfig.loadVisualValuesFromYaml(
-        'debug: false\nproxy-url: http://old-proxy.example\ndisable-image-generation: false\n'
+        'debug: false\nrequest-log: true\nproxy-url: http://old-proxy.example\ndisable-image-generation: false\n'
       );
       setPhase(1);
     } else if (phase === 1) {
       visualConfig.setVisualValues({
         proxyUrl: 'http://localhost:8080',
+        requestLog: false,
         disableImageGeneration: 'passthrough',
       });
       setPhase(2);
@@ -47,7 +48,7 @@ try {
         'pre',
         null,
         visualConfig.applyVisualChangesToYaml(
-          'debug: true\nproxy-url: http://old-proxy.example\ndisable-image-generation: false\n'
+          'debug: true\nrequest-log: true\nproxy-url: http://old-proxy.example\ndisable-image-generation: false\n'
         )
       );
     }
@@ -59,6 +60,7 @@ try {
   const merged = parseYaml(markup.slice('<pre>'.length, -'</pre>'.length));
   assert.deepEqual(merged, {
     debug: true,
+    'request-log': false,
     'proxy-url': 'http://localhost:8080',
     'disable-image-generation': 'passthrough',
   });

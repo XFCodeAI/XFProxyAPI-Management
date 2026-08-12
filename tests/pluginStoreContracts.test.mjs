@@ -119,6 +119,19 @@ try {
     resources.isOfficialPlugin(pluginEntry('official', 'https://github.com/router-for-me/../evil')),
     false
   );
+  assert.equal(
+    resources.isPluginManagementNavVisible({ supportsPlugin: true, pluginsEnabled: true }),
+    true
+  );
+  assert.equal(
+    resources.isPluginManagementNavVisible({ supportsPlugin: true, pluginsEnabled: false }),
+    false
+  );
+  assert.equal(resources.isPluginManagementNavVisible({ supportsPlugin: true }), true);
+  assert.equal(
+    resources.isPluginManagementNavVisible({ supportsPlugin: false, pluginsEnabled: true }),
+    false
+  );
 
   const fields = [
     { name: 'mixed', type: 'array', enumValues: [], description: '' },

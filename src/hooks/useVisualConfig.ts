@@ -893,6 +893,7 @@ function getNextDirtyFields(
       'debug',
       'commercialMode',
       'loggingToFile',
+      'requestLog',
       'logsMaxTotalSizeMb',
       'proxyUrl',
       'forceModelPrefix',
@@ -1112,6 +1113,7 @@ export function useVisualConfig() {
         debug: Boolean(parsed.debug),
         commercialMode: Boolean(parsed['commercial-mode']),
         loggingToFile: Boolean(parsed['logging-to-file']),
+        requestLog: Boolean(parsed['request-log']),
         logsMaxTotalSizeMb: String(parsed['logs-max-total-size-mb'] ?? ''),
         errorLogsMaxFiles: String(parsed['error-logs-max-files'] ?? ''),
         usageStatisticsEnabled: Boolean(parsed['usage-statistics-enabled']),
@@ -1318,6 +1320,9 @@ export function useVisualConfig() {
         }
         if (dirtyFields.has('loggingToFile')) {
           setBooleanInDoc(doc, ['logging-to-file'], values.loggingToFile);
+        }
+        if (dirtyFields.has('requestLog')) {
+          setBooleanInDoc(doc, ['request-log'], values.requestLog);
         }
         if (dirtyFields.has('logsMaxTotalSizeMb')) {
           setIntFromStringInDoc(doc, ['logs-max-total-size-mb'], values.logsMaxTotalSizeMb);

@@ -2477,7 +2477,7 @@
     "credential_count": "憑證數：{{count}}"
   },
   "footer": {
-    "api_version": "CLI Proxy API 版本",
+    "api_version": "XFProxyAPI 核心版本",
     "build_date": "建置時間",
     "version": "管理中心版本",
     "author": "作者"

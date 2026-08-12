@@ -42,6 +42,7 @@ import {
   type AnalyticsTab,
 } from '@/features/usageAnalytics/viewModel';
 import { reconcileCredentialIdentityCatalog } from '@/features/authFiles/credentialIdentityCatalog';
+import { formatUsd } from '@/utils/format';
 import {
   isAnalyticsCapabilityUnavailable,
   buildAnalyticsQuery,
@@ -71,6 +72,7 @@ const formatDuration = (value: number): string =>
 const formatCost = (amount: string, currency = 'USD'): string => {
   const numeric = Number(amount);
   if (!Number.isFinite(numeric)) return `${amount} ${currency}`;
+  if (currency.toUpperCase() === 'USD') return formatUsd(numeric);
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: currency.toUpperCase(),

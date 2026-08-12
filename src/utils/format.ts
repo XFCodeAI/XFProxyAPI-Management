@@ -37,6 +37,17 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${units[i]}`;
 }
 
+/** Format USD amounts consistently across analytics and monitoring views. */
+export function formatUsd(value: number | string, locale = 'en-US'): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '$0.000';
+  const formatted = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }).format(amount);
+  return `$${formatted}`;
+}
+
 /**
  * 将 Unix 时间戳（秒/毫秒/微秒/纳秒）格式化为本地时间字符串
  */

@@ -41,6 +41,7 @@ import {
   loadMonitoringTabSections,
   type MonitoringTab,
 } from '@/features/requestMonitoring/loadMonitoringTabSections';
+import { formatUsd } from '@/utils/format';
 import {
   cancelMonitoringImportFile,
   isMonitoringImportCancelledError,
@@ -98,7 +99,7 @@ const formatDuration = (value: number): string =>
   value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 2)}s` : `${value}ms`;
 
 const formatCost = (amount: string, currency: string): string =>
-  currency.toUpperCase() === 'USD' ? `$${amount}` : `${amount} ${currency}`;
+  currency.toUpperCase() === 'USD' ? formatUsd(amount) : `${amount} ${currency}`;
 
 const toDateTimeLocal = (date: Date): string => {
   const offset = date.getTimezoneOffset() * 60_000;

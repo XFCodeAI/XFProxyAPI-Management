@@ -31,7 +31,7 @@ import {
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useAuthInventoryStore, useAuthStore, useConfigStore, useModelsStore } from '@/stores';
 import { useApiKeysForModels } from '@/hooks/useApiKeysForModels';
-import { formatDateValue } from '@/utils/format';
+import { formatDateValue, formatUsd } from '@/utils/format';
 import { getDashboardModelsStatValue } from '@/utils/dashboard';
 import { getErrorMessage } from '@/utils/helpers';
 import styles from './DashboardPage.module.scss';
@@ -64,6 +64,7 @@ const formatNumber = (value: number, locale: string): string =>
 const formatCost = (value: string, currency: string, locale: string): string => {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return `${value} ${currency}`;
+  if (currency.toUpperCase() === 'USD') return formatUsd(amount, locale);
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency.toUpperCase(),

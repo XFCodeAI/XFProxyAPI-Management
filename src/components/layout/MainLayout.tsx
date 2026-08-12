@@ -53,6 +53,7 @@ import {
 } from '@/stores';
 import {
   collectPluginResourceEntries,
+  isPluginManagementNavVisible,
   PLUGIN_RESOURCES_REFRESH_EVENT,
   resolvePluginAssetURL,
   type PluginResourceEntry,
@@ -169,6 +170,7 @@ const PLUGIN_RESOURCES_CACHE_TTL_MS = 60_000;
 type PluginResourcesCache = {
   apiBase: string;
   entries: PluginResourceEntry[];
+  pluginsEnabled: boolean;
   timestamp: number;
 };
 
@@ -252,6 +254,7 @@ export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [pluginResources, setPluginResources] = useState<PluginResourceEntry[]>([]);
+  const [pluginsEnabled, setPluginsEnabled] = useState<boolean | null>(null);
   const [expandedPluginResourceIDs, setExpandedPluginResourceIDs] = useState<Set<string>>(
     () => new Set()
   );
@@ -352,6 +355,7 @@ export function MainLayout() {
     async ({ force = false }: { force?: boolean } = {}) => {
       if (connectionStatus !== 'connected' || !supportsPlugin) {
         setPluginResources([]);
+        setPluginsEnabled(false);
         pluginResourcesCache = null;
         return;
       }
@@ -364,14 +368,22 @@ export function MainLayout() {
         now - pluginResourcesCache.timestamp < PLUGIN_RESOURCES_CACHE_TTL_MS
       ) {
         setPluginResources(pluginResourcesCache.entries);
+        setPluginsEnabled(pluginResourcesCache.pluginsEnabled);
         return;
       }
 
+      setPluginsEnabled(null);
       try {
         const plugins = await pluginsApi.list();
         const entries = collectPluginResourceEntries(plugins.plugins);
-        pluginResourcesCache = { apiBase, entries, timestamp: Date.now() };
+        pluginResourcesCache = {
+          apiBase,
+          entries,
+          pluginsEnabled: plugins.pluginsEnabled,
+          timestamp: Date.now(),
+        };
         setPluginResources(entries);
+        setPluginsEnabled(plugins.pluginsEnabled);
       } catch {
         setPluginResources([]);
       }
@@ -413,7 +425,11 @@ export function MainLayout() {
     return groups;
   }, []);
 
-  const pluginPageNavItems: SidebarNavItem[] = supportsPlugin
+  const pluginManagementNavVisible = isPluginManagementNavVisible({
+    supportsPlugin,
+    pluginsEnabled,
+  });
+  const pluginPageNavItems: SidebarNavItem[] = pluginManagementNavVisible
     ? pluginResourceGroups.flatMap((group): SidebarNavItem[] => {
         if (group.entries.length === 1) {
           const resource = group.entries[0];
@@ -565,7 +581,7 @@ export function MainLayout() {
           metaKey: 'nav_meta.config_management',
           icon: sidebarIcons.config,
         },
-        ...(supportsPlugin
+        ...(pluginManagementNavVisible
           ? [
               {
                 path: '/plugins',
