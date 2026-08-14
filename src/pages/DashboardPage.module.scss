@@ -663,6 +663,12 @@
   color: var(--secondary-foreground);
 }
 
+.configBadgeWeightedRoundRobin {
+  border-color: color-mix(in srgb, var(--warning, #b45309) 34%, var(--border));
+  background: color-mix(in srgb, var(--warning, #b45309) 10%, transparent);
+  color: var(--warning, #b45309);
+}
+
 .configBadgeFillFirst {
   border-color: color-mix(in srgb, var(--primary) 34%, var(--border));
   background: color-mix(in srgb, var(--primary) 10%, transparent);

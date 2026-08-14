@@ -8,9 +8,17 @@ import type {
   ProviderRuntimeStatus,
   ConcurrencyMode,
 } from '@/types';
+import type { CredentialWeightInputValue } from '@/utils/credentialWeight';
 
 export type ProviderBrand =
-  'gemini' | 'codex' | 'xai' | 'claude' | 'vertex' | 'openaiCompatibility' | 'kimi';
+  | 'gemini'
+  | 'interactions'
+  | 'codex'
+  | 'xai'
+  | 'claude'
+  | 'vertex'
+  | 'openaiCompatibility'
+  | 'kimi';
 
 export type SponsorProviderBrand = 'kimi';
 
@@ -22,6 +30,7 @@ export type SortDir = (typeof SORT_DIR_VALUES)[number];
 
 export type ProviderResourceSelector =
   | { brand: 'gemini'; apiKey: string; baseUrl?: string; index: number }
+  | { brand: 'interactions'; apiKey: string; baseUrl?: string; index: number }
   | { brand: 'codex'; apiKey: string; baseUrl?: string; index: number }
   | { brand: 'xai'; apiKey: string; baseUrl?: string; index: number }
   | { brand: 'claude'; apiKey: string; baseUrl?: string; index: number }
@@ -62,6 +71,7 @@ export interface ProviderResource {
   modelCount: number;
   models: string[];
   priority: number;
+  weight: number | null;
   concurrencyMode: ConcurrencyMode | null;
   maxConcurrency: number;
   fallback: boolean;
@@ -115,6 +125,7 @@ export interface SponsorKeyEntryInput {
   disableCooling?: boolean;
   fallback?: boolean;
   priority?: number;
+  weight?: CredentialWeightInputValue;
   concurrencyMode?: ConcurrencyMode;
   maxConcurrency?: number;
   apiKeyConcurrencyMode?: ConcurrencyMode;
@@ -126,6 +137,7 @@ export interface ApiKeyEntryInput {
   name?: string;
   apiKey: string;
   existingApiKey?: string;
+  weight?: CredentialWeightInputValue;
   proxyUrl: string;
   authIndex?: string;
   groups?: string[];
@@ -148,12 +160,14 @@ export interface ProviderEntryFormInput {
   authMode?: ClaudeAuthMode | '';
   protocolMode?: OpenAIProviderProtocolMode;
   retryOwner?: OpenAIProviderRetryOwner;
+  requestRetry?: number;
   proxyUrl: string;
   prefix: string;
   disabled: boolean;
   disableCooling?: boolean;
   fallback: boolean;
   priority?: number;
+  weight?: CredentialWeightInputValue;
   concurrencyMode?: ConcurrencyMode;
   maxConcurrency?: number;
 

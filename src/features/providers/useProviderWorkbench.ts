@@ -3,6 +3,7 @@ import { providersApi } from '@/services/api';
 import { invalidateProviderRecentRequests } from '@/services/providerRecentRequests';
 import { getErrorMessage } from '@/utils/helpers';
 import { normalizeConcurrencySetting } from '@/utils/maxConcurrency';
+import { normalizeCredentialWeight } from '@/utils/credentialWeight';
 import { useAuthInventoryStore, useAuthStore, useConfigStore } from '@/stores';
 import {
   stripDisableAllModelsRule,
@@ -12,6 +13,7 @@ import {
 import type {
   Config,
   GeminiKeyConfig,
+  InteractionsKeyConfig,
   ModelAlias,
   OpenAIProviderConfig,
   ProviderKeyConfig,
@@ -20,6 +22,7 @@ import {
   claudeToResource,
   codexToResource,
   geminiToResource,
+  interactionsToResource,
   kimiToResource,
   openaiToResource,
   vertexToResource,
@@ -147,11 +150,11 @@ const buildVertexModelAliases = (
     }))
     .filter((m) => m.name);
 
-const buildProviderKeyConfig = (
-  brand: 'gemini' | 'codex' | 'xai' | 'claude' | 'vertex',
+export const buildProviderKeyConfig = (
+  brand: 'gemini' | 'interactions' | 'codex' | 'xai' | 'claude' | 'vertex',
   input: ProviderEntryFormInput,
-  existing?: ProviderKeyConfig | GeminiKeyConfig | null
-): ProviderKeyConfig | GeminiKeyConfig => {
+  existing?: ProviderKeyConfig | GeminiKeyConfig | InteractionsKeyConfig | null
+): ProviderKeyConfig | GeminiKeyConfig | InteractionsKeyConfig => {
   const headers = headersFromEntries(input.headers);
   const models =
     brand === 'vertex' ? buildVertexModelAliases(input.models) : buildModelAliases(input.models);
@@ -163,6 +166,7 @@ const buildProviderKeyConfig = (
     apiKey: apiKeyChanged ? input.apiKey.trim() : (existing?.apiKey ?? ''),
     groups: normalizeCredentialGroups(input.groups),
     priority: input.priority,
+    weight: normalizeCredentialWeight(input.weight),
     concurrencyMode: concurrency.mode,
     maxConcurrency: concurrency.maxConcurrency,
     prefix: input.prefix.trim() || undefined,
@@ -175,6 +179,9 @@ const buildProviderKeyConfig = (
     authIndex: existing?.authIndex,
     runtimeStatus: existing?.runtimeStatus,
   };
+  if (brand === 'interactions') {
+    (next as InteractionsKeyConfig).requestRetry = input.requestRetry;
+  }
   if (brand !== 'vertex') {
     next.disableCooling = input.disableCooling === true;
   }
@@ -196,7 +203,7 @@ const buildProviderKeyConfig = (
   return next;
 };
 
-const buildOpenAIConfig = (
+export const buildOpenAIConfig = (
   input: ProviderEntryFormInput,
   existing?: OpenAIProviderConfig | null
 ): OpenAIProviderConfig => {
@@ -215,6 +222,7 @@ const buildOpenAIConfig = (
         return {
           name: entry.name?.trim() || undefined,
           apiKey: entry.apiKey.trim() || fallbackApiKey,
+          weight: normalizeCredentialWeight(entry.weight),
           proxyUrl: entry.proxyUrl.trim() || undefined,
           authIndex: entry.authIndex?.trim() || undefined,
           groups: normalizeCredentialGroups(entry.groups),
@@ -274,6 +282,7 @@ export const buildSponsorOpenAIConfig = (
         {
           ...(firstExistingEntry ?? {}),
           apiKey,
+          weight: normalizeCredentialWeight(entry.weight),
           proxyUrl: entry.proxyUrl.trim() || undefined,
           concurrencyMode: apiKeyConcurrency.mode,
           maxConcurrency: apiKeyConcurrency.maxConcurrency,
@@ -318,6 +327,7 @@ export const buildSponsorClaudeConfig = (
     proxyUrl: entry.proxyUrl.trim() || undefined,
     prefix: entry.prefix.trim() || undefined,
     priority: entry.priority,
+    weight: normalizeCredentialWeight(entry.weight),
     concurrencyMode: concurrency.mode,
     maxConcurrency: concurrency.maxConcurrency,
     fallback: entry.fallback === true,
@@ -353,6 +363,11 @@ export const buildProviderGroups = (config: Config): ProviderGroup[] =>
       case 'gemini':
         resources = (config.geminiApiKeys ?? []).map((item, index) =>
           geminiToResource(item, index)
+        );
+        break;
+      case 'interactions':
+        resources = (config.interactionsApiKeys ?? []).map((item, index) =>
+          interactionsToResource(item, index)
         );
         break;
       case 'codex':
@@ -406,6 +421,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mutating, setMutating] = useState<boolean>(false);
+  const [interactionsKeys, setInteractionsKeys] = useState<InteractionsKeyConfig[] | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string>(() => new Date().toISOString());
 
   const hasFetchedRef = useRef(false);
@@ -422,6 +438,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
       const [
         configResult,
         geminiResult,
+        interactionsResult,
         codexResult,
         xaiResult,
         claudeResult,
@@ -430,6 +447,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
       ] = await Promise.allSettled([
         fetchConfig(undefined, true),
         providersApi.getGeminiKeys(),
+        providersApi.getInteractionsKeys(),
         providersApi.getCodexConfigs(),
         providersApi.getXAIConfigs(),
         providersApi.getClaudeConfigs(),
@@ -443,6 +461,11 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
       if (geminiResult.status === 'fulfilled') {
         updateConfigValue('gemini-api-key', geminiResult.value || []);
       }
+      setInteractionsKeys(
+        interactionsResult.status === 'fulfilled'
+          ? interactionsResult.value || []
+          : configResult.value.interactionsApiKeys || []
+      );
       if (codexResult.status === 'fulfilled') {
         updateConfigValue('codex-api-key', codexResult.value || []);
       }
@@ -492,9 +515,11 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     if (!config) return null;
     return {
       fetchedAt,
-      groups: buildProviderGroups(config),
+      groups: buildProviderGroups(
+        interactionsKeys === null ? config : { ...config, interactionsApiKeys: interactionsKeys }
+      ),
     };
-  }, [config, fetchedAt]);
+  }, [config, fetchedAt, interactionsKeys]);
 
   const persistSponsorConfig = useCallback(
     async (brand: SponsorProviderBrand, input: ProviderEntryFormInput) => {
@@ -558,6 +583,10 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
           await providersApi.createGeminiKey(
             buildProviderKeyConfig('gemini', input) as GeminiKeyConfig
           );
+        } else if (brand === 'interactions') {
+          await providersApi.createInteractionsKey(
+            buildProviderKeyConfig('interactions', input) as InteractionsKeyConfig
+          );
         } else if (brand === 'codex') {
           await providersApi.createCodexConfig(
             buildProviderKeyConfig('codex', input) as ProviderKeyConfig
@@ -599,6 +628,16 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
             selector.apiKey,
             selector.baseUrl,
             buildProviderKeyConfig('gemini', input, resource.raw as GeminiKeyConfig)
+          );
+        } else if (brand === 'interactions' && selector.brand === 'interactions') {
+          await providersApi.updateInteractionsKey(
+            selector.apiKey,
+            selector.baseUrl,
+            buildProviderKeyConfig(
+              'interactions',
+              input,
+              resource.raw as InteractionsKeyConfig
+            ) as InteractionsKeyConfig
           );
         } else if (brand === 'codex' && selector.brand === 'codex') {
           await providersApi.updateCodexConfig(
@@ -649,6 +688,8 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
         const sel = resource.selector;
         if (sel.brand === 'gemini') {
           await providersApi.deleteGeminiKey(sel.apiKey, sel.baseUrl);
+        } else if (sel.brand === 'interactions') {
+          await providersApi.deleteInteractionsKey(sel.apiKey, sel.baseUrl);
         } else if (sel.brand === 'codex') {
           await providersApi.deleteCodexConfig(sel.apiKey, sel.baseUrl);
         } else if (sel.brand === 'xai') {
@@ -694,6 +735,15 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
             ? withDisableAllModelsRule(current.excludedModels)
             : withoutDisableAllModelsRule(current.excludedModels);
           await providersApi.updateGeminiKey(selector.apiKey, selector.baseUrl, {
+            ...current,
+            excludedModels: excluded,
+          });
+        } else if (brand === 'interactions' && selector.brand === 'interactions') {
+          const current = resource.raw as InteractionsKeyConfig;
+          const excluded = disabled
+            ? withDisableAllModelsRule(current.excludedModels)
+            : withoutDisableAllModelsRule(current.excludedModels);
+          await providersApi.updateInteractionsKey(selector.apiKey, selector.baseUrl, {
             ...current,
             excludedModels: excluded,
           });

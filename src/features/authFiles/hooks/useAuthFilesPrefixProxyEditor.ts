@@ -17,6 +17,7 @@ import {
   parseOptionalMaxConcurrency,
   resolveAuthFileConcurrencySetting,
 } from '@/utils/maxConcurrency';
+import { getCredentialWeightError, normalizeCredentialWeight } from '@/utils/credentialWeight';
 import {
   authFileMatchesCredentialIdentity,
   isAuthFileIdentityChangedError,
@@ -35,6 +36,7 @@ export type PrefixProxyEditorField =
   | 'prefix'
   | 'proxyUrl'
   | 'priority'
+  | 'weight'
   | 'concurrencyMode'
   | 'maxConcurrency'
   | 'fallback'
@@ -62,6 +64,9 @@ export type PrefixProxyEditorState = {
   prefix: string;
   proxyUrl: string;
   priority: string;
+  weight: string;
+  weightTouched: boolean;
+  weightError: string | null;
   concurrencyMode: ConcurrencyMode;
   maxConcurrency: string;
   maxConcurrencyError: string | null;
@@ -132,6 +137,13 @@ const parseHeadersText = (
 
 const normalizeTextField = (value: unknown): string =>
   typeof value === 'string' ? value.trim() : '';
+
+const formatCredentialWeightEditorValue = (value: unknown): string => {
+  const normalized = normalizeCredentialWeight(value);
+  if (normalized !== undefined) return String(normalized);
+  if (value === undefined || value === null) return '';
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+};
 
 const normalizeBooleanValue = (value: unknown): boolean | undefined => {
   if (typeof value === 'boolean') return value;
@@ -291,6 +303,22 @@ export const buildAuthFileFieldsPatch = (
     }
   }
 
+  if (editor.weightTouched) {
+    const originalHasWeight = Object.prototype.hasOwnProperty.call(original, 'weight');
+    const originalWeight = normalizeCredentialWeight(original.weight);
+    const weightText = editor.weight.trim();
+    if (getCredentialWeightError(weightText)) {
+      throw new Error('AUTH_FILE_WEIGHT_INVALID');
+    }
+    const parsedWeight = normalizeCredentialWeight(weightText);
+    const nextWeight = parsedWeight === undefined ? undefined : Math.max(0, parsedWeight);
+    if (!weightText) {
+      if (originalHasWeight) patch.weight = null;
+    } else if (nextWeight !== originalWeight) {
+      patch.weight = nextWeight;
+    }
+  }
+
   const originalConcurrency = resolveAuthFileConcurrencySetting(original);
   const maxConcurrencyText = editor.maxConcurrency.trim();
   const parsedMaxConcurrency = parseOptionalMaxConcurrency(maxConcurrencyText);
@@ -387,6 +415,14 @@ export const buildPrefixProxyUpdatedText = (
     }
   }
 
+  if (patch.weight !== undefined) {
+    if (patch.weight === null) {
+      delete next.weight;
+    } else {
+      next.weight = patch.weight;
+    }
+  }
+
   if (patch.concurrency_mode !== undefined || patch.max_concurrency !== undefined) {
     const concurrency = normalizeConcurrencySetting(
       patch.concurrency_mode ?? editor.concurrencyMode,
@@ -444,7 +480,8 @@ export function useAuthFilesPrefixProxyEditor(
 
   const hasBlockingValidationError = Boolean(
     (prefixProxyEditor?.headersTouched && prefixProxyEditor.headersError) ||
-    prefixProxyEditor?.maxConcurrencyError
+    prefixProxyEditor?.maxConcurrencyError ||
+    (prefixProxyEditor?.weightTouched && prefixProxyEditor.weightError)
   );
   const prefixProxyUpdatedText =
     prefixProxyEditor && !hasBlockingValidationError
@@ -493,6 +530,9 @@ export function useAuthFilesPrefixProxyEditor(
       prefix: '',
       proxyUrl: '',
       priority: '',
+      weight: '',
+      weightTouched: false,
+      weightError: null,
       concurrencyMode: 'inherit',
       maxConcurrency: '0',
       maxConcurrencyError: null,
@@ -548,6 +588,7 @@ export function useAuthFilesPrefixProxyEditor(
       const prefix = typeof json.prefix === 'string' ? json.prefix : '';
       const proxyUrl = typeof json.proxy_url === 'string' ? json.proxy_url : '';
       const priority = parsePriorityValue(json.priority);
+      const weight = formatCredentialWeightEditorValue(json.weight);
       const concurrency = resolveAuthFileConcurrencySetting(json);
       const fallback = json.fallback === true;
       const disableCooling = readAuthFileDisableCooling(json);
@@ -579,6 +620,9 @@ export function useAuthFilesPrefixProxyEditor(
           prefix,
           proxyUrl,
           priority: priority !== undefined ? String(priority) : '',
+          weight,
+          weightTouched: false,
+          weightError: null,
           concurrencyMode: concurrency.mode,
           maxConcurrency: String(concurrency.maxConcurrency),
           maxConcurrencyError: null,
@@ -616,6 +660,16 @@ export function useAuthFilesPrefixProxyEditor(
       if (field === 'prefix') return { ...prev, prefix: String(value) };
       if (field === 'proxyUrl') return { ...prev, proxyUrl: String(value) };
       if (field === 'priority') return { ...prev, priority: String(value) };
+      if (field === 'weight') {
+        const weight = String(value);
+        const errorCode = getCredentialWeightError(weight);
+        return {
+          ...prev,
+          weight,
+          weightTouched: true,
+          weightError: errorCode ? t(`credential_weight.errors.${errorCode}`) : null,
+        };
+      }
       if (field === 'concurrencyMode') {
         return { ...prev, concurrencyMode: String(value) as ConcurrencyMode };
       }
@@ -667,9 +721,11 @@ export function useAuthFilesPrefixProxyEditor(
       const errorMessage =
         err instanceof Error && err.message === 'AUTH_FILE_MAX_CONCURRENCY_INVALID'
           ? t('auth_files.max_concurrency_invalid')
-          : err instanceof Error
-            ? err.message
-            : 'Invalid format';
+          : err instanceof Error && err.message === 'AUTH_FILE_WEIGHT_INVALID'
+            ? t('credential_weight.validation')
+            : err instanceof Error
+              ? err.message
+              : 'Invalid format';
       showNotification(errorMessage, 'error');
       return;
     }
@@ -693,6 +749,15 @@ export function useAuthFilesPrefixProxyEditor(
         readAuthFileDisableCooling(authoritativeFile) !== payload.disable_cooling
       ) {
         throw new Error(t('auth_files.disable_cooling_confirmation_failed'));
+      }
+      if (payload.weight !== undefined) {
+        const savedWeight = normalizeCredentialWeight(authoritativeFile.weight);
+        if (
+          (payload.weight === null && savedWeight !== undefined) ||
+          (payload.weight !== null && savedWeight !== payload.weight)
+        ) {
+          throw new Error(t('auth_files.field_save_confirmation_failed'));
+        }
       }
       commitMutationVersion(
         response.inventory_id ?? '',

@@ -7,11 +7,13 @@ import { isRecord } from '@/utils/helpers';
 import { normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import {
   normalizeGeminiKeyConfig,
+  normalizeInteractionsKeyConfig,
   normalizeOpenAIProvider,
   normalizeProviderKeyConfig,
 } from './transformers';
 import type {
   GeminiKeyConfig,
+  InteractionsKeyConfig,
   OpenAIProviderConfig,
   ProviderKeyConfig,
   ApiKeyEntry,
@@ -36,6 +38,7 @@ const PROVIDER_COMMON_KEY_FIELDS = [
   'api-key',
   'groups',
   'priority',
+  'weight',
   'fallback',
   'concurrency-mode',
   'max-concurrency',
@@ -49,6 +52,7 @@ const PROVIDER_COMMON_KEY_FIELDS = [
 ] as const;
 
 const GEMINI_KEY_FIELDS = PROVIDER_COMMON_KEY_FIELDS;
+const INTERACTIONS_KEY_FIELDS = [...PROVIDER_COMMON_KEY_FIELDS, 'request-retry'] as const;
 const CODEX_KEY_FIELDS = [...PROVIDER_COMMON_KEY_FIELDS, 'websockets'] as const;
 const XAI_KEY_FIELDS = CODEX_KEY_FIELDS;
 const CLAUDE_KEY_FIELDS = [
@@ -62,6 +66,7 @@ const VERTEX_KEY_FIELDS = [
   'api-key',
   'groups',
   'priority',
+  'weight',
   'fallback',
   'concurrency-mode',
   'max-concurrency',
@@ -98,6 +103,7 @@ const OPENAI_MODEL_ALIAS_FIELDS = [...MODEL_ALIAS_FIELDS, 'image', 'thinking'] a
 const API_KEY_ENTRY_FIELDS = [
   'name',
   'api-key',
+  'weight',
   'proxy-url',
   'groups',
   'concurrency-mode',
@@ -407,6 +413,7 @@ const serializeApiKeyEntry = (entry: ApiKeyEntry) => {
     ...serializeConcurrency(entry.concurrencyMode, entry.maxConcurrency),
   };
   if (entry.name?.trim()) payload.name = entry.name.trim();
+  if (entry.weight !== undefined) payload.weight = entry.weight;
   if (entry.proxyUrl) payload['proxy-url'] = entry.proxyUrl;
   if (entry.groups?.length) payload.groups = entry.groups;
   return payload;
@@ -420,6 +427,7 @@ export const serializeProviderKey = (config: ProviderKeyConfig) => {
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
+  if (config.weight !== undefined) payload.weight = config.weight;
   if (config.fallback) payload.fallback = true;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
@@ -463,6 +471,7 @@ export const serializeXAIKey = (config: ProviderKeyConfig): Record<string, unkno
   fallback: config.fallback === true,
   ...serializeConcurrency(config.concurrencyMode, config.maxConcurrency),
   priority: config.priority ?? 0,
+  ...(config.weight !== undefined ? { weight: config.weight } : {}),
   prefix: config.prefix?.trim() ?? '',
   'base-url': config.baseUrl?.trim() ?? '',
   websockets: config.websockets === true,
@@ -485,7 +494,7 @@ const serializeVertexModelAliases = (models?: ModelAlias[]) =>
         .filter(Boolean)
     : undefined;
 
-const serializeVertexKey = (config: ProviderKeyConfig) => {
+export const serializeVertexKey = (config: ProviderKeyConfig) => {
   const payload: Record<string, unknown> = {
     'api-key': config.apiKey,
     ...serializeConcurrency(config.concurrencyMode, config.maxConcurrency),
@@ -493,6 +502,7 @@ const serializeVertexKey = (config: ProviderKeyConfig) => {
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
+  if (config.weight !== undefined) payload.weight = config.weight;
   if (config.fallback) payload.fallback = true;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
@@ -515,6 +525,7 @@ export const serializeGeminiKey = (config: GeminiKeyConfig) => {
   if (config.name?.trim()) payload.name = config.name.trim();
   if (config.groups?.length) payload.groups = config.groups;
   if (config.priority !== undefined) payload.priority = config.priority;
+  if (config.weight !== undefined) payload.weight = config.weight;
   if (config.fallback) payload.fallback = true;
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
@@ -527,6 +538,12 @@ export const serializeGeminiKey = (config: GeminiKeyConfig) => {
   if (config.excludedModels && config.excludedModels.length) {
     payload['excluded-models'] = config.excludedModels;
   }
+  return payload;
+};
+
+export const serializeInteractionsKey = (config: InteractionsKeyConfig) => {
+  const payload = serializeGeminiKey(config);
+  if (config.requestRetry !== undefined) payload['request-retry'] = config.requestRetry;
   return payload;
 };
 
@@ -603,6 +620,54 @@ export const providersApi = {
 
   deleteGeminiKey: (apiKey: string, baseUrl?: string) =>
     apiClient.delete(`/gemini-api-key${buildProviderDeleteQuery(apiKey, baseUrl)}`),
+
+  async getInteractionsKeys(): Promise<InteractionsKeyConfig[]> {
+    const data = await apiClient.get('/interactions-api-key');
+    const list = extractArrayPayload(data, 'interactions-api-key');
+    return list
+      .map((item) => normalizeInteractionsKeyConfig(item))
+      .filter(Boolean) as InteractionsKeyConfig[];
+  },
+
+  async createInteractionsKey(config: InteractionsKeyConfig) {
+    const latestItems = await getLatestEndpointList('interactions-api-key');
+    const writableItems = latestItems.map(stripResponseOnlyFields);
+    const nextItems = appendLatestProviderRecord(
+      writableItems,
+      serializeInteractionsKey(config),
+      (raw, payload) => mergeProviderKeyPayload(raw, payload, INTERACTIONS_KEY_FIELDS)
+    );
+    await apiClient.put('/interactions-api-key', nextItems);
+  },
+
+  async updateInteractionsKey(
+    apiKey: string,
+    baseUrl: string | undefined,
+    config: InteractionsKeyConfig
+  ) {
+    const latestItems = await getLatestEndpointList('interactions-api-key');
+    const writableItems = latestItems.map(stripResponseOnlyFields);
+    const nextItems = replaceLatestProviderRecord(
+      writableItems,
+      (record) => matchesProviderKey(record, apiKey, baseUrl),
+      serializeInteractionsKey(config),
+      (raw, payload) => mergeProviderKeyPayload(raw, payload, INTERACTIONS_KEY_FIELDS)
+    );
+    await apiClient.put('/interactions-api-key', nextItems);
+  },
+
+  async deleteInteractionsKey(apiKey: string, baseUrl?: string) {
+    const latestItems = await getLatestEndpointList('interactions-api-key');
+    const target = findLatestProviderKey(latestItems, apiKey, baseUrl);
+    if (!isRecord(target.record)) {
+      throw new Error('Provider configuration changed; refresh and try again.');
+    }
+    const latestApiKey = getStringField(target.record, ['api-key']);
+    const latestBaseUrl = getStringField(target.record, ['base-url']);
+    await apiClient.delete(
+      `/interactions-api-key${buildProviderDeleteQuery(latestApiKey, latestBaseUrl)}`
+    );
+  },
 
   createCodexConfig: (config: ProviderKeyConfig) =>
     mutateLatestProviderList('codex-api-key', (latestItems) =>

@@ -96,6 +96,9 @@ const monitoringWire = {
       executor_type: 'codex',
       resolved_model: 'gpt-5.6',
       requested_model: 'gpt-5.6',
+      direct_peer_ip: '192.0.2.10',
+      x_forwarded_for: '203.0.113.5, 198.51.100.8',
+      user_agent: 'monitoring-client/1.0',
       auth_type: 'oauth',
       auth_index: 'auth-1',
       reasoning_effort: 'high',
@@ -152,6 +155,9 @@ try {
 
   const normalized = api.normalizeMonitoringResponse(monitoringWire);
   assert.equal(normalized.requests[0].statusCode, 0);
+  assert.equal(normalized.requests[0].directPeerIp, '192.0.2.10');
+  assert.equal(normalized.requests[0].xForwardedFor, '203.0.113.5, 198.51.100.8');
+  assert.equal(normalized.requests[0].userAgent, 'monitoring-client/1.0');
   assert.deepEqual(normalized.requests[0].cost.missingDimensions, []);
   assert.deepEqual(normalized.cost.missingDimensions, {});
   assert.equal(normalized.credentials[0].currentId, 'auth-1');
@@ -446,9 +452,20 @@ try {
     viewModel.hasMonitoringEvidence({
       ...normalized.requests[0],
       requestId: '',
+      directPeerIp: '',
+      xForwardedFor: '',
+      userAgent: '',
       responseHeaders: {},
     }),
     false
+  );
+  assert.equal(
+    viewModel.hasMonitoringEvidence({
+      ...normalized.requests[0],
+      requestId: '',
+      responseHeaders: {},
+    }),
+    true
   );
 
   const older = {

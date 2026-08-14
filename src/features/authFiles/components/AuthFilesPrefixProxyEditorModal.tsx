@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@/components/ui/Modal';
 import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
+import { CredentialWeightInput } from '@/components/providers/CredentialWeightInput';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Input } from '@/components/ui/Input';
@@ -81,7 +82,8 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
               editor?.saving === true ||
               !dirty ||
               !editor?.json ||
-              Boolean(editor?.headersTouched && editor.headersError)
+              Boolean(editor?.headersTouched && editor.headersError) ||
+              Boolean(editor?.weightTouched && editor.weightError)
             }
           >
             {t('common.save')}
@@ -151,6 +153,12 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                       hint={t('auth_files.priority_hint')}
                       disabled={disableControls || editor.saving || !editor.json}
                       onChange={(e) => onChange('priority', e.target.value)}
+                    />
+                    <CredentialWeightInput
+                      wrapperClassName={styles.prefixProxyFullField}
+                      value={editor.weight}
+                      disabled={disableControls || editor.saving || !editor.json}
+                      onChange={(value) => onChange('weight', String(value ?? ''))}
                     />
                     <ConcurrencySettingField
                       id="auth-file-concurrency"

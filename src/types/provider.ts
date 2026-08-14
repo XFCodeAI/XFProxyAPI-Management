@@ -34,6 +34,7 @@ export interface ProviderRuntimeStatus {
 export interface ApiKeyEntry {
   name?: string;
   apiKey: string;
+  weight?: number;
   proxyUrl?: string;
   authIndex?: string;
   groups?: string[];
@@ -64,6 +65,7 @@ export interface GeminiKeyConfig {
   apiKey: string;
   groups?: string[];
   priority?: number;
+  weight?: number;
   fallback?: boolean;
   concurrencyMode?: ConcurrencyMode;
   maxConcurrency?: number;
@@ -78,11 +80,16 @@ export interface GeminiKeyConfig {
   runtimeStatus?: ProviderRuntimeStatus;
 }
 
+export interface InteractionsKeyConfig extends GeminiKeyConfig {
+  requestRetry?: number;
+}
+
 export interface ProviderKeyConfig {
   name?: string;
   apiKey: string;
   groups?: string[];
   priority?: number;
+  weight?: number;
   fallback?: boolean;
   concurrencyMode?: ConcurrencyMode;
   maxConcurrency?: number;

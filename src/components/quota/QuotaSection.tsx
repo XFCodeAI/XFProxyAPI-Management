@@ -21,7 +21,7 @@ import type { AuthFileItem } from '@/types';
 import { getStatusFromError } from '@/utils/quota';
 import { normalizePlanType } from '@/utils/quota/parsers';
 import { resolveCodexPlanType } from '@/utils/quota/resolvers';
-import { hasAuthFileStatusMessage } from '@/features/authFiles/constants';
+import { hasAuthFileStatusProblem } from '@/features/authFiles/statusWarning';
 import { QuotaCard } from './QuotaCard';
 import type { QuotaStatusState } from './QuotaCard';
 import {
@@ -265,9 +265,13 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
   const isProblemCredential = useCallback(
     (file: AuthFileItem) => {
       const quotaStatus = quota[getQuotaCredentialCacheKey(file)]?.status;
-      return hasAuthFileStatusMessage(file) || quotaStatus === 'error';
+      const credentialID = String(file.id ?? '').trim();
+      const runtimeResource = credentialID
+        ? runtimeResources[runtimeObservationResourceKey('credential', credentialID)]
+        : undefined;
+      return hasAuthFileStatusProblem(file, runtimeResource) || quotaStatus === 'error';
     },
-    [quota]
+    [quota, runtimeResources]
   );
   const statusFilteredFiles = useMemo(
     () =>

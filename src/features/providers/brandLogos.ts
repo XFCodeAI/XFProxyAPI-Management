@@ -19,6 +19,7 @@ export interface ProviderBrandLogo {
 
 export const PROVIDER_LOGOS: Record<ProviderBrand, ProviderBrandLogo> = {
   gemini: { src: geminiLogo },
+  interactions: { src: geminiLogo },
   claude: { src: claudeLogo },
   codex: { src: codexLogo },
   xai: { src: xaiLightLogo, darkSrc: xaiDarkLogo, transparent: true },

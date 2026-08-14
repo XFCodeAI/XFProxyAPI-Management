@@ -49,6 +49,7 @@ export interface AuthFileItem {
   auth_index?: string | number | null;
   runtimeOnly?: boolean | string;
   fallback?: boolean;
+  weight?: number | string | null;
   concurrencyMode?: ConcurrencyMode;
   concurrency_mode?: ConcurrencyMode;
   'concurrency-mode'?: ConcurrencyMode;
@@ -68,6 +69,15 @@ export interface AuthFileItem {
   admission?: 'builtin' | 'plugin' | string;
   status?: string;
   statusMessage?: string;
+  statusCode?: number | string;
+  status_code?: number | string;
+  errorStatus?: number | string;
+  error_status?: number | string;
+  updatedAt?: string | number;
+  updated_at?: string | number;
+  updatedAtMs?: string | number;
+  updated_at_ms?: string | number;
+  modtime?: string | number;
   lastRefresh?: string | number;
   modified?: number;
   success?: unknown;

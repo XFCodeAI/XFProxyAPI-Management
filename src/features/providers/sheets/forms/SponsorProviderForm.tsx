@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Collapsible } from '@/components/ui/Collapsible';
+import { CredentialWeightInput } from '@/components/providers/CredentialWeightInput';
 import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import { Select } from '@/components/ui/Select';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
@@ -18,6 +19,7 @@ import { hasDisableAllModelsRule } from '@/components/providers/utils';
 import { cn } from '@/lib/utils';
 import { maskApiKey } from '@/utils/format';
 import { isValidMaxConcurrency, normalizeConcurrencySetting } from '@/utils/maxConcurrency';
+import { getCredentialWeightError } from '@/utils/credentialWeight';
 import type { ModelInfo } from '@/utils/models';
 import { isSponsorPartialMutationError } from '../../sponsorMutationRecovery';
 import {
@@ -91,6 +93,7 @@ const emptySponsorKeyEntry = (
   disableCooling: false,
   fallback: false,
   priority: undefined,
+  weight: undefined,
   concurrencyMode: 'inherit',
   maxConcurrency: 0,
   apiKeyConcurrencyMode: 'inherit',
@@ -156,6 +159,7 @@ const sponsorEntryFromProviderKey = (
     disableCooling: config.disableCooling === true,
     fallback: config.fallback === true,
     priority: config.priority,
+    weight: config.weight,
     concurrencyMode: concurrency.mode,
     maxConcurrency: concurrency.maxConcurrency,
     models: modelsFromConfig(config.models),
@@ -182,6 +186,7 @@ const sponsorEntryFromOpenAI = (
     disableCooling: config.disableCooling === true,
     fallback: config.fallback === true,
     priority: config.priority,
+    weight: firstEntry?.weight,
     concurrencyMode: concurrency.mode,
     maxConcurrency: concurrency.maxConcurrency,
     apiKeyConcurrencyMode: apiKeyConcurrency.mode,
@@ -595,6 +600,12 @@ function SponsorKeyEntryCard({
             </div>
           </div>
 
+          <CredentialWeightInput
+            value={entry.weight}
+            disabled={mutating}
+            onChange={(value) => updateEntry({ weight: value })}
+          />
+
           <div className={entry.protocol === 'openai' ? styles.fieldRow : undefined}>
             <ConcurrencySettingField
               id={`${formId}-group-${index}-supplier-concurrency`}
@@ -765,6 +776,9 @@ export function SponsorProviderForm({
     const protocolSet = new Set(entries.map((entry) => entry.protocol));
     if (protocolSet.size !== entries.length) {
       return t('providersPage.sponsor.validation.protocolDuplicate');
+    }
+    if (entries.some((entry) => getCredentialWeightError(entry.weight))) {
+      return t('credential_weight.validation');
     }
     if (
       entries.some(

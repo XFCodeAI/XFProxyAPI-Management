@@ -108,8 +108,8 @@ const installMockAPI = async (page: Page) => {
       });
     }
     if (path === '/auth-files' && request.method() === 'DELETE') {
-      const body = request.postDataJSON() as { names?: string[] };
-      const names = body.names ?? [];
+      const body = request.postDataJSON() as { name?: string; names?: string[] };
+      const names = body.names ?? (body.name ? [body.name] : []);
       names.forEach((name) => {
         const index = Number(name.match(/(\d+)\.json$/)?.[1] ?? -1);
         if (index >= 0) deleted.add(index);
@@ -215,7 +215,9 @@ test('large credential inventory remains page bounded across management actions'
   await page.getByRole('button', { name: '删除', exact: true }).last().click();
   const confirmation = page.getByRole('dialog');
   await expect(confirmation.getByText('删除选中文件', { exact: true })).toBeVisible();
-  await confirmation.getByRole('button', { name: '确认', exact: true }).click();
+  await confirmation.getByRole('button', { name: '下一步', exact: true }).click();
+  await expect(confirmation.getByText('确认永久删除', { exact: true })).toBeVisible();
+  await confirmation.getByRole('button', { name: '永久删除', exact: true }).click();
   await expect(page.getByText(selectedName, { exact: true })).toHaveCount(0);
   expect(await cards.count()).toBeLessThanOrEqual(25);
 });

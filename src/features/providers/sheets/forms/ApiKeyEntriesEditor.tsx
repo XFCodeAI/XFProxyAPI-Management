@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CredentialGroupsField } from '@/components/credentialGroups/CredentialGroupsField';
+import { CredentialWeightInput } from '@/components/providers/CredentialWeightInput';
 import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import {
   IconChevronDown,
@@ -269,6 +270,11 @@ export function ApiKeyEntriesEditor({
                     </TooltipIconButton>
                   </div>
                 </div>
+                <CredentialWeightInput
+                  value={entry.weight}
+                  disabled={mutating}
+                  onChange={(value) => onUpdate(idx, { weight: value })}
+                />
                 <div className={styles.field}>
                   <label className={styles.label} htmlFor={proxyInputId}>
                     {t('providersPage.form.proxyUrl')}

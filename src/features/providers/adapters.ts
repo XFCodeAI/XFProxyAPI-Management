@@ -1,5 +1,6 @@
 import type {
   GeminiKeyConfig,
+  InteractionsKeyConfig,
   OpenAIProviderConfig,
   ProviderKeyConfig,
   ProviderRuntimeStatus,
@@ -113,8 +114,8 @@ const truncateForId = (value: string | undefined | null): string => {
 };
 
 function providerKeyToResource(
-  brand: 'gemini' | 'codex' | 'xai' | 'claude' | 'vertex',
-  config: GeminiKeyConfig | ProviderKeyConfig,
+  brand: 'gemini' | 'interactions' | 'codex' | 'xai' | 'claude' | 'vertex',
+  config: GeminiKeyConfig | InteractionsKeyConfig | ProviderKeyConfig,
   index: number
 ): ProviderResource {
   const apiKey = config.apiKey ?? '';
@@ -152,6 +153,7 @@ function providerKeyToResource(
     modelCount: config.models?.length ?? 0,
     models: collectModelNames(config.models),
     priority: normalizePriority(config.priority),
+    weight: config.weight ?? null,
     concurrencyMode: concurrency.mode,
     maxConcurrency: concurrency.maxConcurrency,
     fallback: config.fallback === true,
@@ -168,6 +170,13 @@ function providerKeyToResource(
 
 export function geminiToResource(config: GeminiKeyConfig, index: number): ProviderResource {
   return providerKeyToResource('gemini', config, index);
+}
+
+export function interactionsToResource(
+  config: InteractionsKeyConfig,
+  index: number
+): ProviderResource {
+  return providerKeyToResource('interactions', config, index);
 }
 
 export function codexToResource(config: ProviderKeyConfig, index: number): ProviderResource {
@@ -211,6 +220,7 @@ export function openaiToResource(config: OpenAIProviderConfig, index: number): P
     modelCount: config.models?.length ?? 0,
     models: collectModelNames(config.models),
     priority: normalizePriority(config.priority),
+    weight: config.apiKeyEntries?.length === 1 ? (config.apiKeyEntries[0]?.weight ?? null) : null,
     concurrencyMode: concurrency.mode,
     maxConcurrency: concurrency.maxConcurrency,
     fallback: config.fallback === true,
@@ -300,6 +310,10 @@ function sponsorRawToResource(
     ...raw.openai.map((item) => item.config.maxConcurrency),
     ...raw.claude.map((item) => item.config.maxConcurrency),
   ]);
+  const weights = [
+    ...raw.openai.flatMap((item) => item.config.apiKeyEntries?.map((entry) => entry.weight) ?? []),
+    ...raw.claude.map((item) => item.config.weight),
+  ];
 
   return {
     id: buildId(brand, 0, 'sponsor'),
@@ -320,6 +334,7 @@ function sponsorRawToResource(
     modelCount: uniqueModels.length,
     models: uniqueModels,
     priority,
+    weight: weights.length === 1 ? (weights[0] ?? null) : null,
     concurrencyMode: null,
     maxConcurrency,
     fallback: fallbackStates.length > 0 && fallbackStates.every(Boolean),

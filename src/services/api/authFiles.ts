@@ -50,6 +50,7 @@ export type AuthFileFieldsPatch = {
   proxy_url?: string;
   headers?: Record<string, string>;
   priority?: number;
+  weight?: number | null;
   concurrency_mode?: ConcurrencySetting['mode'];
   max_concurrency?: number | null;
   fallback?: boolean;

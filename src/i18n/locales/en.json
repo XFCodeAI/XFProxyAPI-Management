@@ -59,6 +59,20 @@
     "unsaved_changes_message": "You have unsaved changes. Leaving now will discard them. Do you want to leave?",
     "select": "Select"
   },
+  "credential_weight": {
+    "label": "Routing weight",
+    "hint": "Optional safe integer up to 1,000,000. Empty inherits the default weight 1; non-positive values exclude this credential from weighted routing.",
+    "validation": "Enter a safe integer no greater than 1,000,000, or leave it empty to inherit the default.",
+    "default_badge": "default",
+    "zero_badge": "routing disabled",
+    "per_key": "Configured per API key",
+    "per_key_short": "Per-key weight",
+    "summary": "Weight {{value}}",
+    "errors": {
+      "integer": "Weight must be a safe integer.",
+      "maximum": "Weight must not exceed {{max}}."
+    }
+  },
   "title": {
     "main": "CLI Proxy API Management Center",
     "login": "CLI Proxy API Management Center",
@@ -264,9 +278,10 @@
     "ws_auth_enable": "Require auth for /ws/*",
     "routing_title": "Routing Strategy",
     "routing_strategy_label": "Routing strategy:",
-    "routing_strategy_hint": "round-robin cycles through keys; fill-first prioritizes the first available key.",
+    "routing_strategy_hint": "round-robin cycles evenly; weighted-round-robin follows configured weights; fill-first prioritizes the first available key.",
     "routing_strategy_update": "Update",
     "routing_strategy_round_robin": "round-robin (cycle)",
+    "routing_strategy_weighted_round_robin": "weighted-round-robin (weighted)",
     "routing_strategy_fill_first": "fill-first (prioritize)"
   },
   "api_keys": {
@@ -520,6 +535,14 @@
     "status_disabled_success": "\"{{name}}\" disabled",
     "batch_status_success": "{{count}} files updated successfully",
     "batch_status_partial": "{{success}} updated, {{failed}} failed",
+    "batch_weight_button": "Set weight",
+    "batch_weight_title": "Set credential routing weight",
+    "batch_weight_description": "Apply one routing weight to {{count}} selected credentials. Clear removes the explicit weight and restores the default.",
+    "batch_weight_clear": "Clear weight",
+    "batch_weight_apply": "Apply weight",
+    "batch_weight_no_targets": "No current credentials are available for this weight update.",
+    "batch_weight_success": "Updated routing weight for {{count}} credentials.",
+    "batch_weight_partial": "Updated {{success}} credentials; {{failed}} failed ({{stale}} changed while selected).",
     "batch_delete_title": "Delete Selected Files",
     "batch_delete_confirm": "Are you sure you want to delete {{count}} files?",
     "batch_selected": "{{count}} selected",
@@ -1385,7 +1408,11 @@
       "current_targets": "Current objects",
       "no_current_targets": "No current object is available for this historical request.",
       "safe_headers": "Sanitized response headers",
-      "no_headers": "No safe response headers recorded"
+      "no_headers": "No safe response headers recorded",
+      "request_metadata": "Request metadata",
+      "direct_peer_ip": "Direct peer IP",
+      "x_forwarded_for": "Forwarded chain (unverified)",
+      "user_agent": "User-Agent"
     },
     "empty": {
       "credentials": "No credential activity",
@@ -1849,6 +1876,7 @@
           "routing_strategy": "Routing Strategy",
           "routing_strategy_hint": "Select credential selection strategy",
           "strategy_round_robin": "Round Robin",
+          "strategy_weighted_round_robin": "Weighted Round Robin",
           "strategy_fill_first": "Fill First",
           "session_affinity_ttl": "Session Affinity TTL",
           "force_model_prefix": "Force Model Prefix",
@@ -2633,6 +2661,7 @@
         "proxyUrl": "Proxy URL",
         "prefix": "Prefix",
         "fallback": "Fallback resource",
+        "weight": "Routing weight",
         "maxConcurrency": "Maximum concurrency",
         "models": "Models",
         "headers": "Headers",

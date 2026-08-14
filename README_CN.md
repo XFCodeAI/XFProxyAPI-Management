@@ -44,9 +44,11 @@
 - **仪表盘**：连接状态、服务版本/构建时间、关键数量概览、可用模型概览。
 - **配置面板**：可视化编辑常用 `config.yaml` 字段、基础设置与代理 `api-keys`；也支持源码编辑、YAML 高亮/搜索与保存前差异预览。
 - **AI 提供商**：
-  - Gemini/Codex/Claude/Vertex 配置（Base URL、Headers、代理、模型别名、排除模型、Prefix）。
-  - OpenAI 兼容提供商（多 Key、Header、自助从 `/v1/models` 拉取并导入模型别名、可选浏览器侧 `chat/completions` 测试）。
-- **认证文件**：上传/下载/删除 JSON 凭据，筛选/搜索/分页，标记 runtime-only；查看单个凭据可用模型（依赖后端支持）；管理 OAuth 排除模型（支持 `*` 通配符）；配置 OAuth 模型别名映射。
+  - Gemini/Interactions/Codex/xAI/Claude/Vertex 配置（Base URL、Headers、代理、模型别名、排除模型、Prefix 和可选调度权重）。
+  - OpenAI 兼容与 Kimi 提供商（多 Key、逐 Key 调度权重、Header、自助从 `/v1/models` 拉取并导入模型别名、可选连通性测试）。
+- **认证文件**：上传/下载/删除 JSON 凭据，筛选/搜索/分页，标记 runtime-only；单独设置、批量设置或清除调度权重；查看单个凭据可用模型（依赖后端支持）；管理 OAuth 排除模型（支持 `*` 通配符）；配置 OAuth 模型别名映射。
+
+调度权重是不得超过 `1,000,000` 的可选安全整数。省略时继承默认权重 `1`；非正数仍会保留凭证，但会将其排除出加权调度。提供商和凭证详情会显示实际生效值。
 - **OAuth**：对 Codex、Anthropic/Claude、Antigravity、Kimi、xAI/Grok 发起 OAuth/设备码流程并轮询状态；支持提交回调 URL 或 xAI/Grok 页面显示的 code；包含 Vertex JSON 凭据导入与 iFlow Cookie 导入。
 - **配额管理**：管理 Claude、Antigravity、Codex、Kimi、xAI/Grok 等提供商的配额上限与使用情况。
 - **日志**：增量拉取日志、自动刷新、搜索、隐藏管理端流量、清空日志；下载请求错误日志文件。

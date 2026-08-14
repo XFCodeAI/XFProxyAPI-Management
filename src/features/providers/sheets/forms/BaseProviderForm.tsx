@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CredentialGroupsField } from '@/components/credentialGroups/CredentialGroupsField';
+import { CredentialWeightInput } from '@/components/providers/CredentialWeightInput';
 import {
   IconDownload,
   IconEye,
@@ -17,8 +18,14 @@ import { TooltipIconButton } from '@/components/ui/TooltipControls';
 import { inputClass, textareaClass } from '@/components/ui/formStyles';
 import { hasDisableAllModelsRule } from '@/components/providers/utils';
 import { cn } from '@/lib/utils';
-import type { GeminiKeyConfig, OpenAIProviderConfig, ProviderKeyConfig } from '@/types';
+import type {
+  GeminiKeyConfig,
+  InteractionsKeyConfig,
+  OpenAIProviderConfig,
+  ProviderKeyConfig,
+} from '@/types';
 import { isValidMaxConcurrency, normalizeConcurrencySetting } from '@/utils/maxConcurrency';
+import { getCredentialWeightError } from '@/utils/credentialWeight';
 import type { ModelInfo } from '@/utils/models';
 import { PROVIDER_DESCRIPTORS } from '../../descriptors';
 import {
@@ -66,6 +73,7 @@ const emptyModel = (): ModelEntryInput => ({ name: '', alias: '' });
 const emptyApiKeyEntry = (): ApiKeyEntryInput => ({
   name: '',
   apiKey: '',
+  weight: undefined,
   groups: [],
   proxyUrl: '',
   concurrencyMode: 'inherit',
@@ -79,6 +87,7 @@ type PrimaryField =
   | 'authMode'
   | 'protocolMode'
   | 'retryOwner'
+  | 'requestRetry'
   | 'proxyUrl'
   | 'routing'
   | 'maxConcurrency'
@@ -104,6 +113,20 @@ const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
       'routing',
       'maxConcurrency',
       'testModel',
+    ],
+    toggleFields: ['fallback', 'disabled', 'disableCooling'],
+    advancedSections: ['headers', 'models', 'excludedModels'],
+    modelEntryMode: 'standard',
+  },
+  interactions: {
+    primaryFields: [
+      'name',
+      'apiKey',
+      'baseUrl',
+      'proxyUrl',
+      'routing',
+      'maxConcurrency',
+      'requestRetry',
     ],
     toggleFields: ['fallback', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels'],
@@ -212,12 +235,14 @@ function buildInitialForm(
       authMode: brand === 'claude' ? 'x-api-key' : undefined,
       protocolMode: brand === 'openaiCompatibility' ? 'chat-completions' : undefined,
       retryOwner: brand === 'openaiCompatibility' ? 'xfpa' : undefined,
+      requestRetry: undefined,
       proxyUrl: '',
       prefix: '',
       disabled: false,
       disableCooling: false,
       fallback: false,
       priority: undefined,
+      weight: undefined,
       concurrencyMode: 'inherit',
       maxConcurrency: 0,
       models: [emptyModel()],
@@ -295,6 +320,7 @@ function buildInitialForm(
               name: entry.name ?? '',
               apiKey: '',
               existingApiKey: entry.apiKey,
+              weight: entry.weight,
               groups: entry.groups ?? [],
               proxyUrl: entry.proxyUrl ?? '',
               authIndex: entry.authIndex,
@@ -306,7 +332,7 @@ function buildInitialForm(
     };
   }
 
-  const cfg = raw as GeminiKeyConfig & ProviderKeyConfig;
+  const cfg = raw as GeminiKeyConfig & InteractionsKeyConfig & ProviderKeyConfig;
   const concurrency = normalizeConcurrencySetting(cfg.concurrencyMode, cfg.maxConcurrency);
   const disabled = hasDisableAllModelsRule(cfg.excludedModels);
   const excludedList = stripDisableAllRule(cfg.excludedModels);
@@ -326,6 +352,8 @@ function buildInitialForm(
     disableCooling: cfg.disableCooling === true,
     fallback: cfg.fallback === true,
     priority: cfg.priority,
+    requestRetry: brand === 'interactions' ? cfg.requestRetry : undefined,
+    weight: cfg.weight,
     concurrencyMode: concurrency.mode,
     maxConcurrency: concurrency.maxConcurrency,
     models: cfg.models?.length
@@ -514,23 +542,66 @@ export function BaseProviderForm({
     () => inspectCodexImageRoute(form.codexImageRoute, imageRouteSuppliers),
     [form.codexImageRoute, imageRouteSuppliers]
   );
-  const selectedImageRouteSupplier = imageRouteInspection.supplier;
-  const imageRouteModelChoices = useMemo(
-    () => getCodexImageRouteModelChoices(selectedImageRouteSupplier),
-    [selectedImageRouteSupplier]
-  );
-  const selectedImageRouteSupplierValue =
+  const selectedImageRouteSupplier =
+    imageRouteInspection.supplier ??
     selectableImageRouteSuppliers.find(
       (supplier) =>
         supplier.name.toLowerCase() ===
         (form.codexImageRoute?.targetSupplier ?? '').trim().toLowerCase()
-    )?.name ?? '';
+    ) ??
+    null;
+  const imageRouteModelChoices = useMemo(
+    () => getCodexImageRouteModelChoices(selectedImageRouteSupplier),
+    [selectedImageRouteSupplier]
+  );
+  const configuredImageRouteSupplier = (form.codexImageRoute?.targetSupplier ?? '').trim();
+  const matchedImageRouteSupplier = selectableImageRouteSuppliers.find(
+    (supplier) => supplier.name.toLowerCase() === configuredImageRouteSupplier.toLowerCase()
+  );
+  const selectedImageRouteSupplierValue =
+    matchedImageRouteSupplier?.name ?? configuredImageRouteSupplier;
+  const imageRouteSupplierOptions = useMemo(() => {
+    const options = selectableImageRouteSuppliers.map((supplier) => ({
+      value: supplier.name,
+      label: supplier.name,
+    }));
+    if (
+      configuredImageRouteSupplier &&
+      !options.some(
+        (option) => option.value.toLowerCase() === configuredImageRouteSupplier.toLowerCase()
+      )
+    ) {
+      options.push({
+        value: configuredImageRouteSupplier,
+        label: configuredImageRouteSupplier,
+      });
+    }
+    return options;
+  }, [configuredImageRouteSupplier, selectableImageRouteSuppliers]);
+  const configuredImageRouteModel = (form.codexImageRoute?.targetModel ?? '').trim();
+  const matchedImageRouteModel = imageRouteModelChoices.find(
+    (model) => model.routeName.toLowerCase() === configuredImageRouteModel.toLowerCase()
+  );
   const selectedImageRouteModelValue =
-    imageRouteModelChoices.find(
-      (model) =>
-        model.routeName.toLowerCase() ===
-        (form.codexImageRoute?.targetModel ?? '').trim().toLowerCase()
-    )?.routeName ?? '';
+    matchedImageRouteModel?.routeName ?? configuredImageRouteModel;
+  const imageRouteModelOptions = useMemo(() => {
+    const options = imageRouteModelChoices.map((model) => ({
+      value: model.routeName,
+      label: formatCodexImageRouteModel(model),
+    }));
+    if (
+      configuredImageRouteModel &&
+      !options.some(
+        (option) => option.value.toLowerCase() === configuredImageRouteModel.toLowerCase()
+      )
+    ) {
+      options.push({
+        value: configuredImageRouteModel,
+        label: configuredImageRouteModel,
+      });
+    }
+    return options;
+  }, [configuredImageRouteModel, imageRouteModelChoices]);
 
   const existingModelNames = useMemo(() => {
     const set = new Set<string>();
@@ -705,6 +776,9 @@ export function BaseProviderForm({
     if (form.maxConcurrency !== undefined && !isValidMaxConcurrency(form.maxConcurrency)) {
       return t('providersPage.form.validation.maxConcurrency');
     }
+    if (getCredentialWeightError(form.weight)) {
+      return t('credential_weight.validation');
+    }
     if (
       form.apiKeyEntries?.some(
         (entry) =>
@@ -712,6 +786,14 @@ export function BaseProviderForm({
       )
     ) {
       return t('providersPage.form.validation.maxConcurrency');
+    }
+    if (form.apiKeyEntries?.some((entry) => getCredentialWeightError(entry.weight))) {
+      return t('credential_weight.validation');
+    }
+    if (form.requestRetry !== undefined && !Number.isInteger(form.requestRetry)) {
+      return t('providersPage.form.requestRetryInteger', {
+        defaultValue: 'Request retry count must be an integer.',
+      });
     }
     if (form.codexImageRoute?.enabled && imageRouteInspection.status === 'invalid') {
       return imageRouteIssueMessage();
@@ -1024,6 +1106,38 @@ export function BaseProviderForm({
           />
         ) : null}
 
+        {hasPrimaryField('requestRetry') ? (
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${fid}-requestRetry`}>
+              {t('config_management.visual.sections.network.request_retry', {
+                defaultValue: 'Request Retry Count',
+              })}
+            </label>
+            <input
+              id={`${fid}-requestRetry`}
+              type="number"
+              step="1"
+              className={inputClass}
+              value={form.requestRetry ?? ''}
+              onChange={(event) =>
+                updateField(
+                  'requestRetry',
+                  event.target.value === '' ? undefined : Number(event.target.value)
+                )
+              }
+              disabled={mutating}
+            />
+          </div>
+        ) : null}
+
+        {brand !== 'openaiCompatibility' ? (
+          <CredentialWeightInput
+            value={form.weight}
+            disabled={mutating}
+            onChange={(value) => updateField('weight', value)}
+          />
+        ) : null}
+
         {hasPrimaryField('testModel') ? (
           <div className={styles.field}>
             <label className={styles.label} htmlFor={`${fid}-testModel`}>
@@ -1181,10 +1295,7 @@ export function BaseProviderForm({
                   <Select
                     id={`${fid}-image-route-supplier`}
                     value={selectedImageRouteSupplierValue}
-                    options={selectableImageRouteSuppliers.map((supplier) => ({
-                      value: supplier.name,
-                      label: supplier.name,
-                    }))}
+                    options={imageRouteSupplierOptions}
                     placeholder={t('providersPage.imageRoute.selectSupplier')}
                     onChange={(value) => {
                       const supplier = selectableImageRouteSuppliers.find(
@@ -1209,10 +1320,7 @@ export function BaseProviderForm({
                   <Select
                     id={`${fid}-image-route-model`}
                     value={selectedImageRouteModelValue}
-                    options={imageRouteModelChoices.map((model) => ({
-                      value: model.routeName,
-                      label: formatCodexImageRouteModel(model),
-                    }))}
+                    options={imageRouteModelOptions}
                     placeholder={t('providersPage.imageRoute.selectModel')}
                     onChange={(value) =>
                       updateField('codexImageRoute', {

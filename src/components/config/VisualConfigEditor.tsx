@@ -41,6 +41,7 @@ import type {
   VisualConfigValidationErrors,
   VisualConfigValues,
 } from '@/types/visualConfig';
+import { ROUTING_STRATEGIES } from '@/utils/routingStrategy';
 import {
   ApiKeysCardEditor,
   PayloadFilterRulesEditor,
@@ -1255,20 +1256,22 @@ export function VisualConfigEditor({
                     >
                       <Select
                         value={values.routingStrategy}
-                        options={[
-                          {
-                            value: 'round-robin',
-                            label: t(
-                              'config_management.visual.sections.network.strategy_round_robin'
-                            ),
-                          },
-                          {
-                            value: 'fill-first',
-                            label: t(
-                              'config_management.visual.sections.network.strategy_fill_first'
-                            ),
-                          },
-                        ]}
+                        options={ROUTING_STRATEGIES.map((strategy) => ({
+                          value: strategy,
+                          label:
+                            strategy === 'round-robin'
+                              ? t(
+                                  'config_management.visual.sections.network.strategy_round_robin'
+                                )
+                              : strategy === 'weighted-round-robin'
+                                ? t(
+                                    'config_management.visual.sections.network.strategy_weighted_round_robin',
+                                    { defaultValue: 'Weighted Round Robin' }
+                                  )
+                                : t(
+                                    'config_management.visual.sections.network.strategy_fill_first'
+                                  ),
+                        }))}
                         id={`${routingStrategyLabelId}-select`}
                         disabled={disabled}
                         ariaLabelledBy={routingStrategyLabelId}

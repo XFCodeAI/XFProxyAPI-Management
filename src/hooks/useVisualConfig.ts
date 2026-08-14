@@ -15,6 +15,7 @@ import type {
   PayloadParamValidationErrorCode,
 } from '@/types/visualConfig';
 import { DEFAULT_VISUAL_VALUES } from '@/types/visualConfig';
+import { normalizeRoutingStrategy } from '@/utils/routingStrategy';
 import {
   resolveApiKeysText,
   resolveApiKeyCredentialGroups,
@@ -1174,7 +1175,7 @@ export function useVisualConfig() {
         quotaSwitchPreviewModel: Boolean(quotaExceeded?.['switch-preview-model'] ?? true),
         quotaAntigravityCredits: Boolean(quotaExceeded?.['antigravity-credits'] ?? false),
 
-        routingStrategy: routing?.strategy === 'fill-first' ? 'fill-first' : 'round-robin',
+        routingStrategy: normalizeRoutingStrategy(routing?.strategy) ?? 'round-robin',
         routingSessionAffinity: Boolean(
           routing?.['session-affinity'] ?? routing?.sessionAffinity ?? routing?.['sessionAffinity']
         ),
@@ -1490,7 +1491,10 @@ export function useVisualConfig() {
         if (routingDirty) {
           ensureMapInDoc(doc, ['routing']);
           if (dirtyFields.has('routingStrategy')) {
-            doc.setIn(['routing', 'strategy'], values.routingStrategy);
+            doc.setIn(
+              ['routing', 'strategy'],
+              normalizeRoutingStrategy(values.routingStrategy) ?? 'round-robin'
+            );
           }
           if (dirtyFields.has('routingSessionAffinity')) {
             setBooleanInDoc(doc, ['routing', 'session-affinity'], values.routingSessionAffinity);

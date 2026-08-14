@@ -87,6 +87,9 @@ export interface MonitoringRequest {
   executorType: string;
   resolvedModel: string;
   requestedModel: string;
+  directPeerIp: string;
+  xForwardedFor: string;
+  userAgent: string;
   authType: string;
   authIndex: string;
   reasoningEffort: string;
@@ -415,6 +418,9 @@ const normalizeRequest = (value: unknown, context: string): MonitoringRequest =>
     executorType: stringValue(record, 'executor_type', context),
     resolvedModel: stringValue(record, 'resolved_model', context),
     requestedModel: stringValue(record, 'requested_model', context),
+    directPeerIp: stringValue(record, 'direct_peer_ip', context),
+    xForwardedFor: stringValue(record, 'x_forwarded_for', context),
+    userAgent: stringValue(record, 'user_agent', context),
     authType: stringValue(record, 'auth_type', context),
     authIndex: stringValue(record, 'auth_index', context),
     reasoningEffort: stringValue(record, 'reasoning_effort', context),

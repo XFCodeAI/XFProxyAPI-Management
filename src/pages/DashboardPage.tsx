@@ -34,6 +34,7 @@ import { useApiKeysForModels } from '@/hooks/useApiKeysForModels';
 import { formatDateValue, formatUsd } from '@/utils/format';
 import { getDashboardModelsStatValue } from '@/utils/dashboard';
 import { getErrorMessage } from '@/utils/helpers';
+import { normalizeRoutingStrategy } from '@/utils/routingStrategy';
 import styles from './DashboardPage.module.scss';
 
 interface OverviewStat {
@@ -222,20 +223,27 @@ export function DashboardPage() {
   ];
 
   const routingStrategyRaw = config?.routingStrategy?.trim() || '';
+  const routingStrategy = normalizeRoutingStrategy(routingStrategyRaw);
   const routingStrategyDisplay = !routingStrategyRaw
     ? '-'
-    : routingStrategyRaw === 'round-robin'
+    : routingStrategy === 'round-robin'
       ? t('basic_settings.routing_strategy_round_robin')
-      : routingStrategyRaw === 'fill-first'
-        ? t('basic_settings.routing_strategy_fill_first')
-        : routingStrategyRaw;
+      : routingStrategy === 'weighted-round-robin'
+        ? t('basic_settings.routing_strategy_weighted_round_robin', {
+            defaultValue: 'weighted-round-robin (weighted)',
+          })
+        : routingStrategy === 'fill-first'
+          ? t('basic_settings.routing_strategy_fill_first')
+          : routingStrategyRaw;
   const routingStrategyBadgeClass = !routingStrategyRaw
     ? styles.configBadgeUnknown
-    : routingStrategyRaw === 'round-robin'
+    : routingStrategy === 'round-robin'
       ? styles.configBadgeRoundRobin
-      : routingStrategyRaw === 'fill-first'
-        ? styles.configBadgeFillFirst
-        : styles.configBadgeUnknown;
+      : routingStrategy === 'weighted-round-robin'
+        ? styles.configBadgeWeightedRoundRobin
+        : routingStrategy === 'fill-first'
+          ? styles.configBadgeFillFirst
+          : styles.configBadgeUnknown;
 
   const formattedDate = currentTime.toLocaleDateString(i18n.language, {
     weekday: 'long',

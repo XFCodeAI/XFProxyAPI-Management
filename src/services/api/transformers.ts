@@ -2,6 +2,7 @@ import type {
   ApiKeyEntry,
   CloakConfig,
   GeminiKeyConfig,
+  InteractionsKeyConfig,
   ModelAlias,
   OpenAIProviderConfig,
   ProviderKeyConfig,
@@ -11,6 +12,7 @@ import type { Config } from '@/types/config';
 import { buildHeaderObject } from '@/utils/headers';
 import { isRecord } from '@/utils/helpers';
 import { normalizeConcurrencySetting } from '@/utils/maxConcurrency';
+import { normalizeCredentialWeight } from '@/utils/credentialWeight';
 
 const normalizeBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
@@ -204,6 +206,8 @@ const normalizeApiKeyEntry = (entry: unknown): ApiKeyEntry | null => {
     proxyUrl: proxyUrl ? String(proxyUrl) : undefined,
   };
   if (name) result.name = name;
+  const weight = normalizeCredentialWeight(record?.weight);
+  if (weight !== undefined) result.weight = weight;
   if (authIndex) result.authIndex = authIndex;
   const runtimeStatus = normalizeProviderRuntimeStatus(record?.['runtime-status']);
   if (runtimeStatus) result.runtimeStatus = runtimeStatus;
@@ -237,6 +241,8 @@ const normalizeProviderKeyConfig = (item: unknown): ProviderKeyConfig | null => 
       config.priority = parsed;
     }
   }
+  const weight = normalizeCredentialWeight(record?.weight);
+  if (weight !== undefined) config.weight = weight;
   const fallback = normalizeBoolean(record?.fallback);
   if (fallback !== undefined) config.fallback = fallback;
   const concurrency = normalizeConcurrencySetting(
@@ -323,6 +329,8 @@ const normalizeGeminiKeyConfig = (item: unknown): GeminiKeyConfig | null => {
       config.priority = parsed;
     }
   }
+  const weight = normalizeCredentialWeight(record?.weight);
+  if (weight !== undefined) config.weight = weight;
   const fallback = normalizeBoolean(record?.fallback);
   if (fallback !== undefined) config.fallback = fallback;
   const concurrency = normalizeConcurrencySetting(
@@ -350,6 +358,22 @@ const normalizeGeminiKeyConfig = (item: unknown): GeminiKeyConfig | null => {
   const runtimeStatus = normalizeProviderRuntimeStatus(record?.['runtime-status']);
   if (runtimeStatus) config.runtimeStatus = runtimeStatus;
   return config;
+};
+
+const normalizeInteractionsKeyConfig = (item: unknown): InteractionsKeyConfig | null => {
+  const config = normalizeGeminiKeyConfig(item);
+  if (!config) return null;
+  const interactionsConfig: InteractionsKeyConfig = { ...config };
+
+  const record = isRecord(item) ? item : null;
+  const requestRetry = record?.['request-retry'];
+  if (requestRetry !== undefined && requestRetry !== null && String(requestRetry).trim() !== '') {
+    const parsed = Number(requestRetry);
+    if (Number.isInteger(parsed)) {
+      interactionsConfig.requestRetry = parsed;
+    }
+  }
+  return interactionsConfig;
 };
 
 const normalizeOpenAIProvider = (
@@ -500,6 +524,13 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
       .filter(Boolean) as GeminiKeyConfig[];
   }
 
+  const interactionsList = raw['interactions-api-key'];
+  if (Array.isArray(interactionsList)) {
+    config.interactionsApiKeys = interactionsList
+      .map((item) => normalizeInteractionsKeyConfig(item))
+      .filter(Boolean) as InteractionsKeyConfig[];
+  }
+
   const codexList = raw['codex-api-key'];
   if (Array.isArray(codexList)) {
     config.codexApiKeys = codexList
@@ -547,6 +578,7 @@ export {
   normalizeApiKeyEntry,
   normalizeCredentialGroups,
   normalizeGeminiKeyConfig,
+  normalizeInteractionsKeyConfig,
   normalizeModelAliases,
   normalizeOpenAIProvider,
   normalizeProviderKeyConfig,

@@ -41,6 +41,7 @@ import {
   getProviderResourceUsage,
 } from '../providerUsage';
 import { getProviderHomepageUrl } from '../providerHomepage';
+import { resolveEffectiveCredentialWeight } from '@/utils/credentialWeight';
 import { getProviderRuntimeObservation } from '@/features/runtimeObservations/selectors';
 import {
   supplierBillingResourceKey,
@@ -228,6 +229,7 @@ export function ProviderResourceTable({
       : [imageRouteInspection.targetSupplier, imageRouteInspection.targetModel]
           .filter(Boolean)
           .join(' / ');
+    const effectiveWeight = resolveEffectiveCredentialWeight(resource.weight);
     const secondary = [
       resource.apiKeyPreview,
       resource.apiKeyEntryCount > 1
@@ -237,6 +239,11 @@ export function ProviderResourceTable({
         ? t('providersPage.table.groupSummary', { groups: resource.groups.join(', ') })
         : null,
       resource.fallback ? t('providersPage.table.fallbackTag') : null,
+      resource.brand === 'openaiCompatibility' || resource.brand === 'kimi'
+        ? t('credential_weight.per_key_short')
+        : `${t('credential_weight.summary', {
+            value: effectiveWeight,
+          })}${effectiveWeight === 0 ? ` (${t('credential_weight.zero_badge')})` : ''}`,
     ].filter((value): value is string => Boolean(value));
 
     return (

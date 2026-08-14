@@ -73,6 +73,8 @@ test('waits indefinitely through a simulated 30 second publication delay', async
 
   assert.equal(result.status, 'ready');
   assert.equal(result.credential, target);
+  assert.equal(result.inventoryId, receipt.inventory_id);
+  assert.equal(result.revision, receipt.revision);
   assert.equal(elapsed, 30_000);
   assert.equal(refreshCount, 31);
 });
@@ -101,7 +103,27 @@ test('retries transient refresh failures with bounded backoff', async () => {
   });
 
   assert.equal(result.status, 'ready');
+  assert.equal(result.inventoryId, receipt.inventory_id);
+  assert.equal(result.revision, receipt.revision);
   assert.deepEqual(delays, [1_000, 2_000, 4_000]);
+});
+
+test('returns the authoritative inventory version after a server restart', async () => {
+  const controller = new AbortController();
+  const result = await waitForOAuthCredentialPublication({
+    credential: receipt,
+    signal: controller.signal,
+    isCurrent: () => true,
+    refresh: async () => ({
+      inventory_id: 'inventory-after-restart',
+      revision: 3,
+      files: [target],
+    }),
+  });
+
+  assert.equal(result.status, 'ready');
+  assert.equal(result.inventoryId, 'inventory-after-restart');
+  assert.equal(result.revision, 3);
 });
 
 test('cancels without publishing a stale credential', async () => {

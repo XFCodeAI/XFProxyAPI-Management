@@ -23,6 +23,7 @@ import {
   XAI_CONFIG,
 } from '@/components/quota';
 import { AuthFileModelsModal } from '@/features/authFiles/components/AuthFileModelsModal';
+import { AuthFilesBatchWeightModal } from '@/features/authFiles/components/AuthFilesBatchWeightModal';
 import { AuthFilesGroupAssignmentModal } from '@/features/authFiles/components/AuthFilesGroupAssignmentModal';
 import { AuthFileUploadProgress } from '@/features/authFiles/components/AuthFileUploadProgress';
 import { AuthFileAvailabilityReprobeResultModal } from '@/features/authFiles/components/AuthFileAvailabilityReprobeResultModal';
@@ -32,6 +33,7 @@ import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components
 import { AuthFilesLegacyRepairModal } from '@/features/authFiles/components/AuthFilesLegacyRepairModal';
 import { CodexIdentityAuditModal } from '@/features/authFiles/components/CodexIdentityAuditModal';
 import { useAuthFilesData } from '@/features/authFiles/hooks/useAuthFilesData';
+import { useAuthFilesBatchWeight } from '@/features/authFiles/hooks/useAuthFilesBatchWeight';
 import { useAuthFilesModels } from '@/features/authFiles/hooks/useAuthFilesModels';
 import { useAuthFilesPrefixProxyEditor } from '@/features/authFiles/hooks/useAuthFilesPrefixProxyEditor';
 import { isRuntimeOnlyAuthFile } from '@/features/authFiles/constants';
@@ -200,6 +202,9 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const setInventoryQuery = useAuthInventoryStore((state) => state.setQuery);
   const nextInventoryPage = useAuthInventoryStore((state) => state.nextPage);
   const previousInventoryPage = useAuthInventoryStore((state) => state.previousPage);
+  const commitInventoryMutationVersion = useAuthInventoryStore(
+    (state) => state.commitMutationVersion
+  );
 
   const {
     files,
@@ -249,6 +254,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     closeCredentialGroupAssignment,
     confirmCredentialGroupAssignment,
   } = useAuthFilesData();
+  const batchWeight = useAuthFilesBatchWeight({ onSuccess: deselectAll });
   const [pluginProviders, setPluginProviders] = useState<PluginQuotaProviderDefinition[]>([]);
   const [pluginProvidersLoaded, setPluginProvidersLoaded] = useState(false);
   const [excludedModels, setExcludedModels] = useState<Record<string, string[]>>({});
@@ -342,6 +348,13 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     disableControls ||
     selectedNames.length === 0 ||
     batchStatusUpdating ||
+    batchWeight.saving ||
+    selectedHasStatusUpdating;
+  const batchWeightButtonDisabled =
+    disableControls ||
+    selectedNames.length === 0 ||
+    batchStatusUpdating ||
+    batchWeight.saving ||
     selectedHasStatusUpdating;
 
   useEffect(() => {
@@ -481,6 +494,7 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
       if (publication.status === 'cancelled' || !attempt.isCurrent()) return;
 
       const target = publication.credential;
+      commitInventoryMutationVersion(publication.inventoryId, publication.revision, [target]);
       if (isRuntimeOnlyAuthFile(target) || target.assignable === false) {
         throw new Error(
           t('auth_login.oauth_credential_not_assignable', {
@@ -494,7 +508,12 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
       dismissOAuthDialogForProvider(providerId);
       openCredentialGroupAssignment([target], 'oauth');
     },
-    [dismissOAuthDialogForProvider, openCredentialGroupAssignment, t]
+    [
+      commitInventoryMutationVersion,
+      dismissOAuthDialogForProvider,
+      openCredentialGroupAssignment,
+      t,
+    ]
   );
 
   const handleVisibleQuotaCredentialsChange = useCallback(
@@ -956,6 +975,15 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
                   {t('auth_files.batch_disable')}
                 </Button>
                 <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => batchWeight.openDialog(selectedNames)}
+                  disabled={batchWeightButtonDisabled}
+                  loading={batchWeight.saving}
+                >
+                  {t('auth_files.batch_weight_button', { defaultValue: 'Set weight' })}
+                </Button>
+                <Button
                   variant="danger"
                   size="sm"
                   onClick={() => batchDelete(selectedNames)}
@@ -971,6 +999,17 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
             document.body
           )
         : null}
+
+      <AuthFilesBatchWeightModal
+        open={batchWeight.open}
+        targetCount={batchWeight.targetCount}
+        value={batchWeight.value}
+        saving={batchWeight.saving}
+        onChange={batchWeight.setValue}
+        onApply={batchWeight.applyWeight}
+        onClear={batchWeight.clearWeight}
+        onClose={batchWeight.closeDialog}
+      />
 
       {oauthDialogProvider ? (
         <QuotaOAuthDialog

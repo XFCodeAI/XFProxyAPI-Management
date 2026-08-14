@@ -1,6 +1,56 @@
-type OAuthAttemptState = {
-  state?: string;
+export type OAuthAttemptToken = {
+  provider: string;
+  connectionFingerprint: string;
+  id: number;
 };
+
+const normalizeConnectionPart = (value: unknown): string => String(value ?? '').trim();
+
+export function createOAuthConnectionFingerprint(apiBase: string, managementKey: string): string {
+  const normalizedBase = normalizeConnectionPart(apiBase).replace(/\/+$/, '');
+  const normalizedKey = normalizeConnectionPart(managementKey);
+  if (!normalizedBase || !normalizedKey) return '';
+
+  const input = `${normalizedBase}\u0000${normalizedKey}`;
+  let hashA = 0x811c9dc5;
+  let hashB = 0x9e3779b9;
+  for (let index = 0; index < input.length; index += 1) {
+    const code = input.charCodeAt(index);
+    hashA = Math.imul(hashA ^ code, 0x01000193);
+    hashB = Math.imul(hashB ^ code, 0x85ebca6b);
+  }
+  return `v1:${(hashA >>> 0).toString(36)}${(hashB >>> 0).toString(36)}`;
+}
+
+export function createOAuthAttemptToken(
+  provider: string,
+  connectionFingerprint: string,
+  id: number
+): OAuthAttemptToken {
+  return {
+    provider: provider.trim().toLowerCase(),
+    connectionFingerprint: connectionFingerprint.trim(),
+    id,
+  };
+}
+
+export function oauthAttemptTokenKey(token: OAuthAttemptToken): string {
+  return JSON.stringify([token.provider, token.connectionFingerprint, token.id]);
+}
+
+export function isCurrentOAuthAttemptToken(
+  started: OAuthAttemptToken,
+  current: OAuthAttemptToken | undefined,
+  currentConnectionFingerprint: string
+): boolean {
+  return Boolean(
+    current &&
+    started.provider === current.provider &&
+    started.connectionFingerprint === current.connectionFingerprint &&
+    started.id === current.id &&
+    started.connectionFingerprint === currentConnectionFingerprint
+  );
+}
 
 export function beginOAuthCallbackSubmission(
   submissions: Record<string, string | undefined>,
@@ -20,14 +70,6 @@ export function finishOAuthCallbackSubmission(
   if (submissions[provider] === state) {
     delete submissions[provider];
   }
-}
-
-export function isCurrentOAuthAttempt(
-  states: Record<string, OAuthAttemptState>,
-  provider: string,
-  state: string
-): boolean {
-  return states[provider]?.state === state;
 }
 
 export function oauthCallbackReportsError(input: string): boolean {

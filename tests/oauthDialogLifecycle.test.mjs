@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   beginOAuthCallbackSubmission,
+  createOAuthAttemptToken,
+  createOAuthConnectionFingerprint,
   finishOAuthCallbackSubmission,
-  isCurrentOAuthAttempt,
+  isCurrentOAuthAttemptToken,
+  oauthAttemptTokenKey,
   oauthCallbackReportsError,
 } from '../src/hooks/oauthAttemptLifecycle.ts';
 
@@ -28,14 +31,42 @@ test('stale completion cannot clear a newer attempt lock', () => {
   assert.equal(submissions.codex, 'state-new');
 });
 
-test('asynchronous callback result applies only to its exact provider and state', () => {
-  const states = {
-    codex: { state: 'state-a' },
-    xai: { state: 'state-b' },
-  };
-  assert.equal(isCurrentOAuthAttempt(states, 'codex', 'state-a'), true);
-  assert.equal(isCurrentOAuthAttempt(states, 'codex', 'state-b'), false);
-  assert.equal(isCurrentOAuthAttempt(states, 'xai', 'state-a'), false);
+test('asynchronous result applies only to its exact provider, connection, and attempt ID', () => {
+  const connectionA = createOAuthConnectionFingerprint('https://a.example/', 'key-a');
+  const connectionB = createOAuthConnectionFingerprint('https://b.example', 'key-b');
+  const first = createOAuthAttemptToken('codex', connectionA, 1);
+  const second = createOAuthAttemptToken('codex', connectionA, 2);
+
+  assert.equal(isCurrentOAuthAttemptToken(first, first, connectionA), true);
+  assert.equal(isCurrentOAuthAttemptToken(first, second, connectionA), false);
+  assert.equal(isCurrentOAuthAttemptToken(first, first, connectionB), false);
+  assert.equal(
+    isCurrentOAuthAttemptToken(first, createOAuthAttemptToken('xai', connectionA, 1), connectionA),
+    false
+  );
+  assert.notEqual(connectionA, connectionB);
+});
+
+test('changing only the management key invalidates the previous connection scope', () => {
+  const firstConnection = createOAuthConnectionFingerprint('https://a.example/', 'key-a');
+  const nextConnection = createOAuthConnectionFingerprint('https://a.example', 'key-b');
+  const attempt = createOAuthAttemptToken('codex', firstConnection, 1);
+
+  assert.notEqual(firstConnection, nextConnection);
+  assert.equal(isCurrentOAuthAttemptToken(attempt, attempt, nextConnection), false);
+});
+
+test('callback locks are scoped to the internal attempt token instead of OAuth state alone', () => {
+  const connection = createOAuthConnectionFingerprint('https://a.example', 'key-a');
+  const first = oauthAttemptTokenKey(createOAuthAttemptToken('codex', connection, 1));
+  const second = oauthAttemptTokenKey(createOAuthAttemptToken('codex', connection, 2));
+  const submissions = {};
+
+  assert.equal(beginOAuthCallbackSubmission(submissions, 'codex', first), true);
+  finishOAuthCallbackSubmission(submissions, 'codex', second);
+  assert.equal(submissions.codex, first);
+  finishOAuthCallbackSubmission(submissions, 'codex', first);
+  assert.equal(submissions.codex, undefined);
 });
 
 test('OAuth error callbacks remain visible after backend acceptance', () => {

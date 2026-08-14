@@ -82,6 +82,7 @@ const installMockAPI = async (page: Page) => {
           },
         ],
         total: 1,
+        group_totals: { [oauthOnlyGroup]: 1 },
         revision: 1,
         inventory_id: 'group-navigation-inventory',
       });
@@ -135,7 +136,7 @@ test('credential group link filters provider relays and preserves history', asyn
 
   const activeNotice = page.locator('[data-state="active"]');
   await expect(activeNotice).toContainText(relayGroup);
-  await expect(page.getByText('Team Codex relay', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Team Codex relay', exact: true })).toBeVisible();
   await expect(page.getByText('Unrelated Codex relay', { exact: true })).toHaveCount(0);
 
   await page

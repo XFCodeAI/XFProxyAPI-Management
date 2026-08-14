@@ -818,6 +818,20 @@ export function RequestMonitoringPage() {
     const credential = request.identities.credential;
     const apiKey = request.identities.apiKey;
     const expandable = hasMonitoringEvidence(request);
+    const requestMetadata = [
+      {
+        label: t('request_monitoring.details.direct_peer_ip'),
+        value: request.directPeerIp,
+      },
+      {
+        label: t('request_monitoring.details.x_forwarded_for'),
+        value: request.xForwardedFor,
+      },
+      {
+        label: t('request_monitoring.details.user_agent'),
+        value: request.userAgent,
+      },
+    ].filter((entry) => entry.value);
     return (
       <div
         className={styles.requestRow}
@@ -963,6 +977,19 @@ export function RequestMonitoringPage() {
                 <strong>{t('request_monitoring.details.no_headers')}</strong>
               )}
             </div>
+            {requestMetadata.length ? (
+              <div className={styles.headerEvidence}>
+                <span>{t('request_monitoring.details.request_metadata')}</span>
+                <dl>
+                  {requestMetadata.map((entry) => (
+                    <div key={entry.label}>
+                      <dt>{entry.label}</dt>
+                      <dd>{entry.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

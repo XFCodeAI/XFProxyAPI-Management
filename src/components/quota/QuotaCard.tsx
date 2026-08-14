@@ -19,13 +19,13 @@ import {
 import {
   formatModified,
   getAuthFileIcon,
-  getAuthFileStatusMessage,
   getTypeColor,
   getTypeLabel,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
   parsePriorityValue,
 } from '@/features/authFiles/constants';
+import { resolveAuthFileStatusWarning } from '@/features/authFiles/statusWarning';
 import type { AuthFileItem } from '@/types';
 import type { RuntimeObservationResource } from '@/types/runtimeObservation';
 import {
@@ -40,8 +40,6 @@ import quotaStyles from '@/pages/QuotaPage.module.scss';
 import authStyles from '@/pages/AuthFilesPage.module.scss';
 
 type QuotaStatus = 'idle' | 'loading' | 'success' | 'error';
-
-const HEALTHY_STATUS_MESSAGES = new Set(['ok', 'healthy', 'ready', 'success', 'available']);
 
 const normalizeCredentialGroups = (groups: AuthFileItem['groups']) => {
   if (!Array.isArray(groups)) return [];
@@ -168,9 +166,9 @@ export function QuotaCard<TState extends QuotaStatusState>({
   const typeLabel = getTypeLabel(t, providerKey);
   const providerIcon = getAuthFileIcon(providerKey, resolvedTheme);
   const concurrency = resolveAuthFileConcurrencySetting(item);
-  const rawStatusMessage = getAuthFileStatusMessage(item);
-  const hasStatusWarning =
-    Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase());
+  const statusWarning = resolveAuthFileStatusWarning(item, runtimeResource);
+  const rawStatusMessage = statusWarning.message;
+  const hasStatusWarning = statusWarning.hasProblem;
   const priorityValue = parsePriorityValue(item.priority ?? item['priority']);
   const noteValue = typeof item.note === 'string' ? item.note.trim() : '';
   const credentialGroups = normalizeCredentialGroups(item.groups);
@@ -348,7 +346,7 @@ export function QuotaCard<TState extends QuotaStatusState>({
             )}
           </div>
 
-          {rawStatusMessage && hasStatusWarning && (
+          {rawStatusMessage && statusWarning.hasRawWarning && (
             <div className={authStyles.healthStatusMessage} title={rawStatusMessage}>
               <IconInfo className={authStyles.messageIcon} size={14} />
               <span>{rawStatusMessage}</span>

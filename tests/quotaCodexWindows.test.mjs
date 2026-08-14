@@ -63,7 +63,8 @@ try {
   const requests = [];
 
   try {
-    codexQuotaApi.get = async (authIndex) => {
+    codexQuotaApi.get = async (target) => {
+      const authIndex = typeof target === 'string' ? target : target.authIndex;
       requests.push(authIndex);
       return {
         authIndex,
@@ -143,17 +144,19 @@ try {
       true
     );
 
-    codexQuotaApi.get = async (authIndex) => ({
-      authIndex,
-      account: accountEvidence({
-        credentialPlanType: 'plus',
-        upstreamPlanType: 'team',
-        accountMatchesUpstream: false,
-        tokenClaimMismatch: true,
-      }),
-      observedAt: '2000-01-01T00:00:00Z',
-      subscriptionActiveUntil: '2030-01-01T00:00:00Z',
-      usage: {
+    codexQuotaApi.get = async (target) => {
+      const authIndex = typeof target === 'string' ? target : target.authIndex;
+      return {
+        authIndex,
+        account: accountEvidence({
+          credentialPlanType: 'plus',
+          upstreamPlanType: 'team',
+          accountMatchesUpstream: false,
+          tokenClaimMismatch: true,
+        }),
+        observedAt: '2000-01-01T00:00:00Z',
+        subscriptionActiveUntil: '2030-01-01T00:00:00Z',
+        usage: {
         rate_limit: {
           allowed: true,
           limit_reached: false,
@@ -195,20 +198,21 @@ try {
           },
         ],
       },
-      resetCredits: {
-        availableCount: 1,
-        credits: [
-          {
-            id: 'sanitized-credit',
-            status: 'available',
-            grantedAt: '2029-01-01T00:00:00Z',
-            expiresAt: '2030-01-01T00:00:00Z',
-          },
-        ],
-        error: '',
-        upstreamStatus: null,
-      },
-    });
+        resetCredits: {
+          availableCount: 1,
+          credits: [
+            {
+              id: 'sanitized-credit',
+              status: 'available',
+              grantedAt: '2029-01-01T00:00:00Z',
+              expiresAt: '2030-01-01T00:00:00Z',
+            },
+          ],
+          error: '',
+          upstreamStatus: null,
+        },
+      };
+    };
 
     const facts = await CODEX_CONFIG.fetchQuota(
       { name: 'codex.json', type: 'codex', auth_index: 'codex:2' },

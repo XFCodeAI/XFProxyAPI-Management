@@ -364,6 +364,9 @@ export const hasCurrentMonitoringTarget = (request: MonitoringRequest): boolean 
 export const hasMonitoringEvidence = (request: MonitoringRequest): boolean =>
   request.result === 'failure' ||
   Boolean(request.requestId) ||
+  Boolean(request.directPeerIp) ||
+  Boolean(request.xForwardedFor) ||
+  Boolean(request.userAgent) ||
   Object.keys(request.responseHeaders).length > 0;
 
 export const mergeMonitoringRequests = (

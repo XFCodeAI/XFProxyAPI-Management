@@ -67,6 +67,8 @@ const installMockAPI = async (page: Page) => {
     }
     if (path === '/codex/quota') {
       return routeJSON(route, {
+        credential_id: 'credential-k12',
+        credential_generation: 1,
         auth_index: 'codex:k12',
         account: {
           selected_account_fingerprint: '64dfd1aa5048',

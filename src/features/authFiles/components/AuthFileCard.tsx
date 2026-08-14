@@ -25,11 +25,11 @@ import {
 } from '@/utils/recentRequests';
 import { formatFileSize } from '@/utils/format';
 import { resolveAuthFileConcurrencySetting } from '@/utils/maxConcurrency';
+import { resolveEffectiveCredentialWeight } from '@/utils/credentialWeight';
 import {
   QUOTA_PROVIDER_TYPES,
   formatModified,
   getAuthFileIcon,
-  getAuthFileStatusMessage,
   getTypeColor,
   getTypeLabel,
   isRuntimeOnlyAuthFile,
@@ -39,11 +39,10 @@ import {
   type QuotaProviderType,
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
+import { resolveAuthFileStatusWarning } from '@/features/authFiles/statusWarning';
 import type { AuthFileStatusBarData } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
 import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQuotaSection';
 import styles from '@/pages/AuthFilesPage.module.scss';
-
-const HEALTHY_STATUS_MESSAGES = new Set(['ok', 'healthy', 'ready', 'success', 'available']);
 
 export type AuthFileCardProps = {
   file: AuthFileItem;
@@ -152,11 +151,12 @@ export function AuthFileCard(props: AuthFileCardProps) {
     ? statusBarDataFromRecentRequests(recentBuckets)
     : (authIndexKey && statusBarCache.get(authIndexKey)) ||
       statusBarDataFromRecentRequests(recentBuckets);
-  const rawStatusMessage = getAuthFileStatusMessage(file);
-  const hasStatusWarning =
-    Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase());
+  const statusWarning = resolveAuthFileStatusWarning(file, runtimeResource);
+  const rawStatusMessage = statusWarning.message;
+  const hasStatusWarning = statusWarning.hasProblem;
 
   const priorityValue = parsePriorityValue(file.priority ?? file['priority']);
+  const weightValue = resolveEffectiveCredentialWeight(file.weight ?? file['weight']);
   const noteValue = typeof file.note === 'string' ? file.note.trim() : '';
   const credentialGroups = normalizeCredentialGroups(file.groups);
   const visibleCredentialGroups = credentialGroups.slice(0, 3);
@@ -284,9 +284,15 @@ export function AuthFileCard(props: AuthFileCardProps) {
                 </span>
               </div>
             )}
+            <div className={`${styles.metaItem} ${styles.priorityBadge}`}>
+              <span className={styles.metaLabel}>{t('credential_weight.label')}</span>
+              <span className={`${styles.metaValue} ${styles.priorityValue}`}>
+                {weightValue === 0 ? `0 (${t('credential_weight.zero_badge')})` : weightValue}
+              </span>
+            </div>
           </div>
 
-          {rawStatusMessage && hasStatusWarning && (
+          {rawStatusMessage && statusWarning.hasRawWarning && (
             <div className={styles.healthStatusMessage} title={rawStatusMessage}>
               <IconInfo className={styles.messageIcon} size={14} />
               <span>{rawStatusMessage}</span>

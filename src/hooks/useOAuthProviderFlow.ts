@@ -8,9 +8,13 @@ import { getErrorMessage, isRecord } from '@/utils/helpers';
 import { waitForOAuthStatus } from './oauthStatusPolling';
 import {
   beginOAuthCallbackSubmission,
+  createOAuthAttemptToken,
+  createOAuthConnectionFingerprint,
   finishOAuthCallbackSubmission,
-  isCurrentOAuthAttempt,
+  isCurrentOAuthAttemptToken,
+  oauthAttemptTokenKey,
   oauthCallbackReportsError,
+  type OAuthAttemptToken,
 } from './oauthAttemptLifecycle';
 
 export interface OAuthProviderState {
@@ -27,6 +31,8 @@ export interface OAuthProviderState {
 }
 
 export interface OAuthAttemptContext {
+  attemptId: number;
+  connectionFingerprint: string;
   state: string;
   signal: AbortSignal;
   isCurrent: () => boolean;
@@ -42,8 +48,9 @@ interface UseOAuthProviderFlowOptions {
 }
 
 interface OAuthProviderAttempt {
-  id: number;
+  token: OAuthAttemptToken;
   state?: string;
+  completionStarted: boolean;
   controller: AbortController;
 }
 
@@ -154,6 +161,9 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const apiBase = useAuthStore((state) => state.apiBase);
+  const managementKey = useAuthStore((state) => state.managementKey);
+  const connectionFingerprint = createOAuthConnectionFingerprint(apiBase, managementKey);
   const [states, setStates] = useState<Record<string, OAuthProviderState>>({});
   const statesRef = useRef<Record<string, OAuthProviderState>>({});
   const cancelRequested = useRef<Partial<Record<string, boolean>>>({});
@@ -161,6 +171,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
   const callbackSubmissions = useRef<Partial<Record<string, string>>>({});
   const attempts = useRef<Partial<Record<string, OAuthProviderAttempt>>>({});
   const attemptSequence = useRef(0);
+  const connectionFingerprintRef = useRef(connectionFingerprint);
 
   useEffect(() => {
     statesRef.current = states;
@@ -192,15 +203,28 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
     [clearSuccessResetTimer]
   );
 
-  const abortProviderAttempt = useCallback((provider: string) => {
-    attempts.current[provider]?.controller.abort();
+  const abortProviderAttempt = useCallback((provider: string): OAuthProviderAttempt | undefined => {
+    const attempt = attempts.current[provider];
+    attempt?.controller.abort();
     delete attempts.current[provider];
+    return attempt;
+  }, []);
+
+  const currentConnectionFingerprint = useCallback(() => {
+    const auth = useAuthStore.getState();
+    return createOAuthConnectionFingerprint(auth.apiBase, auth.managementKey);
   }, []);
 
   const isCurrentProviderAttempt = useCallback(
     (provider: string, attempt: OAuthProviderAttempt): boolean =>
-      attempts.current[provider] === attempt && !attempt.controller.signal.aborted,
-    []
+      attempts.current[provider] === attempt &&
+      !attempt.controller.signal.aborted &&
+      isCurrentOAuthAttemptToken(
+        attempt.token,
+        attempts.current[provider]?.token,
+        currentConnectionFingerprint()
+      ),
+    [currentConnectionFingerprint]
   );
 
   const resetProviderAttempt = useCallback(
@@ -223,7 +247,14 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
 
   const completeProviderAuth = useCallback(
     async (provider: string, credential: OAuthCredentialResult, attempt: OAuthProviderAttempt) => {
-      if (!attempt.state || !isCurrentProviderAttempt(provider, attempt)) return;
+      if (
+        !attempt.state ||
+        attempt.completionStarted ||
+        !isCurrentProviderAttempt(provider, attempt)
+      ) {
+        return;
+      }
+      attempt.completionStarted = true;
       cancelRequested.current[provider] = false;
       delete callbackSubmissions.current[provider];
       clearSuccessResetTimer(provider);
@@ -241,6 +272,8 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
       });
 
       const context: OAuthAttemptContext = {
+        attemptId: attempt.token.id,
+        connectionFingerprint: attempt.token.connectionFingerprint,
         state: attempt.state,
         signal: attempt.controller.signal,
         isCurrent: () => isCurrentProviderAttempt(provider, attempt),
@@ -333,12 +366,23 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
 
   const startAuth = useCallback(
     async (provider: string, options: OAuthStartOptions = {}) => {
-      abortProviderAttempt(provider);
+      const supersededAttempt = abortProviderAttempt(provider);
+      if (
+        supersededAttempt?.state &&
+        supersededAttempt.token.connectionFingerprint === currentConnectionFingerprint()
+      ) {
+        void oauthApi.cancelAuth(provider, supersededAttempt.state).catch(() => {});
+      }
       clearProviderTimers(provider);
       cancelRequested.current[provider] = false;
       delete callbackSubmissions.current[provider];
       const attempt: OAuthProviderAttempt = {
-        id: ++attemptSequence.current,
+        token: createOAuthAttemptToken(
+          provider,
+          currentConnectionFingerprint(),
+          ++attemptSequence.current
+        ),
+        completionStarted: false,
         controller: new AbortController(),
       };
       attempts.current[provider] = attempt;
@@ -355,7 +399,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
       try {
         const res = await oauthApi.startAuth(provider, options);
         if (cancelRequested.current[provider] || !isCurrentProviderAttempt(provider, attempt)) {
-          if (res.state) {
+          if (res.state && attempt.token.connectionFingerprint === currentConnectionFingerprint()) {
             void oauthApi.cancelAuth(provider, res.state).catch(() => {});
           }
           return;
@@ -395,6 +439,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
     [
       abortProviderAttempt,
       clearProviderTimers,
+      currentConnectionFingerprint,
       getProviderText,
       isCurrentProviderAttempt,
       showNotification,
@@ -418,7 +463,8 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
 
   const cancelAuth = useCallback(
     (provider: string) => {
-      const activeState = statesRef.current[provider]?.state;
+      const activeAttempt = attempts.current[provider];
+      const activeState = activeAttempt?.state ?? statesRef.current[provider]?.state;
       cancelRequested.current[provider] = true;
       delete callbackSubmissions.current[provider];
       abortProviderAttempt(provider);
@@ -431,18 +477,22 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         statesRef.current = updated;
         return updated;
       });
-      if (activeState) {
+      if (
+        activeState &&
+        activeAttempt?.token.connectionFingerprint === currentConnectionFingerprint()
+      ) {
         void oauthApi.cancelAuth(provider, activeState).catch(() => {});
       }
     },
-    [abortProviderAttempt, clearProviderTimers]
+    [abortProviderAttempt, clearProviderTimers, currentConnectionFingerprint]
   );
 
   const submitCallback = useCallback(
     async (provider: string): Promise<boolean> => {
-      const attempt = statesRef.current[provider];
-      const attemptState = attempt?.state?.trim() ?? '';
-      const callbackInput = (attempt?.callbackUrl || '').trim();
+      const providerAttempt = attempts.current[provider];
+      const state = statesRef.current[provider];
+      const attemptState = providerAttempt?.state?.trim() ?? '';
+      const callbackInput = (state?.callbackUrl || '').trim();
       const callbackReportsError = oauthCallbackReportsError(callbackInput);
       if (!callbackInput) {
         showNotification(
@@ -459,6 +509,9 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         showNotification(t('auth_login.missing_state'), 'warning');
         return false;
       }
+      if (!providerAttempt || !isCurrentProviderAttempt(provider, providerAttempt)) {
+        return false;
+      }
       const redirectUrl = resolveCallbackUrl(provider, callbackInput, attemptState);
       if (!redirectUrl) {
         showNotification(
@@ -471,7 +524,8 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         );
         return false;
       }
-      if (!beginOAuthCallbackSubmission(callbackSubmissions.current, provider, attemptState)) {
+      const submissionKey = oauthAttemptTokenKey(providerAttempt.token);
+      if (!beginOAuthCallbackSubmission(callbackSubmissions.current, provider, submissionKey)) {
         return false;
       }
       updateProviderState(provider, {
@@ -483,7 +537,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         await oauthApi.submitCallback(provider, redirectUrl);
         if (
           cancelRequested.current[provider] ||
-          !isCurrentOAuthAttempt(statesRef.current, provider, attemptState)
+          !isCurrentProviderAttempt(provider, providerAttempt)
         ) {
           return false;
         }
@@ -493,7 +547,7 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
       } catch (err: unknown) {
         if (
           cancelRequested.current[provider] ||
-          !isCurrentOAuthAttempt(statesRef.current, provider, attemptState)
+          !isCurrentProviderAttempt(provider, providerAttempt)
         ) {
           return false;
         }
@@ -516,11 +570,24 @@ export function useOAuthProviderFlow({ getProviderText, onSuccess }: UseOAuthPro
         showNotification(notificationMessage, 'error');
         return false;
       } finally {
-        finishOAuthCallbackSubmission(callbackSubmissions.current, provider, attemptState);
+        finishOAuthCallbackSubmission(callbackSubmissions.current, provider, submissionKey);
       }
     },
-    [showNotification, t, updateProviderState]
+    [isCurrentProviderAttempt, showNotification, t, updateProviderState]
   );
+
+  useEffect(() => {
+    const previousFingerprint = connectionFingerprintRef.current;
+    connectionFingerprintRef.current = connectionFingerprint;
+    if (previousFingerprint === connectionFingerprint) return;
+
+    Object.keys(attempts.current).forEach(abortProviderAttempt);
+    Object.keys(successResetTimers.current).forEach(clearSuccessResetTimer);
+    callbackSubmissions.current = {};
+    cancelRequested.current = {};
+    setStates({});
+    statesRef.current = {};
+  }, [abortProviderAttempt, clearSuccessResetTimer, connectionFingerprint]);
 
   useEffect(() => {
     if (isAuthenticated) return;

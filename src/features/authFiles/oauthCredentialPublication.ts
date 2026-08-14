@@ -4,7 +4,13 @@ import { resolveOAuthCredentialTarget } from './oauthCredentialTarget.ts';
 import { computeRetryDelay, sleepForRetry, type RetrySleep } from '../../utils/retryBackoff.ts';
 
 export type OAuthCredentialPublicationResult<T extends AuthFileItem> =
-  { status: 'ready'; credential: T } | { status: 'cancelled' };
+  | {
+      status: 'ready';
+      credential: T;
+      inventoryId: string;
+      revision: number;
+    }
+  | { status: 'cancelled' };
 
 interface OAuthCredentialPublicationOptions<T extends AuthFileItem> {
   credential: OAuthCredentialResult;
@@ -55,7 +61,14 @@ export async function waitForOAuthCredentialPublication<T extends AuthFileItem>(
       if (signal.aborted || !isCurrent()) return { status: 'cancelled' };
       failureCount = 0;
       const target = resolvePublishedOAuthCredential(credential, snapshot);
-      if (target) return { status: 'ready', credential: target };
+      if (target) {
+        return {
+          status: 'ready',
+          credential: target,
+          inventoryId: String(snapshot.inventory_id ?? '').trim(),
+          revision: normalizeRevision(snapshot.revision),
+        };
+      }
       await sleep(pollDelayMs, signal);
     } catch {
       if (signal.aborted || !isCurrent()) return { status: 'cancelled' };

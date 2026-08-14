@@ -14,6 +14,7 @@ import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import { RuntimeCapacityBadge } from '@/components/runtime/RuntimeCapacityBadge';
 import { useCredentialConcurrencyStore } from '@/stores/useCredentialConcurrencyStore';
 import { effectiveMaxConcurrency, normalizeConcurrencySetting } from '@/utils/maxConcurrency';
+import { resolveEffectiveCredentialWeight } from '@/utils/credentialWeight';
 import { getProviderTotalStats, type ProviderRecentUsageMap } from '@/components/providers/utils';
 import { useAuthInventoryStore, useRuntimeObservationStore } from '@/stores';
 import { apiKeyUsageApi } from '@/services/api';
@@ -65,9 +66,22 @@ const kimiBillingAPIKeyEntries = (raw: SponsorProviderRaw): ApiKeyEntry[] => [
   ...raw.claude.map((item) => ({
     name: item.config.name?.trim() ? `Claude / ${item.config.name.trim()}` : 'Claude',
     apiKey: item.config.apiKey,
+    weight: item.config.weight,
     proxyUrl: item.config.proxyUrl,
   })),
 ];
+
+const formatEffectiveWeight = (
+  weight: unknown,
+  defaultLabel: string,
+  zeroLabel: string
+): string => {
+  const effective = resolveEffectiveCredentialWeight(weight);
+  if (effective === 0) return `0 (${zeroLabel})`;
+  return weight === undefined || weight === null
+    ? `${effective} (${defaultLabel})`
+    : String(effective);
+};
 
 export function ResourceDetailView({
   resource,
@@ -119,6 +133,16 @@ export function ResourceDetailView({
     ['proxyUrl', resource.proxyUrl ?? t('providersPage.status.notSet')],
     ['prefix', resource.prefix ?? t('providersPage.status.none')],
     ['fallback', resource.fallback ? t('common.yes') : t('common.no')],
+    [
+      'weight',
+      resource.brand === 'openaiCompatibility' || resource.brand === 'kimi'
+        ? t('credential_weight.per_key')
+        : formatEffectiveWeight(
+            resource.weight,
+            t('credential_weight.default_badge'),
+            t('credential_weight.zero_badge')
+          ),
+    ],
     [
       'maxConcurrency',
       `${displayedMaxConcurrency > 0 ? displayedMaxConcurrency : t('runtime_observation.unlimited')} · ${concurrencySource}`,
@@ -191,6 +215,11 @@ export function ResourceDetailView({
     }
   })();
   const apiKeyEntries = openaiConfig?.apiKeyEntries ?? [];
+  const detailApiKeyEntries = openaiConfig
+    ? apiKeyEntries
+    : resource.brand === 'kimi'
+      ? kimiBillingAPIKeyEntries((resource.billingRaw ?? resource.raw) as SponsorProviderRaw)
+      : [];
   const billingApiKeyEntries: ApiKeyEntry[] = openaiConfig
     ? apiKeyEntries
     : nativeBillingBrands.has(resource.brand) && resource.apiKey
@@ -513,13 +542,13 @@ export function ResourceDetailView({
         </section>
       ) : null}
 
-      {openaiConfig && apiKeyEntries.length > 0 ? (
+      {detailApiKeyEntries.length > 0 ? (
         <div className={styles.apiKeyEntriesSection}>
           <div className={styles.apiKeyEntriesLabel}>
-            {t('providersPage.form.apiKeyEntriesSection')}: {apiKeyEntries.length}
+            {t('providersPage.form.apiKeyEntriesSection')}: {detailApiKeyEntries.length}
           </div>
           <div className={styles.apiKeyEntryList}>
-            {apiKeyEntries.map((entry, entryIndex) => {
+            {detailApiKeyEntries.map((entry, entryIndex) => {
               const runtimeEntry = getRuntimeCredentialByAuthIndex(
                 entry.authIndex,
                 runtimeCredentialIDByAuthIndex,
@@ -528,7 +557,7 @@ export function ResourceDetailView({
               );
               const entryStats = runtimeEntry
                 ? { success: runtimeEntry.success, failure: runtimeEntry.failed }
-                : usageByProvider
+                : usageByProvider && openaiConfig
                   ? getProviderTotalStats(
                       usageByProvider,
                       openaiConfig.name,
@@ -543,6 +572,14 @@ export function ResourceDetailView({
                   {entry.name?.trim() ? (
                     <span className={styles.apiKeyEntryAlias}>{entry.name.trim()}</span>
                   ) : null}
+                  <span className={styles.apiKeyEntryWeight}>
+                    {t('credential_weight.label')}:{' '}
+                    {formatEffectiveWeight(
+                      entry.weight,
+                      t('credential_weight.default_badge'),
+                      t('credential_weight.zero_badge')
+                    )}
+                  </span>
                   {entry.proxyUrl ? (
                     <span className={styles.apiKeyEntryProxy}>{entry.proxyUrl}</span>
                   ) : null}

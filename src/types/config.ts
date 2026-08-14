@@ -3,7 +3,12 @@
  * Matches the baseline /config response using camelCase internally.
  */
 
-import type { GeminiKeyConfig, ProviderKeyConfig, OpenAIProviderConfig } from './provider';
+import type {
+  GeminiKeyConfig,
+  InteractionsKeyConfig,
+  ProviderKeyConfig,
+  OpenAIProviderConfig,
+} from './provider';
 
 declare module './provider' {
   interface OpenAIProviderConfig {
@@ -31,6 +36,7 @@ export interface Config {
   routingStrategy?: string;
   apiKeys?: string[];
   geminiApiKeys?: GeminiKeyConfig[];
+  interactionsApiKeys?: InteractionsKeyConfig[];
   codexApiKeys?: ProviderKeyConfig[];
   xaiApiKeys?: ProviderKeyConfig[];
   claudeApiKeys?: ProviderKeyConfig[];

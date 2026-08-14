@@ -59,6 +59,20 @@
     "unsaved_changes_message": "У вас есть несохранённые изменения. Если вы уйдёте, они будут потеряны. Выйти?",
     "select": "Выбрать"
   },
+  "credential_weight": {
+    "label": "Вес маршрутизации",
+    "hint": "Необязательное безопасное целое число не больше 1 000 000. Пустое значение наследует вес 1; неположительные значения исключают учётные данные из взвешенной маршрутизации.",
+    "validation": "Введите безопасное целое число не больше 1 000 000 или оставьте поле пустым для значения по умолчанию.",
+    "default_badge": "по умолчанию",
+    "zero_badge": "маршрутизация отключена",
+    "per_key": "Настраивается для каждого API-ключа",
+    "per_key_short": "Вес каждого ключа",
+    "summary": "Вес {{value}}",
+    "errors": {
+      "integer": "Вес должен быть безопасным целым числом.",
+      "maximum": "Вес не должен превышать {{max}}."
+    }
+  },
   "title": {
     "main": "Центр управления CLI Proxy API",
     "login": "Центр управления CLI Proxy API",
@@ -263,9 +277,10 @@
     "ws_auth_enable": "Требовать аутентификацию для /ws/*",
     "routing_title": "Стратегия маршрутизации",
     "routing_strategy_label": "Стратегия маршрутизации:",
-    "routing_strategy_hint": "round-robin циклически перебирает ключи; fill-first отдаёт приоритет первому доступному ключу.",
+    "routing_strategy_hint": "round-robin равномерно перебирает ключи; weighted-round-robin учитывает настроенные веса; fill-first отдаёт приоритет первому доступному ключу.",
     "routing_strategy_update": "Обновить",
     "routing_strategy_round_robin": "round-robin (цикл)",
+    "routing_strategy_weighted_round_robin": "weighted-round-robin (по весу)",
     "routing_strategy_fill_first": "fill-first (приоритет)"
   },
   "api_keys": {
@@ -519,6 +534,14 @@
     "status_disabled_success": "\"{{name}}\" отключён",
     "batch_status_success": "{{count}} файлов обновлено",
     "batch_status_partial": "{{success}} обновлено, {{failed}} не удалось",
+    "batch_weight_button": "Задать вес",
+    "batch_weight_title": "Вес маршрутизации учётных данных",
+    "batch_weight_description": "Применить один вес маршрутизации к {{count}} выбранным учётным данным. Очистка удаляет явное значение и восстанавливает значение по умолчанию.",
+    "batch_weight_clear": "Очистить вес",
+    "batch_weight_apply": "Применить вес",
+    "batch_weight_no_targets": "Нет актуальных учётных данных для изменения веса.",
+    "batch_weight_success": "Вес маршрутизации обновлён для {{count}} учётных данных.",
+    "batch_weight_partial": "Обновлено {{success}} учётных данных; ошибок: {{failed}} (изменились после выбора: {{stale}}).",
     "batch_delete_title": "Удалить выбранные файлы",
     "batch_delete_confirm": "Удалить {{count}} файлов?",
     "batch_selected": "{{count}} выбрано",
@@ -1382,7 +1405,11 @@
       "current_targets": "Текущие объекты",
       "no_current_targets": "Для этого исторического запроса нет доступного текущего объекта.",
       "safe_headers": "Безопасные заголовки ответа",
-      "no_headers": "Безопасные заголовки ответа не записаны"
+      "no_headers": "Безопасные заголовки ответа не записаны",
+      "request_metadata": "Метаданные запроса",
+      "direct_peer_ip": "IP прямого подключения",
+      "x_forwarded_for": "Цепочка перенаправления (не проверена)",
+      "user_agent": "User-Agent"
     },
     "empty": {
       "credentials": "Нет активности учётных данных",
@@ -1849,6 +1876,7 @@
           "routing_strategy": "Стратегия маршрутизации",
           "routing_strategy_hint": "Выберите стратегию подбора учётных данных",
           "strategy_round_robin": "По кругу",
+          "strategy_weighted_round_robin": "Взвешенный круговой выбор",
           "strategy_fill_first": "Сначала заполнить",
           "session_affinity_ttl": "TTL привязки сессии",
           "force_model_prefix": "Принудительный префикс модели",
@@ -2623,6 +2651,7 @@
         "proxyUrl": "Proxy URL",
         "prefix": "Префикс",
         "fallback": "Резервный ресурс",
+        "weight": "Вес маршрутизации",
         "maxConcurrency": "Максимальная конкурентность",
         "models": "Моделей",
         "headers": "Заголовков",
