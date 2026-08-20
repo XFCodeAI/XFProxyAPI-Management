@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, ShieldAlert, Upload, Wrench } from 'lucide-react';
+import { MessageSquareText, Search, ShieldAlert, Upload, Wrench } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import { Card } from '@/components/ui/Card';
@@ -189,6 +190,7 @@ interface QuotaPageProps {
 
 export function QuotaPage({ embedded = false }: QuotaPageProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const showNotification = useNotificationStore((state) => state.showNotification);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
@@ -340,6 +342,11 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
     [visibleCredentialFiles]
   );
   const selectedNames = useMemo(() => Array.from(selectedFiles), [selectedFiles]);
+  const selectedPromptCredentialId = useMemo(() => {
+    if (selectedNames.length !== 1) return '';
+    const selected = files.find((file) => file.name === selectedNames[0]);
+    return String(selected?.credentialId ?? selected?.credential_id ?? '').trim();
+  }, [files, selectedNames]);
   const selectedHasStatusUpdating = useMemo(
     () => selectedNames.some((name) => statusUpdating[name] === true),
     [selectedNames, statusUpdating]
@@ -891,6 +898,16 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
           {!uploading && <Upload size={16} aria-hidden="true" />}
           <span>{t('auth_files.import_button', { defaultValue: '导入' })}</span>
         </Button>
+        {activeInventoryProvider === 'codex' ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate('/prompt-rewrite?target=provider&value=codex')}
+          >
+            <MessageSquareText size={16} aria-hidden="true" />
+            <span>{t('prompt_rewrite.quick.manage_provider')}</span>
+          </Button>
+        ) : null}
         <TooltipButton
           variant="secondary"
           size="sm"
@@ -983,6 +1000,20 @@ export function QuotaPage({ embedded = false }: QuotaPageProps) {
                 >
                   {t('auth_files.batch_weight_button', { defaultValue: 'Set weight' })}
                 </Button>
+                {activeInventoryProvider === 'codex' && selectedPromptCredentialId ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      navigate(
+                        `/prompt-rewrite?target=credential&value=${encodeURIComponent(selectedPromptCredentialId)}`
+                      )
+                    }
+                  >
+                    <MessageSquareText size={16} aria-hidden="true" />
+                    {t('prompt_rewrite.quick.manage_credential')}
+                  </Button>
+                ) : null}
                 <Button
                   variant="danger"
                   size="sm"

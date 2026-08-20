@@ -77,6 +77,11 @@ const SystemPage = lazy(() =>
 const MigrationPage = lazy(() =>
   import('@/pages/MigrationPage').then((module) => ({ default: module.MigrationPage }))
 );
+const PromptRewritePage = lazy(() =>
+  import('@/features/promptRewrite/PromptRewritePage').then((module) => ({
+    default: module.PromptRewritePage,
+  }))
+);
 
 function RouteFallback() {
   return (
@@ -122,6 +127,7 @@ const createMainRoutes = (supportsPlugin: boolean) => [
   { path: '/monitoring', element: <RequestMonitoringPage /> },
   { path: '/logs', element: <LogsPage /> },
   { path: '/migration', element: <MigrationPage /> },
+  { path: '/prompt-rewrite', element: <PromptRewritePage /> },
   { path: '/system', element: <SystemPage /> },
   { path: '*', element: <Navigate to="/" replace /> },
 ];

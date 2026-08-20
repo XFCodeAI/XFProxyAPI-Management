@@ -1,0 +1,39 @@
+.container {
+  display: flex;
+  width: min(100%, 1440px);
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 auto;
+}
+
+.centerState,
+.stateCard {
+  display: flex;
+  min-height: 320px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.stateCard {
+  min-height: 420px;
+}
+
+.stateCard h1,
+.stateCard p {
+  margin: 0;
+}
+
+.stateCard p {
+  max-width: 680px;
+}
+
+@media (max-width: 560px) {
+  .container {
+    gap: 12px;
+  }
+}

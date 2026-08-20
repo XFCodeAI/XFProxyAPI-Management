@@ -14,3 +14,6 @@ export * from './quota';
 export * from './plugin';
 export * from './proxyPool';
 export * from './concurrency';
+export * from './promptRewrite';
+export * from './responseTamper';
+export * from './capabilityPacks';

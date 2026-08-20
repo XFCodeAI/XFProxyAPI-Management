@@ -157,7 +157,6 @@ export function LoginPage() {
         managementKey: managementKey.trim(),
         rememberPassword,
       });
-      showNotification(t('common.connected_status'), 'success');
       navigate('/', { replace: true });
     } catch (err: unknown) {
       const message = getLocalizedErrorMessage(err, t);

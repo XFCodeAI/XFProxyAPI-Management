@@ -1,0 +1,712 @@
+@use '../../styles/variables.scss' as *;
+
+.quickRoot {
+  display: grid;
+  width: min(100%, 1080px);
+  min-width: 0;
+  gap: 18px;
+  margin: 0 auto;
+  padding-top: 10px;
+}
+
+.quickHeader,
+.quickStepHeading,
+.quickPresetInfo,
+.quickResponseOption,
+.quickSelectedTarget,
+.quickAdvancedToggle,
+.quickActionBar,
+.quickSummary,
+.quickSuccess,
+.quickError,
+.quickWarning,
+.quickActiveHeading,
+.quickBinding {
+  display: flex;
+  align-items: center;
+}
+
+.quickHeader {
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.quickHeader > div {
+  min-width: 0;
+}
+
+.quickHeader h1,
+.quickStepHeading h2,
+.quickActiveHeading h2 {
+  margin: 0;
+  color: var(--foreground);
+  letter-spacing: 0;
+}
+
+.quickHeader h1 {
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.quickHeader p,
+.quickStepHeading p {
+  margin: 5px 0 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.quickSetup {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card, var(--background));
+}
+
+.quickColumns {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.quickColumn {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+
+.quickColumn + .quickColumn {
+  border-top: 1px solid var(--border);
+}
+
+.quickCapabilitySection,
+.quickMigrationSection {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 18px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.quickMigrationSection {
+  background: color-mix(in srgb, var(--warning, #d97706) 4%, transparent);
+}
+
+.quickStepHeading {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.quickStepHeading h2 {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.quickStepNumber {
+  display: grid;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--primary);
+  border-radius: 50%;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.quickField {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.quickField > span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.quickPresetInfo,
+.quickSelectedTarget {
+  min-width: 0;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border-left: 3px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.quickPresetInfo svg,
+.quickSelectedTarget svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--primary);
+}
+
+.quickPresetInfo > div,
+.quickSelectedTarget > div,
+.quickResponseOption > div,
+.quickBinding > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.quickProfile {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+}
+
+.quickProfile .quickField {
+  grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.quickProvenance {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--secondary) 42%, var(--card));
+}
+
+.quickProvenance > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.quickProvenance span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.quickProvenance strong,
+.quickProvenance code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quickProvenance code {
+  font-family: var(--font-mono, monospace);
+}
+
+.quickPresetInfo strong,
+.quickSelectedTarget strong,
+.quickResponseOption strong,
+.quickBinding strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.quickPresetInfo span,
+.quickSelectedTarget span,
+.quickResponseOption span,
+.quickBinding span,
+.quickMuted,
+.quickSummary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.quickResponseOption {
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.quickTargetTypes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--secondary);
+}
+
+.quickTargetType,
+.quickTargetTypeActive {
+  display: flex;
+  min-width: 0;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quickTargetType:focus-visible,
+.quickTargetTypeActive:focus-visible,
+.quickAdvancedToggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.quickTargetTypeActive {
+  background: var(--card, var(--background));
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+}
+
+.quickChoiceList {
+  display: grid;
+  max-height: 178px;
+  gap: 5px;
+  overflow: auto;
+}
+
+.quickTargetSelect {
+  min-width: 0;
+}
+
+.quickChoice {
+  display: flex;
+  min-width: 0;
+  min-height: 46px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.quickChoice:has(input:checked) {
+  border-color: color-mix(in srgb, var(--primary) 65%, var(--border));
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+
+.quickChoice input {
+  flex: 0 0 auto;
+}
+
+.quickChoice > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.quickChoice strong,
+.quickChoice small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.quickChoice strong {
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.quickChoice small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.quickMuted {
+  margin: 8px 0;
+}
+
+.quickAdvancedToggle {
+  width: 100%;
+  min-height: 38px;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quickChevronOpen {
+  transform: rotate(180deg);
+}
+
+.quickAdvancedFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--secondary) 50%, var(--card));
+}
+
+.quickActionBar {
+  min-width: 0;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.quickSummary {
+  min-width: 0;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quickSummary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.quickSuccess,
+.quickError,
+.quickWarning {
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 20px 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+
+.quickSuccess svg,
+.quickError svg,
+.quickWarning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.quickSuccess > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.quickSuccess > button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.quickSuccess strong {
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.quickSuccess span,
+.quickError,
+.quickWarning {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.quickSimulation {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  margin: 0 20px 12px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
+}
+
+.quickSimulationHeader {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.quickSimulationHeader svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--primary);
+}
+
+.quickSimulationHeader > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.quickSimulationHeader strong {
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.quickSimulationHeader span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.quickSimulationDetails {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.quickSimulationDetails summary {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quickSimulationGrid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 9px;
+}
+
+.quickSimulationGrid > div {
+  min-width: 0;
+}
+
+.quickSimulationGrid strong {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.quickSimulationGrid pre {
+  max-height: 220px;
+  margin: 5px 0 0;
+  overflow: auto;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.quickError {
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 40%, var(--border));
+  color: var(--danger, #b91c1c);
+  background: color-mix(in srgb, var(--danger, #dc2626) 5%, transparent);
+}
+
+.quickWarning {
+  border-color: color-mix(in srgb, var(--warning, #d97706) 40%, var(--border));
+  color: var(--warning, #b45309);
+  background: color-mix(in srgb, var(--warning, #d97706) 5%, transparent);
+}
+
+.quickActiveSection {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+}
+
+.quickActiveSection > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.quickActiveSection > summary::-webkit-details-marker {
+  display: none;
+}
+
+.quickActiveSection > summary::after {
+  content: 'v';
+  color: var(--muted-foreground);
+  font-size: 15px;
+  transition: transform 160ms ease;
+}
+
+.quickActiveSection[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.quickActiveHeading {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quickActiveHeading h2 {
+  font-size: 15px;
+}
+
+.quickActiveHeading > span:first-child {
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.quickActiveHeading > span {
+  display: grid;
+  min-width: 22px;
+  height: 20px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.quickBindingList {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.quickBinding {
+  min-width: 0;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+}
+
+.quickBinding + .quickBinding {
+  border-top: 1px solid var(--border);
+}
+
+.quickActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quickState,
+.quickEmpty {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.quickEmpty p {
+  max-width: 520px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.quickEmpty strong {
+  color: var(--foreground);
+}
+
+@media (max-width: 820px) {
+  .quickColumn {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .quickRoot {
+    gap: 14px;
+  }
+
+  .quickHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .quickHeader h1 {
+    font-size: 24px;
+  }
+
+  .quickColumn,
+  .quickCapabilitySection,
+  .quickMigrationSection,
+  .quickAdvancedFields,
+  .quickActionBar {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .quickAdvancedFields {
+    grid-template-columns: 1fr;
+  }
+
+  .quickActionBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .quickActionBar .quickActions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .quickActionBar .quickActions > button {
+    width: 100%;
+  }
+
+  .quickSuccess,
+  .quickError,
+  .quickWarning {
+    margin-right: 14px;
+    margin-left: 14px;
+  }
+
+  .quickResponseOption {
+    align-items: flex-start;
+  }
+
+  .quickSimulation {
+    margin-right: 14px;
+    margin-left: 14px;
+  }
+
+  .quickSimulationGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .quickProfile .quickField,
+  .quickProvenance {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .quickTargetTypes {
+    grid-template-columns: 1fr;
+  }
+}

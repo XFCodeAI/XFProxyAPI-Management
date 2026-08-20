@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
 import { IconX } from '@/components/ui/icons';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
@@ -87,6 +87,7 @@ const getResourceRecentSuccess = (
 export function ProvidersWorkbenchPage() {
   const { t, i18n } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const connectionStatus = useAuthStore((s) => s.connectionStatus);
   const { showNotification, showConfirmation } = useNotificationStore();
   const authGroupTotals = useAuthInventoryStore((state) => state.groupTotals);
@@ -596,6 +597,14 @@ export function ProvidersWorkbenchPage() {
         newLabel={t('providersPage.actions.new')}
         onRefresh={() => void handleRefresh()}
         onNew={openCreate}
+        promptLabel={
+          activeGroup.id === 'codex' ? t('prompt_rewrite.quick.manage_provider') : undefined
+        }
+        onManagePrompts={
+          activeGroup.id === 'codex'
+            ? () => navigate('/prompt-rewrite?target=provider&value=codex')
+            : undefined
+        }
       />
       <CredentialConcurrencyDefaultControl />
 

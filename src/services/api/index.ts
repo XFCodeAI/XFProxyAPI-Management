@@ -26,3 +26,6 @@ export * from './proxyPools';
 export * from './transformers';
 export * from './vertex';
 export * from './twoFactor';
+export * from './promptRewrite';
+export * from './responseTamper';
+export * from './capabilityPacks';

@@ -1,7 +1,7 @@
 {
   "name": "xfproxyapi-management",
   "private": true,
-  "version": "0.1.48",
+  "version": "0.1.49",
   "type": "module",
   "packageManager": "pnpm@10.17.1",
   "scripts": {
@@ -28,6 +28,9 @@
     "bench:auth-inventory": "node tests/authInventoryScale.bench.mjs",
     "test:inventory-consumers": "node --experimental-strip-types tests/inventoryConsumers.test.mjs",
     "test:dashboard-analytics": "node --experimental-strip-types tests/dashboardAnalytics.test.mjs",
+    "test:prompt-rewrite": "node tests/promptRewriteApi.test.mjs",
+    "test:response-tamper": "node tests/responseTamperApi.test.mjs",
+    "test:capability-packs": "node tests/capabilityPacksApi.test.mjs",
     "test:api-error": "node --experimental-strip-types tests/apiError.test.mjs",
     "test:migration-async": "node --experimental-strip-types tests/migrationAsyncStart.test.mjs",
     "test:oauth-editor-state": "node --experimental-strip-types tests/oauthEditorState.test.mjs",

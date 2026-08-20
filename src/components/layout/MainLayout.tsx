@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   MonitorCog,
+  MessageSquareText,
   Moon,
   RefreshCw,
   Sun,
@@ -76,6 +77,7 @@ const sidebarIcons: Record<string, ReactNode> = {
   monitoring: <Activity size={18} />,
   logs: <IconSidebarLogs size={18} />,
   migration: <ArrowRightLeft size={18} />,
+  promptRewrite: <MessageSquareText size={18} />,
   system: <IconSidebarSystem size={18} />,
 };
 
@@ -265,6 +267,7 @@ export function MainLayout() {
   const abbrBrandName = t('title.abbr');
   const isLogsPage = location.pathname.startsWith('/logs');
   const isPluginResourcePage = location.pathname.startsWith('/plugin-pages');
+  const isPromptRewritePage = location.pathname.startsWith('/prompt-rewrite');
   const showSidebarLabels = !sidebarCollapsed || sidebarOpen;
 
   // Keep floating header height available to sticky mobile elements and overlays.
@@ -581,6 +584,12 @@ export function MainLayout() {
           metaKey: 'nav_meta.config_management',
           icon: sidebarIcons.config,
         },
+        {
+          path: '/prompt-rewrite',
+          labelKey: 'nav.prompt_rewrite',
+          metaKey: 'nav_meta.prompt_rewrite',
+          icon: sidebarIcons.promptRewrite,
+        },
         ...(pluginManagementNavVisible
           ? [
               {
@@ -841,7 +850,7 @@ export function MainLayout() {
       <div
         className={`app-shell ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''} ${
           isPluginResourcePage ? 'plugin-resource-shell' : ''
-        }`}
+        } ${isPromptRewritePage ? 'prompt-rewrite-shell' : ''}`}
       >
         <div className="top-gradient-blur" aria-hidden="true" />
 

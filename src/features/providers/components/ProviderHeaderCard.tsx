@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { MessageSquareText } from 'lucide-react';
 import { IconLoader2, IconPlus, IconRefreshCw } from '@/components/ui/icons';
 import styles from './ProviderHeaderCard.module.scss';
 
@@ -15,6 +16,8 @@ interface ProviderHeaderCardProps {
   newLabel?: string;
   onRefresh: () => void;
   onNew: () => void;
+  promptLabel?: string;
+  onManagePrompts?: () => void;
 }
 
 export function ProviderHeaderCard({
@@ -30,6 +33,8 @@ export function ProviderHeaderCard({
   newLabel,
   onRefresh,
   onNew,
+  promptLabel,
+  onManagePrompts,
 }: ProviderHeaderCardProps) {
   const { t } = useTranslation();
 
@@ -56,6 +61,16 @@ export function ProviderHeaderCard({
               {isFetching ? t('providersPage.actions.syncing') : t('providersPage.actions.refresh')}
             </span>
           </button>
+          {onManagePrompts ? (
+            <button
+              type="button"
+              className={`${styles.actionButton} ${styles.btnOutline}`}
+              onClick={onManagePrompts}
+            >
+              <MessageSquareText size={16} />
+              <span>{promptLabel}</span>
+            </button>
+          ) : null}
           {showNewAction ? (
             <button
               type="button"

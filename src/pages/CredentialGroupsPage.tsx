@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, FileKey2, KeyRound, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import {
+  Bot,
+  FileKey2,
+  KeyRound,
+  MessageSquareText,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+} from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -435,6 +444,7 @@ function BindingFilterControl({
 
 export function CredentialGroupsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { showNotification, showConfirmation } = useNotificationStore();
   const config = useConfigStore((state) => state.config);
   const fetchConfig = useConfigStore((state) => state.fetchConfig);
@@ -931,16 +941,33 @@ export function CredentialGroupsPage() {
             {t('credential_groups_page.count', { count: groups.length })}
           </span>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={() => void refreshGroups()}
-          loading={refreshing}
-        >
-          <RefreshCw />
-          {t('common.refresh')}
-        </Button>
+        <div className={styles.pageActions}>
+          {resolvedActiveGroup ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                navigate(
+                  `/prompt-rewrite?target=credential-group&value=${encodeURIComponent(resolvedActiveGroup)}`
+                )
+              }
+            >
+              <MessageSquareText />
+              {t('prompt_rewrite.quick.manage_group')}
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => void refreshGroups()}
+            loading={refreshing}
+          >
+            <RefreshCw />
+            {t('common.refresh')}
+          </Button>
+        </div>
       </div>
 
       {loading ? (
