@@ -2,6 +2,7 @@ import type {
   RuntimeObservationEvent,
   RuntimeObservationAdmissionScope,
   RuntimeObservationAvailabilityScope,
+  RuntimeObservationConsecutive429,
   RuntimeAvailabilityCounts,
   RuntimeAvailabilityState,
   RuntimeObservationResource,
@@ -10,6 +11,7 @@ import type {
 } from '@/types/runtimeObservation';
 import { computeApiUrl } from '@/utils/connection';
 import { normalizeRecentRequestBuckets, normalizeUsageTotal } from '@/utils/recentRequests';
+import { isValidConsecutive429Threshold } from '@/utils/consecutive429Threshold';
 
 type RuntimeObservationRequest = {
   apiBase: string;
@@ -82,6 +84,25 @@ const normalizeAvailabilityCounts = (value: unknown): RuntimeAvailabilityCounts 
   };
 };
 
+const normalizeConsecutive429 = (value: unknown): RuntimeObservationConsecutive429 | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const threshold = Number(record.threshold);
+  if (!isValidConsecutive429Threshold(threshold)) return null;
+  const scope =
+    record.scope === 'model' ? 'model' : record.scope === 'credential' ? 'credential' : null;
+  if (!scope) return null;
+  const model = String(record.model ?? '').trim();
+  if (scope === 'model' && !model) return null;
+  return {
+    count: normalizeNonNegativeInteger(record.count),
+    threshold,
+    scope,
+    model: scope === 'model' ? model : '',
+    throttled: record.throttled === true,
+  };
+};
+
 export const normalizeRuntimeObservationResource = (
   value: unknown
 ): RuntimeObservationResource | null => {
@@ -125,6 +146,10 @@ export const normalizeRuntimeObservationResource = (
       record.health_exclusion_code ?? record.healthExclusionCode ?? ''
     ).trim(),
     healthExcludedAt: String(record.health_excluded_at ?? record.healthExcludedAt ?? '').trim(),
+    consecutive429:
+      scope === 'credential'
+        ? normalizeConsecutive429(record.consecutive_429 ?? record.consecutive429)
+        : null,
   };
 };
 

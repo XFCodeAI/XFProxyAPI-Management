@@ -26,6 +26,16 @@ export interface RuntimeAvailabilityCounts {
   disabled: number;
 }
 
+export type RuntimeConsecutive429Scope = 'credential' | 'model';
+
+export interface RuntimeObservationConsecutive429 {
+  count: number;
+  threshold: number;
+  scope: RuntimeConsecutive429Scope;
+  model: string;
+  throttled: boolean;
+}
+
 export interface RuntimeObservationResource {
   id: string;
   authIndex: string;
@@ -49,6 +59,7 @@ export interface RuntimeObservationResource {
   healthExcluded: boolean;
   healthExclusionCode: string;
   healthExcludedAt: string;
+  consecutive429: RuntimeObservationConsecutive429 | null;
 }
 
 export interface RuntimeObservationQueue {

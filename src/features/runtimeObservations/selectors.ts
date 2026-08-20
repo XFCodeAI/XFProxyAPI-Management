@@ -191,5 +191,6 @@ export const getProviderRuntimeObservation = (
     healthExcluded: Boolean(excludedHealth),
     healthExclusionCode: excludedHealth?.healthExclusionCode ?? '',
     healthExcludedAt: excludedHealth?.healthExcludedAt ?? '',
+    consecutive429: null,
   };
 };

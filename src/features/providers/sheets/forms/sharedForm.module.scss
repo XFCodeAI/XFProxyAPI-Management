@@ -1515,6 +1515,24 @@
   color: var(--destructive);
 }
 
+.apiKeyEntry429,
+.apiKeyEntry429Throttled {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.apiKeyEntry429 {
+  background: color-mix(in srgb, var(--muted-foreground) 10%, var(--card));
+  color: var(--muted-foreground);
+}
+
+.apiKeyEntry429Throttled {
+  background: color-mix(in srgb, var(--warning, #b45309) 14%, var(--card));
+  color: var(--warning, #b45309);
+}
+
 .detailUsageSection {
   display: flex;
   min-width: 0;

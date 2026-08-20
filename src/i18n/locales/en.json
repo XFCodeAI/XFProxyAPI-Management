@@ -2495,6 +2495,13 @@
     "queued_title": "{{count}} requests queued",
     "unlimited": "Unlimited",
     "protocol_limits": "Protocol and key concurrency",
+    "consecutive_429": {
+      "progress": "429 streak {{count}}/{{threshold}}",
+      "scope_credential": "Credential",
+      "scope_model": "Model: {{model}}",
+      "throttled": "Cooling",
+      "not_throttled": "Not cooling"
+    },
     "availability": {
       "ready": "Ready",
       "transient_throttled": "Rate limited",
@@ -2751,6 +2758,8 @@
       "retryOwner": "Retry owner",
       "retryOwnerXFPA": "XFProxyAPI",
       "retryOwnerUpstream": "Upstream gateway",
+      "consecutive429Threshold": "Consecutive 429 threshold",
+      "consecutive429ThresholdHint": "Default 3; use 1 for legacy behavior. Inactive while cooling is disabled.",
       "proxyUrl": "Proxy URL",
       "prefix": "Prefix",
       "priority": "Priority",
@@ -2812,7 +2821,8 @@
         "nameRequired": "Name is required",
         "apiKeyRequired": "At least one API key is required",
         "baseUrlRequired": "Base URL is required",
-        "maxConcurrency": "Maximum concurrency must be an integer from 0 to 1000000"
+        "maxConcurrency": "Maximum concurrency must be an integer from 0 to 1000000",
+        "consecutive429Threshold": "Consecutive 429 threshold must be an integer from 1 to 100"
       }
     },
     "delete": {

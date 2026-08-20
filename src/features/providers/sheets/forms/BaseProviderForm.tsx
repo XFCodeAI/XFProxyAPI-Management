@@ -26,6 +26,12 @@ import type {
 } from '@/types';
 import { isValidMaxConcurrency, normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import { getCredentialWeightError } from '@/utils/credentialWeight';
+import {
+  DEFAULT_CONSECUTIVE_429_THRESHOLD,
+  MAX_CONSECUTIVE_429_THRESHOLD,
+  MIN_CONSECUTIVE_429_THRESHOLD,
+  isValidConsecutive429Threshold,
+} from '@/utils/consecutive429Threshold';
 import type { ModelInfo } from '@/utils/models';
 import { PROVIDER_DESCRIPTORS } from '../../descriptors';
 import {
@@ -87,6 +93,7 @@ type PrimaryField =
   | 'authMode'
   | 'protocolMode'
   | 'retryOwner'
+  | 'consecutive429Threshold'
   | 'requestRetry'
   | 'proxyUrl'
   | 'routing'
@@ -195,6 +202,7 @@ const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
       'baseUrl',
       'protocolMode',
       'retryOwner',
+      'consecutive429Threshold',
       'routing',
       'maxConcurrency',
       'testModel',
@@ -235,6 +243,8 @@ function buildInitialForm(
       authMode: brand === 'claude' ? 'x-api-key' : undefined,
       protocolMode: brand === 'openaiCompatibility' ? 'chat-completions' : undefined,
       retryOwner: brand === 'openaiCompatibility' ? 'xfpa' : undefined,
+      consecutive429Threshold:
+        brand === 'openaiCompatibility' ? DEFAULT_CONSECUTIVE_429_THRESHOLD : undefined,
       requestRetry: undefined,
       proxyUrl: '',
       prefix: '',
@@ -280,6 +290,7 @@ function buildInitialForm(
       baseUrl: cfg.baseUrl ?? '',
       protocolMode: cfg.protocolMode ?? 'chat-completions',
       retryOwner: cfg.retryOwner ?? 'xfpa',
+      consecutive429Threshold: cfg.consecutive429Threshold ?? DEFAULT_CONSECUTIVE_429_THRESHOLD,
       proxyUrl: '',
       prefix: cfg.prefix ?? '',
       disabled: cfg.disabled === true,
@@ -795,6 +806,12 @@ export function BaseProviderForm({
         defaultValue: 'Request retry count must be an integer.',
       });
     }
+    if (
+      form.consecutive429Threshold !== undefined &&
+      !isValidConsecutive429Threshold(form.consecutive429Threshold)
+    ) {
+      return t('providersPage.form.validation.consecutive429Threshold');
+    }
     if (form.codexImageRoute?.enabled && imageRouteInspection.status === 'invalid') {
       return imageRouteIssueMessage();
     }
@@ -1030,6 +1047,35 @@ export function BaseProviderForm({
               }
               disabled={mutating}
               ariaLabel={t('providersPage.form.retryOwner')}
+            />
+          </div>
+        ) : null}
+
+        {hasPrimaryField('consecutive429Threshold') ? (
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${fid}-consecutive429Threshold`}>
+              {t('providersPage.form.consecutive429Threshold')}
+              <span className={styles.labelHint}>
+                {' '}
+                · {t('providersPage.form.consecutive429ThresholdHint')}
+              </span>
+            </label>
+            <input
+              id={`${fid}-consecutive429Threshold`}
+              type="number"
+              min={MIN_CONSECUTIVE_429_THRESHOLD}
+              max={MAX_CONSECUTIVE_429_THRESHOLD}
+              step="1"
+              inputMode="numeric"
+              className={inputClass}
+              value={form.consecutive429Threshold ?? ''}
+              onChange={(event) =>
+                updateField(
+                  'consecutive429Threshold',
+                  event.target.value === '' ? undefined : Number(event.target.value)
+                )
+              }
+              disabled={mutating || form.disableCooling === true}
             />
           </div>
         ) : null}

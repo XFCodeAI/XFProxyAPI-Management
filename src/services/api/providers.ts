@@ -6,6 +6,10 @@ import { apiClient } from './client';
 import { isRecord } from '@/utils/helpers';
 import { normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import {
+  DEFAULT_CONSECUTIVE_429_THRESHOLD,
+  normalizeConsecutive429Threshold,
+} from '@/utils/consecutive429Threshold';
+import {
   normalizeGeminiKeyConfig,
   normalizeInteractionsKeyConfig,
   normalizeOpenAIProvider,
@@ -94,6 +98,7 @@ const OPENAI_PROVIDER_FIELDS = [
   'models',
   'test-model',
   'disable-cooling',
+  'consecutive-429-threshold',
   'codex-image-route',
 ] as const;
 
@@ -572,6 +577,12 @@ export const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
   if (provider.fallback) payload.fallback = true;
   if (provider.testModel) payload['test-model'] = provider.testModel;
   if (provider.disableCooling) payload['disable-cooling'] = true;
+  const consecutive429Threshold = normalizeConsecutive429Threshold(
+    provider.consecutive429Threshold
+  );
+  if (consecutive429Threshold !== DEFAULT_CONSECUTIVE_429_THRESHOLD) {
+    payload['consecutive-429-threshold'] = consecutive429Threshold;
+  }
   if (provider.codexImageRoute) {
     payload['codex-image-route'] = {
       enabled: provider.codexImageRoute.enabled,

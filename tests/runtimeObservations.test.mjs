@@ -59,6 +59,13 @@ try {
           transient_throttled: '1',
           usage_wait: 0,
         },
+        consecutive_429: {
+          count: 2,
+          threshold: 3,
+          scope: 'model',
+          model: 'gpt-5.6-sol',
+          throttled: false,
+        },
       },
       {
         id: 'shared-id',
@@ -72,6 +79,12 @@ try {
         availability_state: 'usage_wait',
         availability_deadline: '2026-08-03T00:10:00Z',
         availability_counts: { transient_throttled: 1, usage_wait: 1 },
+        consecutive_429: {
+          count: 3,
+          threshold: 3,
+          scope: 'credential',
+          throttled: true,
+        },
       },
       { id: 'ignored', scope: 'unknown' },
     ],
@@ -84,6 +97,13 @@ try {
   assert.equal(snapshot.resources[0].availabilityState, 'transient_throttled');
   assert.equal(snapshot.resources[0].availabilityModel, 'gpt-5.6-sol');
   assert.equal(snapshot.resources[0].availabilityDeadline, '2026-08-03T00:05:00Z');
+  assert.deepEqual(snapshot.resources[0].consecutive429, {
+    count: 2,
+    threshold: 3,
+    scope: 'model',
+    model: 'gpt-5.6-sol',
+    throttled: false,
+  });
   assert.deepEqual(snapshot.resources[0].availabilityCounts, {
     ready: 0,
     transientThrottled: 1,
@@ -95,6 +115,7 @@ try {
     disabled: 0,
   });
   assert.equal(snapshot.resources[1].availabilityState, 'usage_wait');
+  assert.equal(snapshot.resources[1].consecutive429, null);
   assert.equal(snapshot.revision, 4);
   assert.equal(snapshot.admissionScope, 'process-local');
   assert.equal(snapshot.availabilityScope, 'process-local');
@@ -115,6 +136,13 @@ try {
   assert.equal(excludedResource.healthFailureStreak, 11);
   assert.equal(excludedResource.healthExcluded, true);
   assert.equal(excludedResource.healthExclusionCode, 'deactivated_workspace');
+
+  const malformedConsecutive429 = apiModule.normalizeRuntimeObservationResource({
+    id: 'malformed-credential',
+    scope: 'credential',
+    consecutive_429: { count: 2, threshold: 0, scope: 'model', model: '' },
+  });
+  assert.equal(malformedConsecutive429.consecutive429, null);
 
   const indexed = storeModule.indexRuntimeObservationResources(snapshot.resources);
   const credentialsByAuthIndex = storeModule.indexRuntimeObservationCredentialsByAuthIndex(

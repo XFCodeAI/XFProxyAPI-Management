@@ -13,6 +13,7 @@ import { buildHeaderObject } from '@/utils/headers';
 import { isRecord } from '@/utils/helpers';
 import { normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import { normalizeCredentialWeight } from '@/utils/credentialWeight';
+import { normalizeConsecutive429Threshold } from '@/utils/consecutive429Threshold';
 
 const normalizeBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
@@ -421,6 +422,9 @@ const normalizeOpenAIProvider = (
   if (fallback !== undefined) result.fallback = fallback;
   const disableCooling = normalizeBoolean(provider['disable-cooling']);
   if (disableCooling !== undefined) result.disableCooling = disableCooling;
+  result.consecutive429Threshold = normalizeConsecutive429Threshold(
+    provider['consecutive-429-threshold']
+  );
   const prefix = normalizePrefix(provider.prefix);
   if (prefix) result.prefix = prefix;
   if (headers) result.headers = headers;

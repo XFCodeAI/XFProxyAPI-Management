@@ -4,6 +4,7 @@ import { invalidateProviderRecentRequests } from '@/services/providerRecentReque
 import { getErrorMessage } from '@/utils/helpers';
 import { normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import { normalizeCredentialWeight } from '@/utils/credentialWeight';
+import { normalizeConsecutive429Threshold } from '@/utils/consecutive429Threshold';
 import { useAuthInventoryStore, useAuthStore, useConfigStore } from '@/stores';
 import {
   stripDisableAllModelsRule,
@@ -242,6 +243,7 @@ export const buildOpenAIConfig = (
     apiKeyEntries,
     disabled: input.disabled,
     disableCooling: input.disableCooling === true,
+    consecutive429Threshold: normalizeConsecutive429Threshold(input.consecutive429Threshold),
     fallback: input.fallback,
     headers: Object.keys(headers).length ? headers : undefined,
     models: models.length ? models : undefined,

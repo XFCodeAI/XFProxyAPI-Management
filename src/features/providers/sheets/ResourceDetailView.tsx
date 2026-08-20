@@ -565,6 +565,7 @@ export function ResourceDetailView({
                       openaiConfig.baseUrl
                     )
                   : { success: 0, failure: 0 };
+              const consecutive429 = runtimeEntry?.consecutive429;
               return (
                 <div key={`${entry.apiKey}-${entryIndex}`} className={styles.apiKeyEntryCard}>
                   <span className={styles.apiKeyEntryIndex}>{entryIndex + 1}</span>
@@ -598,6 +599,32 @@ export function ResourceDetailView({
                       mode={entry.concurrencyMode}
                       maxConcurrency={entry.maxConcurrency ?? 0}
                     />
+                    {consecutive429 ? (
+                      <span
+                        className={`${styles.apiKeyEntryStat} ${
+                          consecutive429.throttled
+                            ? styles.apiKeyEntry429Throttled
+                            : styles.apiKeyEntry429
+                        }`}
+                      >
+                        {t('runtime_observation.consecutive_429.progress', {
+                          count: consecutive429.count,
+                          threshold: consecutive429.threshold,
+                        })}
+                        {' · '}
+                        {consecutive429.scope === 'model'
+                          ? t('runtime_observation.consecutive_429.scope_model', {
+                              model: consecutive429.model,
+                            })
+                          : t('runtime_observation.consecutive_429.scope_credential')}
+                        {' · '}
+                        {t(
+                          consecutive429.throttled
+                            ? 'runtime_observation.consecutive_429.throttled'
+                            : 'runtime_observation.consecutive_429.not_throttled'
+                        )}
+                      </span>
+                    ) : null}
                     <span className={`${styles.apiKeyEntryStat} ${styles.apiKeyEntryStatSuccess}`}>
                       <IconCheck size={12} /> {entryStats.success}
                     </span>

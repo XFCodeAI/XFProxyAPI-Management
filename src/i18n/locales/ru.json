@@ -2485,6 +2485,13 @@
     "queued_title": "Запросов в очереди: {{count}}",
     "unlimited": "Без ограничений",
     "protocol_limits": "Конкурентность протоколов и ключей",
+    "consecutive_429": {
+      "progress": "Серия 429: {{count}}/{{threshold}}",
+      "scope_credential": "Учётные данные",
+      "scope_model": "Модель: {{model}}",
+      "throttled": "Охлаждение",
+      "not_throttled": "Без охлаждения"
+    },
     "availability": {
       "ready": "Готов",
       "transient_throttled": "Ограничение частоты",
@@ -2741,6 +2748,8 @@
       "retryOwner": "Владелец повторов",
       "retryOwnerXFPA": "XFProxyAPI",
       "retryOwnerUpstream": "Вышестоящий шлюз",
+      "consecutive429Threshold": "Порог последовательных 429",
+      "consecutive429ThresholdHint": "По умолчанию 3; значение 1 возвращает прежнее поведение. Не действует при отключённом cooldown.",
       "proxyUrl": "Proxy URL",
       "prefix": "Префикс",
       "priority": "Приоритет",
@@ -2802,7 +2811,8 @@
         "nameRequired": "Название обязательно",
         "apiKeyRequired": "Нужен хотя бы один API-ключ",
         "baseUrlRequired": "Base URL обязателен",
-        "maxConcurrency": "Максимальная конкурентность должна быть целым числом от 0 до 1000000"
+        "maxConcurrency": "Максимальная конкурентность должна быть целым числом от 0 до 1000000",
+        "consecutive429Threshold": "Порог последовательных 429 должен быть целым числом от 1 до 100"
       }
     },
     "delete": {

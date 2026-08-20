@@ -2522,6 +2522,13 @@
     "queued_title": "{{count}} 個請求正在排隊",
     "unlimited": "不限",
     "protocol_limits": "協定與金鑰併發數",
+    "consecutive_429": {
+      "progress": "連續 429：{{count}}/{{threshold}}",
+      "scope_credential": "憑證層級",
+      "scope_model": "模型：{{model}}",
+      "throttled": "冷卻中",
+      "not_throttled": "未冷卻"
+    },
     "availability": {
       "ready": "可調度",
       "transient_throttled": "瞬時限流",
@@ -2778,6 +2785,8 @@
       "retryOwner": "重試歸屬",
       "retryOwnerXFPA": "由 XFProxyAPI 重試",
       "retryOwnerUpstream": "由上游閘道重試",
+      "consecutive429Threshold": "連續 429 閾值",
+      "consecutive429ThresholdHint": "預設為 3；設為 1 可恢復舊行為。停用冷卻時不生效。",
       "proxyUrl": "代理 URL",
       "prefix": "前綴",
       "priority": "優先級",
@@ -2839,7 +2848,8 @@
         "nameRequired": "名稱必填",
         "apiKeyRequired": "至少填寫一個 API 金鑰",
         "baseUrlRequired": "服務位址必填",
-        "maxConcurrency": "最大併發數必須是 0 到 1000000 的整數"
+        "maxConcurrency": "最大併發數必須是 0 到 1000000 的整數",
+        "consecutive429Threshold": "連續 429 閾值必須是 1 到 100 的整數"
       }
     },
     "delete": {

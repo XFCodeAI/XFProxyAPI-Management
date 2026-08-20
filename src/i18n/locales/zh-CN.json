@@ -2527,6 +2527,13 @@
     "queued_title": "{{count}} 个请求排队中",
     "unlimited": "不限",
     "protocol_limits": "协议与密钥并发",
+    "consecutive_429": {
+      "progress": "连续 429：{{count}}/{{threshold}}",
+      "scope_credential": "凭证级",
+      "scope_model": "模型：{{model}}",
+      "throttled": "冷却中",
+      "not_throttled": "未冷却"
+    },
     "availability": {
       "ready": "可调度",
       "transient_throttled": "瞬时限流",
@@ -2783,6 +2790,8 @@
       "retryOwner": "重试归属",
       "retryOwnerXFPA": "由 XFProxyAPI 重试",
       "retryOwnerUpstream": "由上游网关重试",
+      "consecutive429Threshold": "连续 429 阈值",
+      "consecutive429ThresholdHint": "默认 3；设为 1 可恢复旧行为。禁用冷却时不生效。",
       "proxyUrl": "代理 URL",
       "prefix": "前缀",
       "priority": "优先级",
@@ -2844,7 +2853,8 @@
         "nameRequired": "名称必填",
         "apiKeyRequired": "至少填写一个 API 密钥",
         "baseUrlRequired": "服务地址必填",
-        "maxConcurrency": "最大并发数必须是 0 到 1000000 的整数"
+        "maxConcurrency": "最大并发数必须是 0 到 1000000 的整数",
+        "consecutive429Threshold": "连续 429 阈值必须是 1 到 100 的整数"
       }
     },
     "delete": {

@@ -124,6 +124,7 @@ export interface OpenAIProviderConfig {
   fallback?: boolean;
   testModel?: string;
   disableCooling?: boolean;
+  consecutive429Threshold?: number;
   codexImageRoute?: CodexImageRouteConfig;
   authIndex?: string;
   runtimeStatus?: ProviderRuntimeStatus;

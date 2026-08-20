@@ -165,6 +165,7 @@ export interface ProviderEntryFormInput {
   prefix: string;
   disabled: boolean;
   disableCooling?: boolean;
+  consecutive429Threshold?: number;
   fallback: boolean;
   priority?: number;
   weight?: CredentialWeightInputValue;
