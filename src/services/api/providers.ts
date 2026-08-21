@@ -35,6 +35,19 @@ const serializeConcurrency = (mode: unknown, maxConcurrency: unknown) => {
   };
 };
 
+const serializeConsecutive429Threshold = (value: unknown): Record<string, number> => {
+  if (value === undefined || value === null || value === '') return {};
+  const threshold = normalizeConsecutive429Threshold(value);
+  return threshold === DEFAULT_CONSECUTIVE_429_THRESHOLD
+    ? {}
+    : { 'consecutive-429-threshold': threshold };
+};
+
+const serializeCoolingOverride = (
+  value: boolean | null | undefined
+): Partial<Record<'disable-cooling', boolean | null>> =>
+  value === undefined ? {} : { 'disable-cooling': value };
+
 const RESPONSE_ONLY_FIELDS = ['auth-index', 'runtime-status'] as const;
 
 const PROVIDER_COMMON_KEY_FIELDS = [
@@ -53,6 +66,7 @@ const PROVIDER_COMMON_KEY_FIELDS = [
   'models',
   'excluded-models',
   'disable-cooling',
+  'consecutive-429-threshold',
 ] as const;
 
 const GEMINI_KEY_FIELDS = PROVIDER_COMMON_KEY_FIELDS;
@@ -80,6 +94,8 @@ const VERTEX_KEY_FIELDS = [
   'headers',
   'models',
   'excluded-models',
+  'disable-cooling',
+  'consecutive-429-threshold',
 ] as const;
 
 const OPENAI_PROVIDER_FIELDS = [
@@ -309,6 +325,11 @@ export const mergeClaudeProviderPayload = (
   payload: Record<string, unknown>
 ): Record<string, unknown> => mergeProviderKeyPayload(raw, payload, CLAUDE_KEY_FIELDS);
 
+export const mergeVertexProviderPayload = (
+  raw: unknown,
+  payload: Record<string, unknown>
+): Record<string, unknown> => mergeProviderKeyPayload(raw, payload, VERTEX_KEY_FIELDS);
+
 export const mergeOpenAIProviderPayload = (raw: unknown, payload: Record<string, unknown>) => {
   const next = mergeKnownFields(raw, payload, OPENAI_PROVIDER_FIELDS);
   const rawApiKeyEntries = isRecord(raw) ? raw['api-key-entries'] : undefined;
@@ -439,7 +460,8 @@ export const serializeProviderKey = (config: ProviderKeyConfig) => {
   if (config.authMode) payload['auth-mode'] = config.authMode;
   if (config.websockets !== undefined) payload.websockets = config.websockets;
   if (config.proxyUrl) payload['proxy-url'] = config.proxyUrl;
-  if (config.disableCooling) payload['disable-cooling'] = true;
+  Object.assign(payload, serializeCoolingOverride(config.disableCooling));
+  Object.assign(payload, serializeConsecutive429Threshold(config.consecutive429Threshold));
   const headers = serializeHeaders(config.headers);
   if (headers) payload.headers = headers;
   const models = serializeModelAliases(config.models);
@@ -484,7 +506,8 @@ export const serializeXAIKey = (config: ProviderKeyConfig): Record<string, unkno
   models: serializeModelAliases(config.models) ?? [],
   headers: serializeHeaders(config.headers) ?? {},
   'excluded-models': config.excludedModels ?? [],
-  'disable-cooling': config.disableCooling === true,
+  ...serializeCoolingOverride(config.disableCooling),
+  ...serializeConsecutive429Threshold(config.consecutive429Threshold),
 });
 
 const serializeVertexModelAliases = (models?: ModelAlias[]) =>
@@ -512,6 +535,7 @@ export const serializeVertexKey = (config: ProviderKeyConfig) => {
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
   if (config.proxyUrl) payload['proxy-url'] = config.proxyUrl;
+  Object.assign(payload, serializeCoolingOverride(config.disableCooling));
   const headers = serializeHeaders(config.headers);
   if (headers) payload.headers = headers;
   const models = serializeVertexModelAliases(config.models);
@@ -519,6 +543,7 @@ export const serializeVertexKey = (config: ProviderKeyConfig) => {
   if (config.excludedModels && config.excludedModels.length) {
     payload['excluded-models'] = config.excludedModels;
   }
+  Object.assign(payload, serializeConsecutive429Threshold(config.consecutive429Threshold));
   return payload;
 };
 
@@ -535,7 +560,8 @@ export const serializeGeminiKey = (config: GeminiKeyConfig) => {
   if (config.prefix?.trim()) payload.prefix = config.prefix.trim();
   if (config.baseUrl) payload['base-url'] = config.baseUrl;
   if (config.proxyUrl) payload['proxy-url'] = config.proxyUrl;
-  if (config.disableCooling) payload['disable-cooling'] = true;
+  Object.assign(payload, serializeCoolingOverride(config.disableCooling));
+  Object.assign(payload, serializeConsecutive429Threshold(config.consecutive429Threshold));
   const headers = serializeHeaders(config.headers);
   if (headers) payload.headers = headers;
   const models = serializeModelAliases(config.models);
@@ -576,7 +602,7 @@ export const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
   if (provider.priority !== undefined) payload.priority = provider.priority;
   if (provider.fallback) payload.fallback = true;
   if (provider.testModel) payload['test-model'] = provider.testModel;
-  if (provider.disableCooling) payload['disable-cooling'] = true;
+  Object.assign(payload, serializeCoolingOverride(provider.disableCooling));
   const consecutive429Threshold = normalizeConsecutive429Threshold(
     provider.consecutive429Threshold
   );
@@ -800,8 +826,10 @@ export const providersApi = {
 
   createVertexConfig: (config: ProviderKeyConfig) =>
     mutateLatestProviderList('vertex-api-key', (latestItems) =>
-      appendLatestProviderRecord(latestItems, serializeVertexKey(config), (raw, payload) =>
-        mergeProviderKeyPayload(raw, payload, VERTEX_KEY_FIELDS)
+      appendLatestProviderRecord(
+        latestItems,
+        serializeVertexKey(config),
+        mergeVertexProviderPayload
       )
     ),
 
@@ -811,7 +839,7 @@ export const providersApi = {
         latestItems,
         (record) => matchesProviderKey(record, apiKey, baseUrl),
         serializeVertexKey(config),
-        (raw, payload) => mergeProviderKeyPayload(raw, payload, VERTEX_KEY_FIELDS)
+        mergeVertexProviderPayload
       )
     ),
 
@@ -830,7 +858,7 @@ export const providersApi = {
         'vertex-api-key',
         configs,
         serializeVertexKey,
-        (raw, payload) => mergeProviderKeyPayload(raw, payload, VERTEX_KEY_FIELDS),
+        mergeVertexProviderPayload,
         providerKeyIdentity
       )
     ),

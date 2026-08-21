@@ -31,6 +31,7 @@ import {
   analyticsAnomalyRange,
   analyticsDelta,
   analyticsIdentityLabel,
+  analyticsModelIdentityDisplay,
   analyticsMetricValue,
   analyticsRankingFilters,
   analyticsSuccessRate,
@@ -638,7 +639,11 @@ export function UsageAnalyticsPage() {
         </div>
         <div className={styles.rankingList}>
           {rankings.map((ranking) => {
-            const label = analyticsIdentityLabel(ranking.identity, t('common.not_set'));
+            const modelIdentities =
+              report.view === 'models' ? analyticsModelIdentityDisplay(ranking.identity) : [];
+            const label =
+              modelIdentities[0]?.value ||
+              analyticsIdentityLabel(ranking.identity, t('common.not_set'));
             const href = buildMonitoringDrillHref(
               { from: report.from, to: report.to },
               { ...filters, ...analyticsRankingFilters(report.view, ranking.identity) }
@@ -647,6 +652,11 @@ export function UsageAnalyticsPage() {
               <div key={`${report.view}:${ranking.identity.recordedId}:${label}`}>
                 <div className={styles.rankingIdentity}>
                   <strong>{label}</strong>
+                  {modelIdentities.slice(1).map((identity) => (
+                    <span data-model-identity={identity.role} key={identity.role}>
+                      {identity.value}
+                    </span>
+                  ))}
                   <span>{ranking.identity.provider || ranking.identity.recordedId}</span>
                   {['api-keys', 'credentials', 'credential-groups', 'api-key-groups'].includes(
                     report.view

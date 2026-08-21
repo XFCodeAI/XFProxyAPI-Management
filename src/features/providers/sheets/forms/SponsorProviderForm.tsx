@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Collapsible } from '@/components/ui/Collapsible';
 import { CredentialWeightInput } from '@/components/providers/CredentialWeightInput';
+import { CoolingPolicySelect } from '@/components/cooling/CoolingPolicySelect';
 import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
 import { Select } from '@/components/ui/Select';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
@@ -20,6 +21,12 @@ import { cn } from '@/lib/utils';
 import { maskApiKey } from '@/utils/format';
 import { isValidMaxConcurrency, normalizeConcurrencySetting } from '@/utils/maxConcurrency';
 import { getCredentialWeightError } from '@/utils/credentialWeight';
+import {
+  DEFAULT_CONSECUTIVE_429_THRESHOLD,
+  MAX_CONSECUTIVE_429_THRESHOLD,
+  MIN_CONSECUTIVE_429_THRESHOLD,
+  isValidConsecutive429Threshold,
+} from '@/utils/consecutive429Threshold';
 import type { ModelInfo } from '@/utils/models';
 import { isSponsorPartialMutationError } from '../../sponsorMutationRecovery';
 import {
@@ -90,7 +97,8 @@ const emptySponsorKeyEntry = (
   proxyUrl: '',
   prefix: '',
   disabled: false,
-  disableCooling: false,
+  disableCooling: undefined,
+  consecutive429Threshold: DEFAULT_CONSECUTIVE_429_THRESHOLD,
   fallback: false,
   priority: undefined,
   weight: undefined,
@@ -108,7 +116,7 @@ const emptySponsorForm = (definition: SponsorProviderDefinition): ProviderEntryF
   proxyUrl: '',
   prefix: '',
   disabled: false,
-  disableCooling: false,
+  disableCooling: undefined,
   fallback: false,
   priority: undefined,
   models: [],
@@ -156,7 +164,8 @@ const sponsorEntryFromProviderKey = (
     proxyUrl: config.proxyUrl ?? '',
     prefix: config.prefix ?? '',
     disabled: hasDisableAllModelsRule(config.excludedModels),
-    disableCooling: config.disableCooling === true,
+    disableCooling: config.disableCooling,
+    consecutive429Threshold: config.consecutive429Threshold ?? DEFAULT_CONSECUTIVE_429_THRESHOLD,
     fallback: config.fallback === true,
     priority: config.priority,
     weight: config.weight,
@@ -183,7 +192,8 @@ const sponsorEntryFromOpenAI = (
     proxyUrl: firstEntry?.proxyUrl ?? '',
     prefix: config.prefix ?? '',
     disabled: config.disabled === true,
-    disableCooling: config.disableCooling === true,
+    disableCooling: config.disableCooling,
+    consecutive429Threshold: config.consecutive429Threshold ?? DEFAULT_CONSECUTIVE_429_THRESHOLD,
     fallback: config.fallback === true,
     priority: config.priority,
     weight: firstEntry?.weight,
@@ -395,6 +405,7 @@ function SponsorKeyEntryCard({
     apiKey: entry.apiKey,
     fallbackApiKey: entry.existingApiKey,
     apiKeyEntries: entry.protocol === 'openai' ? openaiDiscoveryEntries : undefined,
+    proxyUrl: entry.proxyUrl,
   });
   const protocolOptions = definition.protocols
     .filter((protocol) => protocol === entry.protocol || !usedProtocols.has(protocol))
@@ -665,19 +676,52 @@ function SponsorKeyEntryCard({
             }
           />
 
-          <SelectionCheckbox
-            checked={entry.disableCooling ?? false}
-            disabled={mutating}
-            onChange={(checked) => updateEntry({ disableCooling: checked })}
-            className={styles.checkboxRow}
-            labelClassName={styles.checkboxText}
-            label={
-              <>
-                <span>{t('providersPage.form.disableCooling')}</span>
-                <small>{t('providersPage.form.disableCoolingHint')}</small>
-              </>
-            }
-          />
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${formId}-group-${index}-disableCooling`}>
+              {t('providersPage.form.disableCooling')}
+              <span className={styles.labelHint}>
+                {' '}
+                · {t('providersPage.form.disableCoolingHint')}
+              </span>
+            </label>
+            <CoolingPolicySelect
+              id={`${formId}-group-${index}-disableCooling`}
+              value={entry.disableCooling}
+              disabled={mutating}
+              onChange={(value) => updateEntry({ disableCooling: value })}
+              ariaLabel={t('providersPage.form.disableCooling')}
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label
+              className={styles.label}
+              htmlFor={`${formId}-group-${index}-consecutive429Threshold`}
+            >
+              {t('providersPage.form.consecutive429Threshold')}
+              <span className={styles.labelHint}>
+                {' '}
+                · {t('providersPage.form.consecutive429ThresholdHint')}
+              </span>
+            </label>
+            <input
+              id={`${formId}-group-${index}-consecutive429Threshold`}
+              type="number"
+              min={MIN_CONSECUTIVE_429_THRESHOLD}
+              max={MAX_CONSECUTIVE_429_THRESHOLD}
+              step="1"
+              inputMode="numeric"
+              className={inputClass}
+              value={entry.consecutive429Threshold ?? ''}
+              onChange={(event) =>
+                updateEntry({
+                  consecutive429Threshold:
+                    event.target.value === '' ? undefined : Number(event.target.value),
+                })
+              }
+              disabled={mutating || entry.disableCooling === true}
+            />
+          </div>
 
           <SponsorModelSection
             label={t(`providersPage.sponsor.protocolModels.${modelKey}`)}
@@ -790,6 +834,15 @@ export function SponsorProviderForm({
       )
     ) {
       return t('providersPage.form.validation.maxConcurrency');
+    }
+    if (
+      entries.some(
+        (entry) =>
+          entry.consecutive429Threshold !== undefined &&
+          !isValidConsecutive429Threshold(entry.consecutive429Threshold)
+      )
+    ) {
+      return t('providersPage.form.validation.consecutive429Threshold');
     }
     return null;
   };

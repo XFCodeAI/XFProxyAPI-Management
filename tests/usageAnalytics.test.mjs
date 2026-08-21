@@ -86,8 +86,9 @@ const reportWire = {
         recorded_id: 'codex\u001fgpt-5.6\u001fgpt-5.6',
         display_name: 'gpt-5.6',
         provider: 'codex',
-        resolved_model: 'gpt-5.6',
-        requested_model: 'gpt-5.6',
+        resolved_model: 'gpt-5.6-upstream',
+        analytics_model: 'gpt-5.6',
+        requested_model: 'gpt-5.6(max)',
         current: false,
         current_id: '',
       },
@@ -115,6 +116,18 @@ try {
   assert.equal(normalized.percentiles.approximate, true);
   assert.equal(normalized.credentialCatalog[0].hasUsage, false);
   assert.equal(normalized.credentialRevision, 12);
+  assert.deepEqual(
+    {
+      analytics: normalized.rankings[0].identity.analyticsModel,
+      requested: normalized.rankings[0].identity.requestedModel,
+      resolved: normalized.rankings[0].identity.resolvedModel,
+    },
+    {
+      analytics: 'gpt-5.6',
+      requested: 'gpt-5.6(max)',
+      resolved: 'gpt-5.6-upstream',
+    }
+  );
   assert.deepEqual(normalized.series, []);
   assert.equal(normalized.summary, null);
 
@@ -228,9 +241,14 @@ try {
   assert.equal(viewModel.analyticsViewForTab('groups', 'api-key-groups'), 'api-key-groups');
   assert.deepEqual(viewModel.analyticsRankingFilters('models', normalized.rankings[0].identity), {
     provider: 'codex',
-    resolvedModel: 'gpt-5.6',
-    requestedModel: 'gpt-5.6',
+    resolvedModel: 'gpt-5.6-upstream',
+    requestedModel: 'gpt-5.6(max)',
   });
+  assert.deepEqual(viewModel.analyticsModelIdentityDisplay(normalized.rankings[0].identity), [
+    { role: 'analytics', value: 'gpt-5.6' },
+    { role: 'requested', value: 'gpt-5.6(max)' },
+    { role: 'resolved', value: 'gpt-5.6-upstream' },
+  ]);
   assert.deepEqual(viewModel.analyticsAnomalyRange('2026-07-23T00:00:00Z', 'hour'), {
     from: '2026-07-23T00:00:00.000Z',
     to: '2026-07-23T01:00:00.000Z',

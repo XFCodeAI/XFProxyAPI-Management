@@ -273,7 +273,6 @@ try {
       models: [{ 'display-name': 'Grok 4', 'force-mapping': true, name: 'grok-4' }],
       headers: {},
       'excluded-models': [],
-      'disable-cooling': false,
     });
     assert.equal('auth-index' in calls[1].data.value, false);
 

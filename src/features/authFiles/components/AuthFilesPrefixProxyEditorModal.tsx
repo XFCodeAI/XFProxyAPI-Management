@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@/components/ui/Modal';
 import { ConcurrencySettingField } from '@/components/concurrency/ConcurrencySettingField';
+import { CoolingPolicySelect } from '@/components/cooling/CoolingPolicySelect';
 import { CredentialWeightInput } from '@/components/providers/CredentialWeightInput';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -181,12 +182,13 @@ export function AuthFilesPrefixProxyEditorModal(props: AuthFilesPrefixProxyEdito
                       />
                       <div className={fieldHintClass}>{t('auth_files.fallback_hint')}</div>
                     </div>
-                    <div className={cn(fieldRootClass, styles.prefixProxyToggleField)}>
+                    <div className={cn(fieldRootClass, styles.prefixProxyFullField)}>
                       <label className={fieldLabelClass}>
                         {t('auth_files.disable_cooling_label')}
                       </label>
-                      <ToggleSwitch
-                        checked={editor.disableCooling}
+                      <CoolingPolicySelect
+                        id="auth-file-disable-cooling"
+                        value={editor.disableCooling}
                         onChange={(value) => onChange('disableCooling', value)}
                         disabled={disableControls || editor.saving || !editor.json}
                         ariaLabel={t('auth_files.disable_cooling_label')}

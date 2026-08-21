@@ -79,6 +79,9 @@ const installMockAPI = async (page: Page) => {
       });
     }
     if (path === '/auth-files/download') {
+      const disableCooling = Object.prototype.hasOwnProperty.call(credential, 'disable_cooling')
+        ? { disable_cooling: credential.disable_cooling }
+        : {};
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -87,7 +90,7 @@ const installMockAPI = async (page: Page) => {
           email: 'user@example.com',
           groups: ['fallback-group'],
           fallback: true,
-          disable_cooling: credential.disable_cooling === true,
+          ...disableCooling,
         }),
       });
     }
@@ -100,10 +103,14 @@ const installMockAPI = async (page: Page) => {
     }
     if (path === '/auth-files/fields' && request.method() === 'PATCH') {
       const body = request.postDataJSON() as Record<string, unknown>;
-      credential = {
-        ...credential,
-        disable_cooling: body.disable_cooling === true,
-      };
+      credential = { ...credential };
+      if (Object.prototype.hasOwnProperty.call(body, 'disable_cooling')) {
+        if (body.disable_cooling === null) {
+          delete credential.disable_cooling;
+        } else {
+          credential.disable_cooling = body.disable_cooling;
+        }
+      }
       revision += 1;
       return routeJSON(route, {
         status: 'ok',
@@ -159,21 +166,22 @@ test('credential and supplier cooling controls preserve live state and fit the v
   const fallbackSwitch = dialog.getByRole('switch', {
     name: /设为兜底凭证|Fallback credential/i,
   });
-  const coolingSwitch = dialog.getByRole('switch', { name: /忽略冷却|Ignore cooldown/i });
+  const coolingSelect = dialog.getByRole('combobox', {
+    name: /冷却策略|Cooling policy/i,
+  });
   await expect(fallbackSwitch).toBeChecked();
-  await expect(coolingSwitch).not.toBeChecked();
+  await expect(coolingSelect).toHaveText(/启用冷却|Enable cooling/i);
 
   const fallbackBox = await fallbackSwitch.boundingBox();
-  const coolingBox = await coolingSwitch.boundingBox();
+  const coolingBox = await coolingSelect.boundingBox();
   expect(fallbackBox).not.toBeNull();
   expect(coolingBox).not.toBeNull();
-  if (testInfo.project.name === 'desktop') {
-    expect(Math.abs(fallbackBox!.y - coolingBox!.y)).toBeLessThan(24);
-  } else {
-    expect(coolingBox!.y).toBeGreaterThan(fallbackBox!.y);
-  }
+  expect(coolingBox!.y).toBeGreaterThan(fallbackBox!.y);
+  expect(coolingBox!.x).toBeGreaterThanOrEqual(0);
+  expect(coolingBox!.x + coolingBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
-  await coolingSwitch.click();
+  await coolingSelect.click();
+  await page.getByRole('option', { name: /禁用冷却|Disable cooling/i }).click();
   await expect(dialog.locator('textarea[readonly]').last()).toHaveValue(/"disable_cooling": true/);
   await page.screenshot({
     path: testInfo.outputPath('credential-cooling-editor.png'),
@@ -208,8 +216,10 @@ test('credential and supplier cooling controls preserve live state and fit the v
     .first()
     .click();
   await expect(
-    page.getByRole('checkbox', { name: /禁用冷却调度|Disable cooldown scheduling/i })
-  ).toBeChecked();
+    page.getByRole('dialog').getByRole('combobox', {
+      name: /冷却策略|Cooling policy/i,
+    })
+  ).toHaveText(/禁用冷却|Disable cooling/i);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   );

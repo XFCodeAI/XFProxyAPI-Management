@@ -62,6 +62,7 @@ import {
   mergeMonitoringRequests,
   monitoringCacheRate,
   monitoringIdentityLabel,
+  monitoringModelIdentityDisplay,
   monitoringSuccessRate,
   parseMonitoringDrillQuery,
   type MonitoringFilters,
@@ -99,7 +100,7 @@ const formatDuration = (value: number): string =>
   value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 2)}s` : `${value}ms`;
 
 const formatCost = (amount: string, currency: string): string =>
-  currency.toUpperCase() === 'USD' ? formatUsd(amount) : `${amount} ${currency}`;
+  currency.toUpperCase() === 'USD' ? formatUsd(amount, 'en-US', 3) : `${amount} ${currency}`;
 
 const toDateTimeLocal = (date: Date): string => {
   const offset = date.getTimezoneOffset() * 60_000;
@@ -832,6 +833,7 @@ export function RequestMonitoringPage() {
         value: request.userAgent,
       },
     ].filter((entry) => entry.value);
+    const modelIdentities = monitoringModelIdentityDisplay(request);
     return (
       <div
         className={styles.requestRow}
@@ -853,12 +855,12 @@ export function RequestMonitoringPage() {
             <span>{request.provider || t('common.not_set')}</span>
           </div>
           <div className={styles.requestModel}>
-            <strong>
-              {request.resolvedModel || request.requestedModel || t('common.not_set')}
-            </strong>
-            {request.requestedModel && request.requestedModel !== request.resolvedModel ? (
-              <span>{request.requestedModel}</span>
-            ) : null}
+            <strong>{modelIdentities[0]?.value || t('common.not_set')}</strong>
+            {modelIdentities.slice(1).map((identity) => (
+              <span data-model-identity={identity.role} key={identity.role}>
+                {identity.value}
+              </span>
+            ))}
           </div>
           <div className={styles.requestIdentity}>
             <IdentityStatus

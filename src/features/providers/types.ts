@@ -122,7 +122,8 @@ export interface SponsorKeyEntryInput {
   proxyUrl: string;
   prefix: string;
   disabled: boolean;
-  disableCooling?: boolean;
+  disableCooling?: boolean | null;
+  consecutive429Threshold?: number;
   fallback?: boolean;
   priority?: number;
   weight?: CredentialWeightInputValue;
@@ -164,7 +165,7 @@ export interface ProviderEntryFormInput {
   proxyUrl: string;
   prefix: string;
   disabled: boolean;
-  disableCooling?: boolean;
+  disableCooling?: boolean | null;
   consecutive429Threshold?: number;
   fallback: boolean;
   priority?: number;

@@ -297,8 +297,9 @@ export interface KimiQuotaState {
 }
 
 // xAI/Grok API payload types
-export interface XaiBillingCent {
+export interface XaiBillingCent extends Record<string, unknown> {
   val?: number | string;
+  value?: number | string;
 }
 
 export interface XaiBillingPeriod {
@@ -311,6 +312,22 @@ export interface XaiBillingProductUsage {
   product?: string;
   usagePercent?: number | string | null;
   usage_percent?: number | string | null;
+}
+
+export interface XaiBillingCycle {
+  billingPeriodStart?: string;
+  billing_period_start?: string;
+  billingPeriodEnd?: string;
+  billing_period_end?: string;
+}
+
+export interface XaiBillingUsage {
+  includedUsed?: XaiBillingCent | number | string | null;
+  included_used?: XaiBillingCent | number | string | null;
+  onDemandUsed?: XaiBillingCent | number | string | null;
+  on_demand_used?: XaiBillingCent | number | string | null;
+  totalUsed?: XaiBillingCent | number | string | null;
+  total_used?: XaiBillingCent | number | string | null;
 }
 
 export interface XaiBillingConfig {
@@ -331,9 +348,12 @@ export interface XaiBillingConfig {
   billing_period_start?: string;
   billingPeriodEnd?: string;
   billing_period_end?: string;
+  billingCycle?: XaiBillingCycle | null;
+  billing_cycle?: XaiBillingCycle | null;
+  usage?: XaiBillingUsage | null;
 }
 
-export interface XaiBillingPayload {
+export interface XaiBillingPayload extends XaiBillingConfig {
   config?: XaiBillingConfig | null;
 }
 

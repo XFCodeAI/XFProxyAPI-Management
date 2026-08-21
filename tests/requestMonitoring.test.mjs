@@ -94,8 +94,9 @@ const monitoringWire = {
       ingested_at: '2026-07-23T01:59:01Z',
       provider: 'codex',
       executor_type: 'codex',
-      resolved_model: 'gpt-5.6',
-      requested_model: 'gpt-5.6',
+      resolved_model: 'gpt-5.6-upstream',
+      analytics_model: 'gpt-5.6',
+      requested_model: 'gpt-5.6(max)',
       direct_peer_ip: '192.0.2.10',
       x_forwarded_for: '203.0.113.5, 198.51.100.8',
       user_agent: 'monitoring-client/1.0',
@@ -158,6 +159,18 @@ try {
   assert.equal(normalized.requests[0].directPeerIp, '192.0.2.10');
   assert.equal(normalized.requests[0].xForwardedFor, '203.0.113.5, 198.51.100.8');
   assert.equal(normalized.requests[0].userAgent, 'monitoring-client/1.0');
+  assert.deepEqual(
+    {
+      requested: normalized.requests[0].requestedModel,
+      analytics: normalized.requests[0].analyticsModel,
+      resolved: normalized.requests[0].resolvedModel,
+    },
+    {
+      requested: 'gpt-5.6(max)',
+      analytics: 'gpt-5.6',
+      resolved: 'gpt-5.6-upstream',
+    }
+  );
   assert.deepEqual(normalized.requests[0].cost.missingDimensions, []);
   assert.deepEqual(normalized.cost.missingDimensions, {});
   assert.equal(normalized.credentials[0].currentId, 'auth-1');
@@ -429,6 +442,19 @@ try {
 
   assert.equal(viewModel.monitoringSuccessRate(normalized.summary), 100);
   assert.equal(viewModel.monitoringCacheRate(normalized.summary), 100);
+  assert.deepEqual(viewModel.monitoringModelIdentityDisplay(normalized.requests[0]), [
+    { role: 'requested', value: 'gpt-5.6(max)' },
+    { role: 'analytics', value: 'gpt-5.6' },
+    { role: 'resolved', value: 'gpt-5.6-upstream' },
+  ]);
+  assert.deepEqual(
+    viewModel.monitoringModelIdentityDisplay({
+      requestedModel: 'gpt-5.6',
+      analyticsModel: 'gpt-5.6',
+      resolvedModel: 'gpt-5.6',
+    }),
+    [{ role: 'requested', value: 'gpt-5.6' }]
+  );
   assert.equal(
     viewModel.monitoringIdentityLabel(normalized.requests[0].identities.credential, 'missing'),
     'codex-user@example.com'

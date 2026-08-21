@@ -63,6 +63,11 @@
     "enabled": "已啟用",
     "disabled": "已停用"
   },
+  "cooling_policy": {
+    "inherit": "繼承全域策略",
+    "enabled": "啟用冷卻",
+    "disabled": "停用冷卻"
+  },
   "credential_weight": {
     "label": "調度權重",
     "hint": "選填安全整數，不得超過 1,000,000。留空繼承預設權重 1；非正數會將此憑證排除於加權調度之外。",
@@ -595,9 +600,9 @@
     "excluded_models_label": "排除模型（excluded_models）",
     "excluded_models_placeholder": "用逗號或換行分隔，例如: model-a, gpt-5-*, *-preview",
     "excluded_models_hint": "儲存為陣列；會自動 trim、小寫、去重並排序。",
-    "disable_cooling_label": "忽略冷卻",
+    "disable_cooling_label": "冷卻策略（disable_cooling）",
     "disable_cooling_placeholder": "",
-    "disable_cooling_hint": "開啟後，即使該憑證請求失敗，它仍會在每個新請求中再次參與調度；單一請求內不會重複嘗試。",
+    "disable_cooling_hint": "可繼承全域策略、為此憑證明確啟用冷卻，或停用冷卻。",
     "note_label": "備註（note）",
     "note_placeholder": "輸入備註資訊，例如：張三的帳號",
     "note_hint": "選填，用於標記憑證用途或歸屬；留空則不寫入。",
@@ -2833,8 +2838,8 @@
       "proxyBadge": "代理",
       "modelBadgeImage": "圖片",
       "modelBadgeThinking": "Thinking",
-      "disableCooling": "停用冷卻調度",
-      "disableCoolingHint": "僅對目前憑證或提供商停用失敗後的冷卻視窗",
+      "disableCooling": "冷卻策略",
+      "disableCoolingHint": "可繼承全域策略、明確啟用冷卻，或為目前憑證或提供商停用冷卻",
       "modelEntry": "模型 #{{index}}",
       "modelImage": "允許圖片端點",
       "modelImageHint": "允許該模型用於 /v1/images/generations 和 /v1/images/edits",

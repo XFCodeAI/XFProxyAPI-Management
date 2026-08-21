@@ -1,5 +1,6 @@
 import type { ApiError } from '@/types/api';
 import { isRecord } from '@/utils/helpers';
+import { normalizeAnalyticsModel } from '@/utils/modelIdentity';
 import { apiClient } from './client';
 import {
   buildMonitoringQuery,
@@ -88,6 +89,7 @@ export interface AnalyticsIdentity {
   displayName: string;
   provider: string;
   resolvedModel: string;
+  analyticsModel: string;
   requestedModel: string;
   current: boolean;
   currentId: string;
@@ -283,12 +285,16 @@ export const normalizeAnalyticsMetrics = (value: unknown, context: string): Anal
 
 const normalizeIdentity = (value: unknown, context: string): AnalyticsIdentity => {
   const record = requireRecord(value, context);
+  const requestedModel = stringValue(record, 'requested_model', context);
+  const analyticsModel =
+    stringValue(record, 'analytics_model', context) || normalizeAnalyticsModel(requestedModel);
   return {
     recordedId: stringValue(record, 'recorded_id', context),
     displayName: stringValue(record, 'display_name', context),
     provider: stringValue(record, 'provider', context),
     resolvedModel: stringValue(record, 'resolved_model', context),
-    requestedModel: stringValue(record, 'requested_model', context),
+    analyticsModel,
+    requestedModel,
     current: booleanValue(record, 'current', context),
     currentId: stringValue(record, 'current_id', context),
   };

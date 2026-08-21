@@ -54,7 +54,7 @@ export type AuthFileFieldsPatch = {
   concurrency_mode?: ConcurrencySetting['mode'];
   max_concurrency?: number | null;
   fallback?: boolean;
-  disable_cooling?: boolean;
+  disable_cooling?: boolean | null;
   websockets?: boolean;
   using_api?: boolean;
   note?: string;

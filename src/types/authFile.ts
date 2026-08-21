@@ -56,9 +56,9 @@ export interface AuthFileItem {
   maxConcurrency?: number;
   max_concurrency?: number;
   'max-concurrency'?: number;
-  disableCooling?: boolean;
-  disable_cooling?: boolean;
-  'disable-cooling'?: boolean | string | number;
+  disableCooling?: boolean | null;
+  disable_cooling?: boolean | null;
+  'disable-cooling'?: boolean | string | number | null;
   disabled?: boolean;
   unavailable?: boolean;
   assignable?: boolean;

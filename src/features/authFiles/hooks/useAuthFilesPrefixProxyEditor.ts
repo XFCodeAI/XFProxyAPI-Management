@@ -46,7 +46,7 @@ export type PrefixProxyEditorField =
   | 'note'
   | 'headersText';
 
-export type PrefixProxyEditorFieldValue = string | boolean;
+export type PrefixProxyEditorFieldValue = string | boolean | null | undefined;
 
 export type PrefixProxyEditorState = {
   fileName: string;
@@ -71,7 +71,7 @@ export type PrefixProxyEditorState = {
   maxConcurrency: string;
   maxConcurrencyError: string | null;
   fallback: boolean;
-  disableCooling: boolean;
+  disableCooling: boolean | null | undefined;
   websockets: boolean;
   websocketsTouched: boolean;
   usingApi: boolean;
@@ -145,7 +145,8 @@ const formatCredentialWeightEditorValue = (value: unknown): string => {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
 };
 
-const normalizeBooleanValue = (value: unknown): boolean | undefined => {
+const normalizeBooleanValue = (value: unknown): boolean | null | undefined => {
+  if (value === null) return null;
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return value !== 0;
   if (typeof value !== 'string') return undefined;
@@ -155,12 +156,24 @@ const normalizeBooleanValue = (value: unknown): boolean | undefined => {
   return undefined;
 };
 
-export const readAuthFileDisableCooling = (value: Record<string, unknown>): boolean => {
+export const readAuthFileDisableCooling = (
+  value: Record<string, unknown>
+): boolean | null | undefined => {
   for (const key of ['disable_cooling', 'disable-cooling'] as const) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
     const normalized = normalizeBooleanValue(value[key]);
-    if (normalized !== undefined) return normalized;
+    if (normalized !== undefined || value[key] === null) return normalized;
   }
-  return false;
+  return undefined;
+};
+
+export const authFileDisableCoolingMatchesPatch = (
+  value: Record<string, unknown>,
+  expected: boolean | null
+): boolean => {
+  const actual = readAuthFileDisableCooling(value);
+  if (expected === null) return actual === null || actual === undefined;
+  return actual === expected;
 };
 
 const INVALID_CONTENT_PREVIEW_LIMIT = 1000;
@@ -344,7 +357,7 @@ export const buildAuthFileFieldsPatch = (
 
   const originalDisableCooling = readAuthFileDisableCooling(original);
   if (editor.disableCooling !== originalDisableCooling) {
-    patch.disable_cooling = editor.disableCooling;
+    patch.disable_cooling = editor.disableCooling ?? null;
   }
 
   if (editor.noteTouched) {
@@ -444,10 +457,10 @@ export const buildPrefixProxyUpdatedText = (
 
   if (patch.disable_cooling !== undefined) {
     delete next['disable-cooling'];
-    if (patch.disable_cooling) {
-      next.disable_cooling = true;
-    } else {
+    if (patch.disable_cooling === null) {
       delete next.disable_cooling;
+    } else {
+      next.disable_cooling = patch.disable_cooling;
     }
   }
 
@@ -537,7 +550,7 @@ export function useAuthFilesPrefixProxyEditor(
       maxConcurrency: '0',
       maxConcurrencyError: null,
       fallback: false,
-      disableCooling: false,
+      disableCooling: undefined,
       websockets: false,
       websocketsTouched: false,
       usingApi: false,
@@ -684,7 +697,10 @@ export function useAuthFilesPrefixProxyEditor(
       }
       if (field === 'fallback') return { ...prev, fallback: Boolean(value) };
       if (field === 'disableCooling') {
-        return { ...prev, disableCooling: Boolean(value) };
+        return {
+          ...prev,
+          disableCooling: value === undefined || value === null ? value : Boolean(value),
+        };
       }
       if (field === 'websockets') {
         return { ...prev, websockets: Boolean(value), websocketsTouched: true };
@@ -746,7 +762,7 @@ export function useAuthFilesPrefixProxyEditor(
       }
       if (
         payload.disable_cooling !== undefined &&
-        readAuthFileDisableCooling(authoritativeFile) !== payload.disable_cooling
+        !authFileDisableCoolingMatchesPatch(authoritativeFile, payload.disable_cooling)
       ) {
         throw new Error(t('auth_files.disable_cooling_confirmation_failed'));
       }

@@ -1,7 +1,7 @@
 {
   "name": "xfproxyapi-management",
   "private": true,
-  "version": "0.1.50",
+  "version": "0.1.51",
   "type": "module",
   "packageManager": "pnpm@10.17.1",
   "scripts": {
@@ -22,6 +22,7 @@
     "test:proxy-selection": "node --experimental-strip-types tests/proxySelectionDefault.test.mjs",
     "test:proxy-pools": "node tests/proxyPools.test.mjs",
     "test:usage-analytics": "node --experimental-strip-types tests/usageAnalytics.test.mjs",
+    "test:q005-management-panel": "node tests/q005ManagementPanel.test.mjs",
     "test:analytics-request-state": "node --experimental-strip-types tests/latestAsyncSection.test.mjs",
     "test:analytics-e2e": "playwright test",
     "test:realtime-credential-inventory": "node --experimental-strip-types tests/realtimeCredentialInventory.test.mjs",

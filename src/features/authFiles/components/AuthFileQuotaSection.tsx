@@ -83,7 +83,6 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
   const refreshQuotaForFile = useCallback(async () => {
     if (disableControls) return;
     if (isRuntimeOnlyAuthFile(file)) return;
-    if (file.disabled) return;
     if (quota?.status === 'loading') return;
 
     const config = getQuotaConfig(quotaType) as unknown as {
@@ -229,8 +228,8 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
   };
 
   const quotaStatus = quota?.status ?? 'idle';
-  const canRefreshQuota = !disableControls && !file.disabled && !resettingQuota;
-  const canUseResetQuota = canRefreshQuota && quotaStatus !== 'loading';
+  const canRefreshQuota = !disableControls && !resettingQuota;
+  const canUseResetQuota = canRefreshQuota && !file.disabled && quotaStatus !== 'loading';
   const showResetQuotaAction = quota !== undefined && Boolean(config.canResetQuota?.(quota));
   const resetQuotaAction =
     config.resetQuota && showResetQuotaAction ? (

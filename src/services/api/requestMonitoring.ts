@@ -1,6 +1,7 @@
 import type { AxiosResponse } from 'axios';
 import type { ApiError } from '@/types/api';
 import { isRecord } from '@/utils/helpers';
+import { normalizeAnalyticsModel } from '@/utils/modelIdentity';
 import { apiClient } from './client';
 
 export type MonitoringResult = 'success' | 'failure';
@@ -87,6 +88,7 @@ export interface MonitoringRequest {
   executorType: string;
   resolvedModel: string;
   requestedModel: string;
+  analyticsModel: string;
   directPeerIp: string;
   xForwardedFor: string;
   userAgent: string;
@@ -408,6 +410,9 @@ const normalizeHeaders = (value: unknown, context: string): Record<string, strin
 const normalizeRequest = (value: unknown, context: string): MonitoringRequest => {
   const record = requireRecord(value, context);
   const result = requiredString(record, 'result', context);
+  const requestedModel = stringValue(record, 'requested_model', context);
+  const analyticsModel =
+    stringValue(record, 'analytics_model', context) || normalizeAnalyticsModel(requestedModel);
   if (result !== 'success' && result !== 'failure') return invalidResponse(`${context}.result`);
   return {
     id: requiredString(record, 'id', context),
@@ -417,7 +422,8 @@ const normalizeRequest = (value: unknown, context: string): MonitoringRequest =>
     provider: stringValue(record, 'provider', context),
     executorType: stringValue(record, 'executor_type', context),
     resolvedModel: stringValue(record, 'resolved_model', context),
-    requestedModel: stringValue(record, 'requested_model', context),
+    requestedModel,
+    analyticsModel,
     directPeerIp: stringValue(record, 'direct_peer_ip', context),
     xForwardedFor: stringValue(record, 'x_forwarded_for', context),
     userAgent: stringValue(record, 'user_agent', context),

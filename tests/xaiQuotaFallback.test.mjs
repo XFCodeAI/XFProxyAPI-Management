@@ -77,6 +77,74 @@ try {
       }
     );
 
+    const unifiedRequests = [];
+    apiCallApi.request = async (payload) => {
+      unifiedRequests.push(payload);
+      if (payload.url === XAI_BILLING_WEEKLY_URL) {
+        return result(200, {
+          config: {
+            current_period: {
+              type: 'weekly',
+              start: '2026-08-13T00:00:00Z',
+              end: '2026-08-20T00:00:00Z',
+            },
+            credit_usage_percent: 3,
+          },
+        });
+      }
+      if (payload.url === XAI_BILLING_MONTHLY_URL) {
+        return result(402, { error: 'Deprecated endpoint limit' });
+      }
+      throw new Error(`unexpected xAI request: ${payload.url}`);
+    };
+
+    const unifiedSummary = await XAI_CONFIG.fetchQuota(
+      { name: 'unified.json', type: 'xai', auth_index: 'xai:unified' },
+      t
+    );
+    assert.deepEqual(
+      unifiedRequests.map(({ url }) => url),
+      [XAI_BILLING_WEEKLY_URL, XAI_BILLING_MONTHLY_URL]
+    );
+    assert.deepEqual(
+      {
+        mode: unifiedSummary.mode,
+        periodType: unifiedSummary.periodType,
+        usagePercent: unifiedSummary.usagePercent,
+      },
+      { mode: 'billing', periodType: 'weekly', usagePercent: 3 }
+    );
+
+    const legacyRequests = [];
+    apiCallApi.request = async (payload) => {
+      legacyRequests.push(payload);
+      if (payload.url === XAI_BILLING_WEEKLY_URL) {
+        return result(503, { error: 'Unified billing unavailable' });
+      }
+      if (payload.url === XAI_BILLING_MONTHLY_URL) {
+        return result(200, { config: { monthly_limit: 20_000, used: 5_000 } });
+      }
+      throw new Error(`unexpected xAI request: ${payload.url}`);
+    };
+
+    const legacySummary = await XAI_CONFIG.fetchQuota(
+      { name: 'legacy.json', type: 'xai', auth_index: 'xai:legacy' },
+      t
+    );
+    assert.deepEqual(
+      legacyRequests.map(({ url }) => url),
+      [XAI_BILLING_WEEKLY_URL, XAI_BILLING_MONTHLY_URL]
+    );
+    assert.deepEqual(
+      {
+        periodType: legacySummary.periodType,
+        monthlyLimitCents: legacySummary.monthlyLimitCents,
+        usedCents: legacySummary.usedCents,
+        usedPercent: legacySummary.usedPercent,
+      },
+      { periodType: 'monthly', monthlyLimitCents: 20_000, usedCents: 5_000, usedPercent: 25 }
+    );
+
     const fallbackRequests = [];
     apiCallApi.request = async (payload) => {
       fallbackRequests.push(payload);

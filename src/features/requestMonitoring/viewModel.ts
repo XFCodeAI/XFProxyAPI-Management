@@ -8,6 +8,7 @@ import {
   type MonitoringSummary,
 } from '@/services/api/requestMonitoring';
 import type { ReconciledCredentialIdentity } from '@/features/authFiles/credentialIdentityCatalog';
+import { buildModelIdentityDisplay } from '@/utils/modelIdentity';
 
 export type MonitoringTimeRange = '1h' | '24h' | '7d' | '30d' | 'custom';
 
@@ -268,6 +269,10 @@ export const monitoringCacheRate = (summary: MonitoringSummary): number =>
 
 export const monitoringIdentityLabel = (identity: MonitoringIdentity, fallback: string): string =>
   identity.displayName || identity.recordedId || fallback;
+
+export const monitoringModelIdentityDisplay = (
+  request: Pick<MonitoringRequest, 'requestedModel' | 'analyticsModel' | 'resolvedModel'>
+) => buildModelIdentityDisplay(request, 'requested');
 
 export const credentialVisibleWithoutUsage = (
   identity: ReconciledCredentialIdentity,

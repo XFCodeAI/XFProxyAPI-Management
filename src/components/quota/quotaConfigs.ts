@@ -1617,7 +1617,7 @@ const requestXaiBilling = async (
   }
 
   const payload = parseXaiBillingPayload(result.body ?? result.bodyText);
-  return buildXaiBillingSummary(payload?.config);
+  return buildXaiBillingSummary(payload?.config ?? payload);
 };
 
 const requestXaiPaidHealth = async (authIndex: string): Promise<XaiBillingSummary> => {
@@ -1813,10 +1813,7 @@ const renderXaiItems = (
   const hasWeeklyData =
     billing.periodType === 'weekly' &&
     (weeklyUsed !== null || Boolean(billing.periodEnd) || billing.productUsage.length > 0);
-  const hasMonthlyData =
-    billing.monthlyLimitCents !== null ||
-    billing.usedCents !== null ||
-    Boolean(billing.billingPeriodEnd);
+  const hasMonthlyData = billing.usedPercent !== null || billing.monthlyLimitCents !== null;
 
   return h(
     Fragment,

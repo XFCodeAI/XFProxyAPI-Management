@@ -12,6 +12,7 @@ import type {
   AnalyticsRanking,
   AnalyticsView,
 } from '@/services/api/usageAnalytics';
+import { buildModelIdentityDisplay, normalizeAnalyticsModel } from '@/utils/modelIdentity';
 
 export type AnalyticsTab =
   | 'overview'
@@ -125,7 +126,21 @@ export const analyticsAnomalyRange = (
 };
 
 export const analyticsIdentityLabel = (identity: AnalyticsIdentity, fallback: string): string =>
-  identity.displayName || identity.resolvedModel || identity.recordedId || fallback;
+  identity.analyticsModel ||
+  identity.displayName ||
+  identity.requestedModel ||
+  identity.resolvedModel ||
+  identity.recordedId ||
+  fallback;
+
+export const analyticsModelIdentityDisplay = (identity: AnalyticsIdentity) =>
+  buildModelIdentityDisplay(
+    {
+      ...identity,
+      analyticsModel: identity.analyticsModel || normalizeAnalyticsModel(identity.requestedModel),
+    },
+    'analytics'
+  );
 
 const zeroAnalyticsMetrics = (currency: string): AnalyticsMetrics => ({
   calls: 0,
@@ -190,6 +205,7 @@ export const mergeAnalyticsCredentialRankings = (
         displayName: identity.displayName,
         provider: identity.provider,
         resolvedModel: '',
+        analyticsModel: '',
         requestedModel: '',
         current: true,
         currentId: identity.currentId,

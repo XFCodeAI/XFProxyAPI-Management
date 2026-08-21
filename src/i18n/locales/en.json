@@ -63,6 +63,11 @@
     "enabled": "Enabled",
     "disabled": "Disabled"
   },
+  "cooling_policy": {
+    "inherit": "Inherit global policy",
+    "enabled": "Cooling enabled",
+    "disabled": "Cooling disabled"
+  },
   "credential_weight": {
     "label": "Routing weight",
     "hint": "Optional safe integer up to 1,000,000. Empty inherits the default weight 1; non-positive values exclude this credential from weighted routing.",
@@ -595,9 +600,9 @@
     "excluded_models_label": "Excluded models (excluded_models)",
     "excluded_models_placeholder": "Comma or newline separated, e.g. model-a, gpt-5-*, *-preview",
     "excluded_models_hint": "Saved as an array and normalized by trim/lowercase/dedup/sort.",
-    "disable_cooling_label": "Ignore cooldown",
+    "disable_cooling_label": "Cooling policy (disable_cooling)",
     "disable_cooling_placeholder": "",
-    "disable_cooling_hint": "When enabled, this credential can be scheduled again on every new request after a failure. It is still attempted only once per request.",
+    "disable_cooling_hint": "Inherit the global policy, explicitly enable cooling, or disable cooling for this credential.",
     "note_label": "Note",
     "note_placeholder": "Enter a note, e.g.: John's account",
     "note_hint": "Optional. Used to describe the purpose or owner of this credential; leave empty to omit.",
@@ -2806,8 +2811,8 @@
       "proxyBadge": "Proxy",
       "modelBadgeImage": "Image",
       "modelBadgeThinking": "Thinking",
-      "disableCooling": "Disable cooling",
-      "disableCoolingHint": "Disable failure cooldown windows only for this credential or provider",
+      "disableCooling": "Cooling policy",
+      "disableCoolingHint": "Inherit the global policy, explicitly enable cooling, or disable cooling for this credential or provider",
       "modelEntry": "Model #{{index}}",
       "modelImage": "Allow image endpoints",
       "modelImageHint": "Allow this model on /v1/images/generations and /v1/images/edits",

@@ -18,6 +18,17 @@ import { normalizeConsecutive429Threshold } from '@/utils/consecutive429Threshol
 const normalizeBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
 
+const readCoolingOverride = (
+  record: Record<string, unknown> | null | undefined
+): boolean | null | undefined => {
+  if (!record || !Object.prototype.hasOwnProperty.call(record, 'disable-cooling')) {
+    return undefined;
+  }
+  const value = record['disable-cooling'];
+  if (value === null) return null;
+  return typeof value === 'boolean' ? value : undefined;
+};
+
 const normalizeMaxConcurrency = (value: unknown): number | undefined => {
   if (value === undefined || value === null || value === '') return undefined;
   const parsed = Number(value);
@@ -264,8 +275,13 @@ const normalizeProviderKeyConfig = (item: unknown): ProviderKeyConfig | null => 
   const websockets = normalizeBoolean(record?.websockets);
   if (websockets !== undefined) config.websockets = websockets;
   if (proxyUrl) config.proxyUrl = String(proxyUrl);
-  const disableCooling = normalizeBoolean(record?.['disable-cooling']);
+  const disableCooling = readCoolingOverride(record);
   if (disableCooling !== undefined) config.disableCooling = disableCooling;
+  if (record?.['consecutive-429-threshold'] !== undefined) {
+    config.consecutive429Threshold = normalizeConsecutive429Threshold(
+      record['consecutive-429-threshold']
+    );
+  }
   const headers = normalizeHeaders(record?.headers);
   if (headers) config.headers = headers;
   const models = normalizeModelAliases(record?.models);
@@ -346,8 +362,13 @@ const normalizeGeminiKeyConfig = (item: unknown): GeminiKeyConfig | null => {
   if (baseUrl) config.baseUrl = String(baseUrl);
   const proxyUrl = record?.['proxy-url'];
   if (proxyUrl) config.proxyUrl = String(proxyUrl);
-  const disableCooling = normalizeBoolean(record?.['disable-cooling']);
+  const disableCooling = readCoolingOverride(record);
   if (disableCooling !== undefined) config.disableCooling = disableCooling;
+  if (record?.['consecutive-429-threshold'] !== undefined) {
+    config.consecutive429Threshold = normalizeConsecutive429Threshold(
+      record['consecutive-429-threshold']
+    );
+  }
   const models = normalizeModelAliases(record?.models);
   if (models.length) config.models = models;
   const headers = normalizeHeaders(record?.headers);
@@ -420,7 +441,7 @@ const normalizeOpenAIProvider = (
   result.maxConcurrency = concurrency.maxConcurrency;
   const fallback = normalizeBoolean(provider.fallback);
   if (fallback !== undefined) result.fallback = fallback;
-  const disableCooling = normalizeBoolean(provider['disable-cooling']);
+  const disableCooling = readCoolingOverride(provider);
   if (disableCooling !== undefined) result.disableCooling = disableCooling;
   result.consecutive429Threshold = normalizeConsecutive429Threshold(
     provider['consecutive-429-threshold']

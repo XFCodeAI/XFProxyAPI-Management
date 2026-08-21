@@ -397,7 +397,7 @@ try {
     maxConcurrency: '0',
     maxConcurrencyError: null,
     fallback: false,
-    disableCooling: false,
+    disableCooling: undefined,
     websockets: false,
     websocketsTouched: false,
     usingApi: false,

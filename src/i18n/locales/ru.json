@@ -63,6 +63,11 @@
     "enabled": "Включено",
     "disabled": "Отключено"
   },
+  "cooling_policy": {
+    "inherit": "Наследовать общую политику",
+    "enabled": "Охлаждение включено",
+    "disabled": "Охлаждение отключено"
+  },
   "credential_weight": {
     "label": "Вес маршрутизации",
     "hint": "Необязательное безопасное целое число не больше 1 000 000. Пустое значение наследует вес 1; неположительные значения исключают учётные данные из взвешенной маршрутизации.",
@@ -594,9 +599,9 @@
     "excluded_models_label": "Исключённые модели (excluded_models)",
     "excluded_models_placeholder": "Через запятую или с новой строки, например: model-a, gpt-5-*, *-preview",
     "excluded_models_hint": "Сохраняется как массив; значения trim/нижний регистр/без дублей/с сортировкой.",
-    "disable_cooling_label": "Игнорировать cooldown",
+    "disable_cooling_label": "Политика охлаждения (disable_cooling)",
     "disable_cooling_placeholder": "",
-    "disable_cooling_hint": "Если включено, после ошибки эти учётные данные снова участвуют в каждом новом запросе, но только один раз в рамках одного запроса.",
+    "disable_cooling_hint": "Наследовать общую политику, явно включить охлаждение или отключить его для этих учётных данных.",
     "note_label": "Заметка (note)",
     "note_placeholder": "Введите заметку, например: аккаунт Ивана",
     "note_hint": "Необязательно. Используется для описания назначения или владельца учётных данных; оставьте пустым, чтобы не записывать.",
@@ -2796,8 +2801,8 @@
       "proxyBadge": "Прокси",
       "modelBadgeImage": "Image",
       "modelBadgeThinking": "Thinking",
-      "disableCooling": "Отключить cooldown",
-      "disableCoolingHint": "Отключает окна охлаждения после ошибок только для этой записи",
+      "disableCooling": "Политика охлаждения",
+      "disableCoolingHint": "Наследовать общую политику, явно включить охлаждение или отключить его для этих учётных данных или поставщика",
       "modelEntry": "Модель #{{index}}",
       "modelImage": "Разрешить image endpoints",
       "modelImageHint": "Разрешить модель для /v1/images/generations и /v1/images/edits",

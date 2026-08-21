@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CredentialGroupsField } from '@/components/credentialGroups/CredentialGroupsField';
+import { CoolingPolicySelect } from '@/components/cooling/CoolingPolicySelect';
 import { CredentialWeightInput } from '@/components/providers/CredentialWeightInput';
 import {
   IconDownload,
@@ -119,6 +120,7 @@ const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
       'proxyUrl',
       'routing',
       'maxConcurrency',
+      'consecutive429Threshold',
       'testModel',
     ],
     toggleFields: ['fallback', 'disabled', 'disableCooling'],
@@ -133,6 +135,7 @@ const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
       'proxyUrl',
       'routing',
       'maxConcurrency',
+      'consecutive429Threshold',
       'requestRetry',
     ],
     toggleFields: ['fallback', 'disabled', 'disableCooling'],
@@ -147,6 +150,7 @@ const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
       'proxyUrl',
       'routing',
       'maxConcurrency',
+      'consecutive429Threshold',
       'testModel',
     ],
     toggleFields: ['websockets', 'fallback', 'disabled', 'disableCooling'],
@@ -161,6 +165,7 @@ const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
       'proxyUrl',
       'routing',
       'maxConcurrency',
+      'consecutive429Threshold',
       'testModel',
     ],
     toggleFields: ['websockets', 'fallback', 'disabled', 'disableCooling'],
@@ -176,6 +181,7 @@ const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
       'proxyUrl',
       'routing',
       'maxConcurrency',
+      'consecutive429Threshold',
       'testModel',
     ],
     toggleFields: ['fallback', 'disabled', 'disableCooling'],
@@ -190,9 +196,10 @@ const PROVIDER_FORM_LAYOUTS: Record<ProviderBrand, ProviderFormLayout> = {
       'proxyUrl',
       'routing',
       'maxConcurrency',
+      'consecutive429Threshold',
       'testModel',
     ],
-    toggleFields: ['fallback', 'disabled'],
+    toggleFields: ['fallback', 'disabled', 'disableCooling'],
     advancedSections: ['headers', 'models', 'excludedModels'],
     modelEntryMode: 'standard',
   },
@@ -243,13 +250,12 @@ function buildInitialForm(
       authMode: brand === 'claude' ? 'x-api-key' : undefined,
       protocolMode: brand === 'openaiCompatibility' ? 'chat-completions' : undefined,
       retryOwner: brand === 'openaiCompatibility' ? 'xfpa' : undefined,
-      consecutive429Threshold:
-        brand === 'openaiCompatibility' ? DEFAULT_CONSECUTIVE_429_THRESHOLD : undefined,
+      consecutive429Threshold: brand === 'kimi' ? undefined : DEFAULT_CONSECUTIVE_429_THRESHOLD,
       requestRetry: undefined,
       proxyUrl: '',
       prefix: '',
       disabled: false,
-      disableCooling: false,
+      disableCooling: undefined,
       fallback: false,
       priority: undefined,
       weight: undefined,
@@ -294,7 +300,7 @@ function buildInitialForm(
       proxyUrl: '',
       prefix: cfg.prefix ?? '',
       disabled: cfg.disabled === true,
-      disableCooling: cfg.disableCooling === true,
+      disableCooling: cfg.disableCooling,
       fallback: cfg.fallback === true,
       priority: cfg.priority,
       concurrencyMode: concurrency.mode,
@@ -360,7 +366,8 @@ function buildInitialForm(
     proxyUrl: cfg.proxyUrl ?? '',
     prefix: cfg.prefix ?? '',
     disabled,
-    disableCooling: cfg.disableCooling === true,
+    disableCooling: cfg.disableCooling,
+    consecutive429Threshold: cfg.consecutive429Threshold ?? DEFAULT_CONSECUTIVE_429_THRESHOLD,
     fallback: cfg.fallback === true,
     priority: cfg.priority,
     requestRetry: brand === 'interactions' ? cfg.requestRetry : undefined,
@@ -517,6 +524,7 @@ export function BaseProviderForm({
     apiKey: form.apiKey,
     fallbackApiKey,
     authIndex: fallbackAuthIndex,
+    proxyUrl: form.proxyUrl,
   });
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
 
@@ -1295,19 +1303,22 @@ export function BaseProviderForm({
         ) : null}
 
         {hasToggleField('disableCooling') ? (
-          <SelectionCheckbox
-            checked={form.disableCooling ?? false}
-            disabled={mutating}
-            onChange={(checked) => updateField('disableCooling', checked)}
-            className={styles.checkboxRow}
-            labelClassName={styles.checkboxText}
-            label={
-              <>
-                <span>{t('providersPage.form.disableCooling')}</span>
-                <small>{t('providersPage.form.disableCoolingHint')}</small>
-              </>
-            }
-          />
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${fid}-disableCooling`}>
+              {t('providersPage.form.disableCooling')}
+              <span className={styles.labelHint}>
+                {' '}
+                · {t('providersPage.form.disableCoolingHint')}
+              </span>
+            </label>
+            <CoolingPolicySelect
+              id={`${fid}-disableCooling`}
+              value={form.disableCooling}
+              disabled={mutating}
+              onChange={(value) => updateField('disableCooling', value)}
+              ariaLabel={t('providersPage.form.disableCooling')}
+            />
+          </div>
         ) : null}
 
         {brand === 'openaiCompatibility' && form.codexImageRoute ? (

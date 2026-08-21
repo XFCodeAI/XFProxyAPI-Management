@@ -20,6 +20,7 @@ import { useAuthInventoryStore, useRuntimeObservationStore } from '@/stores';
 import { apiKeyUsageApi } from '@/services/api';
 import type { ApiKeyFailureHistory, RecentFailure } from '@/utils/recentRequests';
 import type { ApiKeyEntry, OpenAIProviderConfig } from '@/types';
+import type { RuntimeObservationConsecutive429 } from '@/types/runtimeObservation';
 import type { SupplierBillingProbeEntry } from '@/services/api/supplierBillingProbe';
 import { formatDateTimeValue, maskApiKey } from '@/utils/format';
 import { getErrorMessage } from '@/utils/helpers';
@@ -66,6 +67,7 @@ const kimiBillingAPIKeyEntries = (raw: SponsorProviderRaw): ApiKeyEntry[] => [
   ...raw.claude.map((item) => ({
     name: item.config.name?.trim() ? `Claude / ${item.config.name.trim()}` : 'Claude',
     apiKey: item.config.apiKey,
+    authIndex: item.config.authIndex,
     weight: item.config.weight,
     proxyUrl: item.config.proxyUrl,
   })),
@@ -82,6 +84,38 @@ const formatEffectiveWeight = (
     ? `${effective} (${defaultLabel})`
     : String(effective);
 };
+
+function Consecutive429Status({
+  value,
+}: {
+  value: RuntimeObservationConsecutive429 | null | undefined;
+}) {
+  const { t } = useTranslation();
+  if (!value) return null;
+
+  return (
+    <span
+      className={`${styles.apiKeyEntryStat} ${
+        value.throttled ? styles.apiKeyEntry429Throttled : styles.apiKeyEntry429
+      }`}
+    >
+      {t('runtime_observation.consecutive_429.progress', {
+        count: value.count,
+        threshold: value.threshold,
+      })}
+      {' · '}
+      {value.scope === 'model'
+        ? t('runtime_observation.consecutive_429.scope_model', { model: value.model })
+        : t('runtime_observation.consecutive_429.scope_credential')}
+      {' · '}
+      {t(
+        value.throttled
+          ? 'runtime_observation.consecutive_429.throttled'
+          : 'runtime_observation.consecutive_429.not_throttled'
+      )}
+    </span>
+  );
+}
 
 export function ResourceDetailView({
   resource,
@@ -328,12 +362,17 @@ export function ResourceDetailView({
     <div>
       <div className={styles.detailHeader}>
         <div className={styles.sectionTitle}>{resource.name ?? resource.identifier}</div>
-        <RuntimeCapacityBadge
-          resource={runtimeObservation ?? undefined}
-          mode={resource.concurrencyMode}
-          maxConcurrency={resource.maxConcurrency}
-          aggregate={resource.concurrencyMode === null}
-        />
+        <div className={styles.apiKeyEntryStats}>
+          <RuntimeCapacityBadge
+            resource={runtimeObservation ?? undefined}
+            mode={resource.concurrencyMode}
+            maxConcurrency={resource.maxConcurrency}
+            aggregate={resource.concurrencyMode === null}
+          />
+          {resource.brand !== 'openaiCompatibility' && resource.brand !== 'kimi' ? (
+            <Consecutive429Status value={runtimeCredentials[0]?.consecutive429} />
+          ) : null}
+        </div>
       </div>
 
       <dl className={styles.dl}>
@@ -599,32 +638,7 @@ export function ResourceDetailView({
                       mode={entry.concurrencyMode}
                       maxConcurrency={entry.maxConcurrency ?? 0}
                     />
-                    {consecutive429 ? (
-                      <span
-                        className={`${styles.apiKeyEntryStat} ${
-                          consecutive429.throttled
-                            ? styles.apiKeyEntry429Throttled
-                            : styles.apiKeyEntry429
-                        }`}
-                      >
-                        {t('runtime_observation.consecutive_429.progress', {
-                          count: consecutive429.count,
-                          threshold: consecutive429.threshold,
-                        })}
-                        {' · '}
-                        {consecutive429.scope === 'model'
-                          ? t('runtime_observation.consecutive_429.scope_model', {
-                              model: consecutive429.model,
-                            })
-                          : t('runtime_observation.consecutive_429.scope_credential')}
-                        {' · '}
-                        {t(
-                          consecutive429.throttled
-                            ? 'runtime_observation.consecutive_429.throttled'
-                            : 'runtime_observation.consecutive_429.not_throttled'
-                        )}
-                      </span>
-                    ) : null}
+                    <Consecutive429Status value={consecutive429} />
                     <span className={`${styles.apiKeyEntryStat} ${styles.apiKeyEntryStatSuccess}`}>
                       <IconCheck size={12} /> {entryStats.success}
                     </span>
@@ -651,6 +665,7 @@ export function ResourceDetailView({
                 <span className={styles.apiKeyEntryAlias}>{credential.provider}</span>
                 <div className={styles.apiKeyEntryStats}>
                   <RuntimeCapacityBadge resource={credential} aggregate />
+                  <Consecutive429Status value={credential.consecutive429} />
                   <span className={`${styles.apiKeyEntryStat} ${styles.apiKeyEntryStatSuccess}`}>
                     <IconCheck size={12} /> {credential.success}
                   </span>

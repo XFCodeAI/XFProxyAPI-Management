@@ -183,8 +183,9 @@ export const buildProviderKeyConfig = (
   if (brand === 'interactions') {
     (next as InteractionsKeyConfig).requestRetry = input.requestRetry;
   }
-  if (brand !== 'vertex') {
-    next.disableCooling = input.disableCooling === true;
+  next.disableCooling = input.disableCooling;
+  if (input.consecutive429Threshold !== undefined) {
+    next.consecutive429Threshold = normalizeConsecutive429Threshold(input.consecutive429Threshold);
   }
   if ((brand === 'codex' || brand === 'xai') && input.websockets !== undefined) {
     next.websockets = input.websockets;
@@ -242,7 +243,7 @@ export const buildOpenAIConfig = (
     prefix: input.prefix.trim() || undefined,
     apiKeyEntries,
     disabled: input.disabled,
-    disableCooling: input.disableCooling === true,
+    disableCooling: input.disableCooling,
     consecutive429Threshold: normalizeConsecutive429Threshold(input.consecutive429Threshold),
     fallback: input.fallback,
     headers: Object.keys(headers).length ? headers : undefined,
@@ -298,7 +299,11 @@ export const buildSponsorOpenAIConfig = (
     baseUrl: urls.openai,
     prefix: entry.prefix.trim() || undefined,
     disabled: entry.disabled,
-    disableCooling: entry.disableCooling === true,
+    disableCooling: entry.disableCooling,
+    consecutive429Threshold:
+      entry.consecutive429Threshold === undefined
+        ? undefined
+        : normalizeConsecutive429Threshold(entry.consecutive429Threshold),
     fallback: entry.fallback === true,
     priority: entry.priority,
     concurrencyMode: concurrency.mode,
@@ -333,7 +338,11 @@ export const buildSponsorClaudeConfig = (
     concurrencyMode: concurrency.mode,
     maxConcurrency: concurrency.maxConcurrency,
     fallback: entry.fallback === true,
-    disableCooling: entry.disableCooling === true,
+    disableCooling: entry.disableCooling,
+    consecutive429Threshold:
+      entry.consecutive429Threshold === undefined
+        ? undefined
+        : normalizeConsecutive429Threshold(entry.consecutive429Threshold),
     excludedModels: excluded,
     models: models.length ? models : undefined,
   };
